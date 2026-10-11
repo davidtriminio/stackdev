@@ -1,0 +1,124 @@
+using StackDev.Core.Proc;
+
+namespace StackDev.Core.Android;
+
+public sealed record DispositivoAdb(string Serial, string Estado, string Descripcion = "")
+{
+    public bool EsEmulador => Serial.StartsWith("emulator-", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Conectado por Wi-Fi: «ip:puerto» o el nombre mDNS de la depuración inalámbrica.</summary>
+    public bool EsRed => !EsEmulador && (Serial.Contains(':') || Serial.Contains("_adb-tls-"));
+    public bool Listo => Estado == "device";
+}
+
+/// <summary>adb.exe con tiempo límite. Devuelve null cuando se cuelga o no se pudo ejecutar (el emulador no responde).</summary>
+public sealed class AdbClient
+{
+    private readonly string _exe;
+    private readonly IReadOnlyDictionary<string, string> _env;
+
+    public AdbClient(string exe, IReadOnlyDictionary<string, string> env)
+    {
+        _exe = exe;
+        _env = env;
+    }
+
+    public string? Run(IEnumerable<string> args, int timeoutSeg = 10, CancellationToken ct = default)
+    {
+        var r = ProcessRunner.Run(_exe, args, timeoutSeg, env: _env, ct: ct);
+        if (r.TiempoAgotado || r.Cancelado || r.Codigo == -1) return null;
+        return r.Salida;
+    }
+
+    public void IniciarServidor() => Run(new[] { "start-server" }, 20);
+
+    public void ReiniciarServidor()
+    {
+        Run(new[] { "kill-server" }, 10);
+        Run(new[] { "start-server" }, 20);
+    }
+
+    public List<DispositivoAdb> Emuladores()
+    {
+        var lista = new List<DispositivoAdb>();
+        var salida = Run(new[] { "devices" }, 10);
+        if (salida is null) return lista;
+        foreach (var l in salida.Split('\n'))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(l.Trim(), @"^(emulator-\d+)\s+(\S+)");
+            if (m.Success) lista.Add(new DispositivoAdb(m.Groups[1].Value, m.Groups[2].Value));
+        }
+        return lista;
+    }
+
+    /// <summary>Todos los dispositivos que ve adb (emuladores, teléfonos por USB y por red), con su modelo.</summary>
+    public List<DispositivoAdb> Dispositivos()
+    {
+        var lista = new List<DispositivoAdb>();
+        var salida = Run(new[] { "devices", "-l" }, 10);
+        if (salida is null) return lista;
+        foreach (var l in salida.Split('\n'))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(l.Trim(), @"^(\S+)\s+(device|offline|unauthorized|authorizing|connecting|recovery|sideload|no permissions\S*)\s*(.*)$");
+            if (!m.Success) continue;
+            var modelo = System.Text.RegularExpressions.Regex.Match(m.Groups[3].Value, @"model:(\S+)");
+            lista.Add(new DispositivoAdb(m.Groups[1].Value, m.Groups[2].Value, modelo.Success ? modelo.Groups[1].Value.Replace('_', ' ') : ""));
+        }
+        return lista;
+    }
+
+    /// <summary><c>adb connect ip:puerto</c>. Devuelve si quedó conectado y el texto de adb.</summary>
+    public (bool Ok, string Texto) Conectar(string direccion)
+    {
+        var r = Run(new[] { "connect", direccion }, 20)?.Trim() ?? "adb no contestó (tiempo agotado).";
+        var ok = r.Contains("connected to", StringComparison.OrdinalIgnoreCase) && !r.Contains("failed", StringComparison.OrdinalIgnoreCase)
+                 && !r.Contains("cannot", StringComparison.OrdinalIgnoreCase);
+        return (ok, r);
+    }
+
+    /// <summary><c>adb pair ip:puerto código</c> (depuración inalámbrica de Android 11 o superior).</summary>
+    public (bool Ok, string Texto) Emparejar(string direccion, string codigo)
+    {
+        var r = Run(new[] { "pair", direccion, codigo }, 30)?.Trim() ?? "adb no contestó (tiempo agotado).";
+        return (r.Contains("Successfully paired", StringComparison.OrdinalIgnoreCase), r);
+    }
+
+    /// <summary>Sin dirección desconecta todos los dispositivos de red.</summary>
+    public string Desconectar(string? direccion = null) =>
+        Run(direccion is null ? new[] { "disconnect" } : new[] { "disconnect", direccion }, 10)?.Trim() ?? "adb no contestó.";
+
+    /// <summary>Pasa un teléfono conectado por USB a modo red (<c>adb tcpip</c>) y devuelve su IP si la encuentra.</summary>
+    public string? ActivarTcpip(string serial, int puerto = 5555)
+    {
+        var ip = Sh(serial, "ip -f inet addr show wlan0", 10);
+        var m = ip is null ? null : System.Text.RegularExpressions.Regex.Match(ip, @"inet (\d+\.\d+\.\d+\.\d+)");
+        Run(new[] { "-s", serial, "tcpip", puerto.ToString() }, 15);
+        return m is { Success: true } ? m.Groups[1].Value : null;
+    }
+
+    /// <summary><c>adb reverse tcp:P tcp:P</c>: el «localhost:P» del dispositivo llega al «localhost:P» de este equipo.</summary>
+    public (bool Ok, string Texto) Reenviar(string serial, int puerto)
+    {
+        var r = Run(new[] { "-s", serial, "reverse", $"tcp:{puerto}", $"tcp:{puerto}" }, 10);
+        return (r is not null && !r.Contains("error", StringComparison.OrdinalIgnoreCase), r?.Trim() ?? "adb no contestó.");
+    }
+
+    public string? Eco(string serial) => Run(new[] { "-s", serial, "shell", "echo", "ok" }, 5);
+
+    public bool ArranqueCompleto(string serial) =>
+        Run(new[] { "-s", serial, "shell", "getprop", "sys.boot_completed" }, 5)?.Trim() == "1";
+
+    public string NombreAvd(string serial)
+    {
+        var r = Run(new[] { "-s", serial, "emu", "avd", "name" }, 5);
+        var n = r?.Split('\n').Select(x => x.Trim()).FirstOrDefault(x => x.Length > 0 && x != "OK");
+        return n ?? "?";
+    }
+
+    /// <summary>Un comando de shell del dispositivo, como un único argumento (igual que el script).</summary>
+    public string? Sh(string serial, string comando, int timeoutSeg = 15) =>
+        Run(new[] { "-s", serial, "shell", comando }, timeoutSeg);
+
+    /// <summary>Un comando de la consola del emulador (<c>adb emu ...</c>).</summary>
+    public string? Emu(string serial, string comando, int timeoutSeg = 10) =>
+        Run(new[] { "-s", serial, "emu", comando }, timeoutSeg);
+}
