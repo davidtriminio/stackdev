@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>   <!-- solo para el icono de la bandeja (NotifyIcon) -->
+    <RootNamespace>StackDev.Gui</RootNamespace>
+    <AssemblyName>stackdev-gui</AssemblyName>
+    <ApplicationTitle>stackdev</ApplicationTitle>
+    <Version>0.1.0</Version>
+    <ApplicationIcon>Assets\stackdev.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WPF y WinForms comparten nombres (Button, Brush...): se quitan los using implícitos de WinForms -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\stackdev.ico" />
+    <Resource Include="Assets\logo.png" />
+    <EmbeddedResource Include="Assets\terminal.html" LogicalName="terminal.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\StackDev.Core\StackDev.Core.csproj" />
+  </ItemGroup>
+</Project>
