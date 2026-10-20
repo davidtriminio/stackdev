@@ -1,0 +1,20 @@
+# compilación
+bin/
+obj/
+publish/
+nupkg/
+TestResults/
+
+# IDE / local
+.vs/
+.art/
+.sync/
+*.user
+.idea/
+
+# copias de seguridad que genera stackdev
+*.bak
+
+# secretos y estado local (por si se copian al repo)
+servidores.json
+*.env
