@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StackDev.Cli/StackDev.Cli.csproj" />
+    <Project Path="src/StackDev.Gui/StackDev.Gui.csproj" />
+    <Project Path="src/StackDev.Core/StackDev.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StackDev.Core.Tests/StackDev.Core.Tests.csproj" />
+  </Folder>
+</Solution>
