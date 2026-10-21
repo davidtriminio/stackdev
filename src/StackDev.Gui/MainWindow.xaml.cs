@@ -22,7 +22,7 @@ namespace StackDev.Gui;
 
 public partial class MainWindow : Window
 {
-    private enum Vista { Inicio, Panel, Condiciones, Consola, Config, Terminales, Diagnostico }
+    private enum Vista { Inicio, Panel, Condiciones, Consola, Config, Terminales, Diagnostico, Servidor }
 
     /// <summary>Una tarjeta del panel (Postgres, API, Web, Emulador, App) con su estado y sus botones.</summary>
     private sealed class Tarjeta
@@ -55,6 +55,7 @@ public partial class MainWindow : Window
 
     private Terminal.TerminalesView? _terminales;
     private DiagnosticoView? _diag;
+    private ServidorView? _srv;
     private ModoTerminal _modoTerm = ModoTerminal.Oculto;
     private ModoTerminal _modoAplicado = ModoTerminal.Oculto;
     private bool _salidaOculta;
@@ -79,6 +80,9 @@ public partial class MainWindow : Window
         BtnNavegador.Content = Iconos.ConGlifo("\uE774", "Navegador");
         _diag = new DiagnosticoView(this, () => _s, CorrerAsync);
         VistaDiag.Children.Add(_diag);
+        _srv = new ServidorView(this, () => _s, () => new StackDev.Core.Servidores.ServidoresStore(_estado.Dir),
+            AbrirTerminalComando, GuardarDespliegue, (t, n) => _ui.Escribir(t, n));
+        VistaServidor.Children.Add(_srv);
         CrearBandeja();
         Application.Current.SessionEnding += (_, _) => _salir = true;   // apagar/cerrar sesión de Windows: sí se sale
         PreviewKeyDown += (_, e) =>
@@ -708,6 +712,7 @@ public partial class MainWindow : Window
         NavInicio.IsChecked == true ? Vista.Inicio :
         NavTerminales.IsChecked == true ? Vista.Terminales :
         NavDiag.IsChecked == true ? Vista.Diagnostico :
+        NavServidor.IsChecked == true ? Vista.Servidor :
         NavCond.IsChecked == true ? Vista.Condiciones :
         NavConsola.IsChecked == true ? Vista.Consola :
         NavConfig.IsChecked == true ? Vista.Config : Vista.Panel;
@@ -725,6 +730,7 @@ public partial class MainWindow : Window
         VistaPanel.Visibility = v == Vista.Panel ? Visibility.Visible : Visibility.Collapsed;
         VistaCond.Visibility = v == Vista.Condiciones ? Visibility.Visible : Visibility.Collapsed;
         VistaDiag.Visibility = v == Vista.Diagnostico ? Visibility.Visible : Visibility.Collapsed;
+        VistaServidor.Visibility = v == Vista.Servidor ? Visibility.Visible : Visibility.Collapsed;
         VistaConsola.Visibility = v == Vista.Consola ? Visibility.Visible : Visibility.Collapsed;
 
         // «Terminales» del menú = las terminales a pantalla completa; al irse a otra vista pasan a la mitad
@@ -737,6 +743,7 @@ public partial class MainWindow : Window
         {
             Vista.Inicio => ("Proyectos", "Los proyectos que has abierto. Elige uno para continuar."),
             Vista.Diagnostico => ("Diagnóstico", "Compara tu configuración con Docker y el proyecto, y administra contenedores y volúmenes."),
+            Vista.Servidor => ("Servidor", "Tus servidores, el estado de la API de este proyecto y sus logs en vivo."),
             Vista.Condiciones => ("Condiciones del dispositivo", "Red, batería, tema, texto, pantalla y ubicación del emulador."),
             Vista.Terminales => ("Terminales", "Terminales reales con pestañas: abre varias, divídelas o elige la carpeta del proyecto."),
             Vista.Consola => ("Consola de comandos", "Cualquier comando en una carpeta del proyecto; tareas y últimos comandos."),
@@ -747,6 +754,7 @@ public partial class MainWindow : Window
         if (v == Vista.Inicio) RefrescarInicio();
         if (v == Vista.Condiciones) RefrescarCondiciones();
         if (v == Vista.Diagnostico && _diag is not null) _ = _diag.ActualizarAsync();
+        if (v == Vista.Servidor) _srv?.Actualizar();
         if (v == Vista.Consola) RefrescarConsola();
     }
 
@@ -1442,6 +1450,28 @@ public partial class MainWindow : Window
         _terminales.Abrir(etiqueta, carpeta);
     }
 
+    /// <summary>Abre una pestaña de terminal que ejecuta una línea propia (ssh, logs del servidor…).</summary>
+    private void AbrirTerminalComando(string etiqueta, string linea)
+    {
+        if (_terminales is null) return;
+        if (_modoTerm == ModoTerminal.Oculto)
+        {
+            _modoTerm = ModoTerminal.Mitad;
+            AplicarModoTerminal(crearPrimera: false);
+        }
+        _terminales.AbrirComando(etiqueta, linea);
+    }
+
+    /// <summary>Guarda en dev-menu.json a qué servidor se sube este proyecto.</summary>
+    private void GuardarDespliegue(StackDev.Core.Config.DespliegueConfig? d)
+    {
+        if (_s is null) return;
+        var copia = StackDev.Core.Config.ConfigJson.Leer(StackDev.Core.Config.ConfigJson.Escribir(_s.Ctx.Config));
+        copia.Despliegue = d;
+        _s.AplicarConfig(copia);
+        _ui.Escribir("Despliegue del proyecto guardado.", Nivel.Ok);
+    }
+
     /// <summary>Atajos de terminales: funcionan igual con el foco en la ventana o dentro de una terminal.</summary>
     private void AtajoTerminal(string accion, int n)
     {
@@ -1503,6 +1533,7 @@ public partial class MainWindow : Window
         ("Panel", "\uE80A"),
         ("Terminales", "\uE756"),
         ("Diagnóstico", "\uE9D9"),
+        ("Servidor", "\uE753"),
         ("Condiciones del dispositivo", "\uE717"),
         ("Consola de comandos", "\uE943"),
         ("Configuración", "\uE713"),
@@ -1514,7 +1545,7 @@ public partial class MainWindow : Window
         ColLateral.Width = new GridLength(_rail ? 60 : 240);
         TarjetaProyecto.Visibility = PieLateral.Visibility = _rail ? Visibility.Collapsed : Visibility.Visible;
         LateralInterno.Margin = _rail ? new Thickness(8, 16, 8, 16) : new Thickness(16);
-        var botones = new[] { NavInicio, NavPanel, NavTerminales, NavDiag, NavCond, NavConsola, NavConfig };
+        var botones = new[] { NavInicio, NavPanel, NavTerminales, NavDiag, NavServidor, NavCond, NavConsola, NavConfig };
         for (var i = 0; i < botones.Length; i++)
         {
             var (texto, glifo) = NavIconos[i];
