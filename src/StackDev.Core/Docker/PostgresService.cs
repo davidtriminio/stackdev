@@ -6,246 +6,246 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Docker;
 
-public enum CodigoPostgres { Corriendo, Detenido, NoExiste, DockerApagado, DockerNoResponde, SinDocker, SinConfig }
+public enum PostgresCode { Running, Stopped, DoesNotExist, DockerOff, DockerNotResponding, NoDocker, NoConfig }
 
-public sealed record EstadoPostgres(CodigoPostgres Codigo, string Texto)
+public sealed record PostgresState(PostgresCode Code, string Text)
 {
-    public bool Corriendo => Codigo == CodigoPostgres.Corriendo;
+    public bool Running => Code == PostgresCode.Running;
 }
 
 /// <summary>Postgres en un contenedor de Docker: iniciar, crear, esperar, psql, logs, respaldo, restaurar y recrear.</summary>
 public sealed class PostgresService
 {
-    private readonly Sesion _s;
+    private readonly Session _s;
 
-    public PostgresService(Sesion s) { _s = s; }
+    public PostgresService(Session s) { _s = s; }
 
     private PostgresConfig Cfg => _s.Ctx.Config.Postgres ?? new PostgresConfig();
-    private string Contenedor => Cfg.ContenedorEf;
+    private string Container => Cfg.EfContainer;
 
-    public EstadoPostgres Estado()
+    public PostgresState State()
     {
-        if (!_s.Ctx.Tiene(Componente.Postgres)) return new(CodigoPostgres.SinConfig, "no configurado");
-        if (!_s.Docker.Instalado) return new(CodigoPostgres.SinDocker, "Docker no instalado");
-        var r = _s.Docker.Run(new[] { "inspect", "-f", "{{.State.Status}}", Contenedor }, 6);
-        if (r.TiempoAgotado) return new(CodigoPostgres.DockerNoResponde, "DOCKER NO RESPONDE");
-        if (r.Codigo == 0)
+        if (!_s.Ctx.Has(ProjectComponent.Postgres)) return new(PostgresCode.NoConfig, "no configurado");
+        if (!_s.Docker.Installed) return new(PostgresCode.NoDocker, "Docker no instalado");
+        var r = _s.Docker.Run(new[] { "inspect", "-f", "{{.State.Status}}", Container }, 6);
+        if (r.TimeExpired) return new(PostgresCode.DockerNotResponding, "DOCKER NO RESPONDE");
+        if (r.Code == 0)
         {
-            return r.Salida.Trim() == "running"
-                ? new(CodigoPostgres.Corriendo, $"CORRIENDO  {Contenedor}  localhost:{Cfg.PuertoEf}")
-                : new(CodigoPostgres.Detenido, $"DETENIDO  {Contenedor}");
+            return r.Output.Trim() == "running"
+                ? new(PostgresCode.Running, $"CORRIENDO  {Container}  localhost:{Cfg.EfPort}")
+                : new(PostgresCode.Stopped, $"DETENIDO  {Container}");
         }
-        if ((r.Error + r.Salida).Contains("No such", StringComparison.OrdinalIgnoreCase))
-            return new(CodigoPostgres.NoExiste, $"NO EXISTE el contenedor {Contenedor}");
-        return new(CodigoPostgres.DockerApagado, "DOCKER APAGADO (se abre al iniciar)");
+        if ((r.Error + r.Output).Contains("No such", StringComparison.OrdinalIgnoreCase))
+            return new(PostgresCode.DoesNotExist, $"NO EXISTE el contenedor {Container}");
+        return new(PostgresCode.DockerOff, "DOCKER APAGADO (se abre al iniciar)");
     }
 
     // ------------------------------------------------------------ Iniciar / detener
 
-    public bool Iniciar()
+    public bool Start()
     {
-        if (!_s.AfirmarComp(Componente.Postgres)) return false;
-        if (!_s.Docker.IniciarDesktop()) return false;
-        var e = Estado();
-        if (e.Corriendo) { _s.Ui.Escribir($"Postgres ya está corriendo ({Contenedor}).", Nivel.Tenue); return true; }
-        if (e.Codigo == CodigoPostgres.NoExiste)
+        if (!_s.AssertComp(ProjectComponent.Postgres)) return false;
+        if (!_s.Docker.StartDesktop()) return false;
+        var e = State();
+        if (e.Running) { _s.Ui.Write($"Postgres ya está corriendo ({Container}).", Level.Muted); return true; }
+        if (e.Code == PostgresCode.DoesNotExist)
         {
-            _s.Ui.Escribir($"El contenedor '{Contenedor}' no existe.", Nivel.Aviso);
-            if (!_s.Ui.Confirmar("¿Crearlo ahora con la configuración del proyecto?", true)) return false;
-            if (!Crear()) return false;
+            _s.Ui.Write($"El contenedor '{Container}' no existe.", Level.Warning);
+            if (!_s.Ui.Confirm("¿Crearlo ahora con la configuración del proyecto?", true)) return false;
+            if (!Create()) return false;
         }
         else
         {
-            _s.Ui.Escribir($"docker start {Contenedor}", Nivel.Tenue);
-            var r = _s.Docker.Run(new[] { "start", Contenedor }, 60);
-            if (!r.Ok) { _s.Ui.Escribir($"No se pudo iniciar: {r.Texto.Trim()}", Nivel.Error); return false; }
+            _s.Ui.Write($"docker start {Container}", Level.Muted);
+            var r = _s.Docker.Run(new[] { "start", Container }, 60);
+            if (!r.Ok) { _s.Ui.Write($"No se pudo iniciar: {r.Text.Trim()}", Level.Error); return false; }
         }
-        return Esperar();
+        return Wait();
     }
 
-    public void Detener()
+    public void Stop()
     {
-        if (!_s.AfirmarComp(Componente.Postgres)) return;
-        if (!Estado().Corriendo) { _s.Ui.Escribir("Postgres no está corriendo.", Nivel.Tenue); return; }
-        _s.Ui.Escribir($"Deteniendo {Contenedor}...", Nivel.Info);
-        var r = _s.Docker.Run(new[] { "stop", Contenedor }, 60);
-        if (r.Ok) _s.Ui.Escribir("Postgres detenido.", Nivel.Ok);
-        else _s.Ui.Escribir($"No se pudo detener: {r.Texto.Trim()}", Nivel.Error);
+        if (!_s.AssertComp(ProjectComponent.Postgres)) return;
+        if (!State().Running) { _s.Ui.Write("Postgres no está corriendo.", Level.Muted); return; }
+        _s.Ui.Write($"Deteniendo {Container}...", Level.Info);
+        var r = _s.Docker.Run(new[] { "stop", Container }, 60);
+        if (r.Ok) _s.Ui.Write("Postgres detenido.", Level.Ok);
+        else _s.Ui.Write($"No se pudo detener: {r.Text.Trim()}", Level.Error);
     }
 
     /// <summary>Espera (hasta 60 s) a que la base acepte conexiones: <c>pg_isready</c> dentro del contenedor.</summary>
-    public bool Esperar()
+    public bool Wait()
     {
-        _s.Ui.EscribirInline("Esperando a Postgres");
-        var limite = Environment.TickCount64 + 60_000;
-        while (Environment.TickCount64 < limite)
+        _s.Ui.WriteInline("Esperando a Postgres");
+        var limit = Environment.TickCount64 + 60_000;
+        while (Environment.TickCount64 < limit)
         {
-            var r = _s.Docker.Run(new[] { "exec", Contenedor, "pg_isready", "-U", Cfg.UsuarioEf, "-d", Cfg.BaseDatosEf, "-q" }, 8);
+            var r = _s.Docker.Run(new[] { "exec", Container, "pg_isready", "-U", Cfg.EfUser, "-d", Cfg.EfDatabase, "-q" }, 8);
             if (r.Ok)
             {
-                _s.Ui.Escribir("");
-                _s.Ui.Escribir($"Postgres listo en localhost:{Cfg.PuertoEf}.", Nivel.Ok);
+                _s.Ui.Write("");
+                _s.Ui.Write($"Postgres listo en localhost:{Cfg.EfPort}.", Level.Ok);
                 return true;
             }
-            if (_s.Ct.IsCancellationRequested || Teclado.PulsoCancelar()) break;
-            _s.Ui.EscribirInline(".");
+            if (_s.Ct.IsCancellationRequested || ConsoleKeys.PressCancel()) break;
+            _s.Ui.WriteInline(".");
             _s.Ct.WaitHandle.WaitOne(1000);
         }
-        _s.Ui.Escribir("");
-        _s.Ui.Escribir("Postgres no respondió. Revisa sus logs.", Nivel.Error);
+        _s.Ui.Write("");
+        _s.Ui.Write("Postgres no respondió. Revisa sus logs.", Level.Error);
         return false;
     }
 
     /// <summary>Argumentos de <c>docker run</c> con la configuración del proyecto (y el volumen, si lo hay).</summary>
-    public List<string> ArgsCrear()
+    public List<string> CreateArgs()
     {
         var a = new List<string>
         {
-            "run", "-d", "--name", Contenedor,
-            "-e", $"POSTGRES_USER={Cfg.UsuarioEf}",
-            "-e", $"POSTGRES_PASSWORD={Cfg.PasswordEf}",
-            "-e", $"POSTGRES_DB={Cfg.BaseDatosEf}",
-            "-p", $"{Cfg.PuertoEf}:5432",
+            "run", "-d", "--name", Container,
+            "-e", $"POSTGRES_USER={Cfg.EfUser}",
+            "-e", $"POSTGRES_PASSWORD={Cfg.EfPassword}",
+            "-e", $"POSTGRES_DB={Cfg.EfDatabase}",
+            "-p", $"{Cfg.EfPort}:5432",
         };
-        if (!string.IsNullOrEmpty(Cfg.VolumenEf)) { a.Add("-v"); a.Add($"{Cfg.VolumenEf}:{PostgresConfig.RutaDatos(Cfg.ImagenEf)}"); }
-        a.Add(Cfg.ImagenEf);
+        if (!string.IsNullOrEmpty(Cfg.EfVolume)) { a.Add("-v"); a.Add($"{Cfg.EfVolume}:{PostgresConfig.DataPath(Cfg.EfImage)}"); }
+        a.Add(Cfg.EfImage);
         return a;
     }
 
     /// <summary>Guarda otro puerto para Postgres en la configuración del proyecto.</summary>
-    public static void CambiarPuerto(Sesion s, int puerto)
+    public static void ChangePort(Session s, int port)
     {
-        var copia = ConfigJson.Leer(ConfigJson.Escribir(s.Ctx.Config));
-        (copia.Postgres ??= new PostgresConfig()).Puerto = puerto;
-        s.AplicarConfig(copia);
-        s.Ui.Escribir($"Postgres ahora usa el puerto {puerto}.", Nivel.Ok);
+        var copy = ConfigJson.Read(ConfigJson.Write(s.Ctx.Config));
+        (copy.Postgres ??= new PostgresConfig()).Port = port;
+        s.ApplyConfig(copy);
+        s.Ui.Write($"Postgres ahora usa el puerto {port}.", Level.Ok);
     }
 
     /// <summary>Si el puerto configurado choca con algo, propone el siguiente libre. false = el usuario prefiere no seguir.</summary>
-    private bool ResolverPuerto()
+    private bool ResolvePort()
     {
-        var mapa = _s.Libres.Tomar(ignorarContenedor: Contenedor, ignorarComponente: Componente.Postgres);
-        var puerto = Cfg.PuertoEf;
-        var motivo = mapa.Conflicto(puerto);
-        if (motivo is null) return true;
+        var map = _s.Free.Take(ignoreContainer: Container, ignoreComponent: ProjectComponent.Postgres);
+        var port = Cfg.EfPort;
+        var reason = map.Conflict(port);
+        if (reason is null) return true;
 
-        _s.Ui.Escribir($"El puerto {puerto} {motivo}.", Nivel.Aviso);
-        var sugerido = mapa.Sugerir(puerto + 1);
-        if (sugerido is null)
-            return _s.Ui.Confirmar("No encontré un puerto libre cerca. ¿Intentar crear el contenedor de todos modos?", false);
-        if (_s.Ui.Confirmar($"¿Usar el puerto {sugerido} en su lugar? (se guarda en la configuración)", true))
+        _s.Ui.Write($"El puerto {port} {reason}.", Level.Warning);
+        var suggested = map.Suggest(port + 1);
+        if (suggested is null)
+            return _s.Ui.Confirm("No encontré un puerto libre cerca. ¿Intentar crear el contenedor de todos modos?", false);
+        if (_s.Ui.Confirm($"¿Usar el puerto {suggested} en su lugar? (se guarda en la configuración)", true))
         {
-            CambiarPuerto(_s, sugerido.Value);
+            ChangePort(_s, suggested.Value);
             return true;
         }
-        return _s.Ui.Confirmar($"¿Crearlo con el puerto {puerto} de todos modos?", false);
+        return _s.Ui.Confirm($"¿Crearlo con el puerto {port} de todos modos?", false);
     }
 
     /// <summary>Crea el contenedor mostrando el progreso de la descarga de la imagen.</summary>
-    public bool Crear()
+    public bool Create()
     {
-        if (!ResolverPuerto()) return false;
-        var args = ArgsCrear();
+        if (!ResolvePort()) return false;
+        var args = CreateArgs();
         // la contraseña no debe quedar escrita en la salida
-        _s.Ui.Escribir("docker " + System.Text.RegularExpressions.Regex.Replace(Args.Join(args), @"POSTGRES_PASSWORD=(""[^""]*""|'[^']*'|\S+)", "POSTGRES_PASSWORD=••••"), Nivel.Tenue);
+        _s.Ui.Write("docker " + System.Text.RegularExpressions.Regex.Replace(Args.Join(args), @"POSTGRES_PASSWORD=(""[^""]*""|'[^']*'|\S+)", "POSTGRES_PASSWORD=••••"), Level.Muted);
         if (_s.Docker.RunVisible(args) != 0)
         {
-            _s.Ui.Escribir("No se pudo crear el contenedor.", Nivel.Error);
+            _s.Ui.Write("No se pudo crear el contenedor.", Level.Error);
             return false;
         }
         return true;
     }
 
-    public bool AsegurarCorriendo()
+    public bool EnsureRunning()
     {
-        if (!_s.AfirmarComp(Componente.Postgres)) return false;
-        if (Estado().Corriendo) return true;
-        if (!_s.Ui.Confirmar("Postgres no está corriendo. ¿Iniciarlo?", true)) return false;
-        return Iniciar();
+        if (!_s.AssertComp(ProjectComponent.Postgres)) return false;
+        if (State().Running) return true;
+        if (!_s.Ui.Confirm("Postgres no está corriendo. ¿Iniciarlo?", true)) return false;
+        return Start();
     }
 
     // ------------------------------------------------------------ psql y logs
 
-    public void AbrirPsql()
+    public void OpenPsql()
     {
-        if (!AsegurarCorriendo()) return;
-        var cmd = $"{_s.Docker.ComandoPs} exec -it {Contenedor} psql -U {Cfg.UsuarioEf} -d {Cfg.BaseDatosEf}";
-        if (_s.Ejecutor.EnVentana("psql", $"psql - {Cfg.BaseDatosEf}", _s.Raiz, cmd))
-            _s.Ui.Escribir("psql abierto en otra ventana (\\q para salir).", Nivel.Ok);
+        if (!EnsureRunning()) return;
+        var cmd = $"{_s.Docker.PsCommand} exec -it {Container} psql -U {Cfg.EfUser} -d {Cfg.EfDatabase}";
+        if (_s.Executor.InWindow("psql", $"psql - {Cfg.EfDatabase}", _s.Root, cmd))
+            _s.Ui.Write("psql abierto en otra ventana (\\q para salir).", Level.Ok);
     }
 
-    public void AbrirLogs()
+    public void OpenLogs()
     {
-        if (!_s.AfirmarComp(Componente.Postgres) || !_s.Docker.IniciarDesktop()) return;
-        var cmd = $"{_s.Docker.ComandoPs} logs -f --tail 200 {Contenedor}";
-        if (_s.Ejecutor.EnVentana("pglogs", "Logs Postgres", _s.Raiz, cmd, esperarEnter: false))
-            _s.Ui.Escribir("Logs abiertos en otra ventana.", Nivel.Ok);
+        if (!_s.AssertComp(ProjectComponent.Postgres) || !_s.Docker.StartDesktop()) return;
+        var cmd = $"{_s.Docker.PsCommand} logs -f --tail 200 {Container}";
+        if (_s.Executor.InWindow("pglogs", "Logs Postgres", _s.Root, cmd, waitEnter: false))
+            _s.Ui.Write("Logs abiertos en otra ventana.", Level.Ok);
     }
 
     /// <summary>Las últimas líneas del log del contenedor (para verlas dentro de la herramienta).</summary>
-    public List<string> UltimasLineasLog(int n = 15)
+    public List<string> LastLogLines(int n = 15)
     {
-        var r = _s.Docker.Run(new[] { "logs", "--tail", n.ToString(), Contenedor }, 8);
-        return (r.Salida + "\n" + r.Error).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).TakeLast(n).ToList();
+        var r = _s.Docker.Run(new[] { "logs", "--tail", n.ToString(), Container }, 8);
+        return (r.Output + "\n" + r.Error).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).TakeLast(n).ToList();
     }
 
     // ------------------------------------------------------------ Respaldo y restauración
 
     /// <summary>pg_dump con la salida escrita byte a byte a un .sql. Devuelve la ruta, o null si falló.</summary>
-    public string? Respaldar()
+    public string? Back()
     {
-        if (!AsegurarCorriendo()) return null;
-        var archivo = Path.Combine(_s.Estado.CarpetaRespaldos(_s.Clave), $"{Cfg.BaseDatosEf}-{DateTime.Now:yyyyMMdd-HHmmss}.sql");
-        _s.Ui.Escribir($"Respaldando la base '{Cfg.BaseDatosEf}'...", Nivel.Info);
-        var r = _s.Docker.RunConArchivos(
-            new[] { "exec", Contenedor, "pg_dump", "-U", Cfg.UsuarioEf, "-d", Cfg.BaseDatosEf, "--clean", "--if-exists", "--no-owner" },
-            null, archivo);
-        if (r.Codigo == 0)
+        if (!EnsureRunning()) return null;
+        var file = Path.Combine(_s.State.BackupsFolder(_s.Key), $"{Cfg.EfDatabase}-{DateTime.Now:yyyyMMdd-HHmmss}.sql");
+        _s.Ui.Write($"Respaldando la base '{Cfg.EfDatabase}'...", Level.Info);
+        var r = _s.Docker.RunWithFiles(
+            new[] { "exec", Container, "pg_dump", "-U", Cfg.EfUser, "-d", Cfg.EfDatabase, "--clean", "--if-exists", "--no-owner" },
+            null, file);
+        if (r.Code == 0)
         {
-            var kb = Math.Round(new FileInfo(archivo).Length / 1024.0, 1);
-            _s.Ui.Escribir($"Respaldo guardado ({kb} KB): {archivo}", Nivel.Ok);
-            return archivo;
+            var kb = Math.Round(new FileInfo(file).Length / 1024.0, 1);
+            _s.Ui.Write($"Respaldo guardado ({kb} KB): {file}", Level.Ok);
+            return file;
         }
-        try { File.Delete(archivo); } catch (IOException) { }
-        _s.Ui.Escribir($"El respaldo falló: {r.Error.Trim()}", Nivel.Error);
+        try { File.Delete(file); } catch (IOException) { }
+        _s.Ui.Write($"El respaldo falló: {r.Error.Trim()}", Level.Error);
         return null;
     }
 
-    public List<FileInfo> ListarRespaldos(int max = 15)
+    public List<FileInfo> ListBackups(int max = 15)
     {
-        var dir = _s.Estado.CarpetaRespaldos(_s.Clave);
+        var dir = _s.State.BackupsFolder(_s.Key);
         return new DirectoryInfo(dir).GetFiles("*.sql").OrderByDescending(f => f.LastWriteTime).Take(max).ToList();
     }
 
     /// <summary>Restaura un respaldo (o cualquier .sql). Pide escribir "si" para confirmar y corta al primer error.</summary>
-    public bool Restaurar(string? archivo = null)
+    public bool Restore(string? file = null)
     {
-        if (!AsegurarCorriendo()) return false;
-        if (archivo is null)
+        if (!EnsureRunning()) return false;
+        if (file is null)
         {
-            var lista = ListarRespaldos();
-            _s.Ui.Escribir($"\nRespaldos en {_s.Estado.CarpetaRespaldos(_s.Clave)}", Nivel.Info);
-            if (lista.Count == 0) _s.Ui.Escribir("  (no hay respaldos todavía)", Nivel.Tenue);
-            for (var i = 0; i < lista.Count; i++)
-                _s.Ui.Escribir($"  [{i + 1,2}] {lista[i].Name}  ({Math.Round(lista[i].Length / 1024.0, 1)} KB)");
-            var sel = _s.Ui.Preguntar("Número, o ruta de un archivo .sql (Enter = cancelar)")?.Trim().Trim('"');
+            var list = ListBackups();
+            _s.Ui.Write($"\nRespaldos en {_s.State.BackupsFolder(_s.Key)}", Level.Info);
+            if (list.Count == 0) _s.Ui.Write("  (no hay respaldos todavía)", Level.Muted);
+            for (var i = 0; i < list.Count; i++)
+                _s.Ui.Write($"  [{i + 1,2}] {list[i].Name}  ({Math.Round(list[i].Length / 1024.0, 1)} KB)");
+            var sel = _s.Ui.Ask("Número, o ruta de un archivo .sql (Enter = cancelar)")?.Trim().Trim('"');
             if (string.IsNullOrEmpty(sel)) return false;
-            if (int.TryParse(sel, out var n) && n >= 1 && n <= lista.Count) archivo = lista[n - 1].FullName;
-            else if (File.Exists(sel)) archivo = Path.GetFullPath(sel);
-            else { _s.Ui.Escribir("Opción no válida.", Nivel.Error); return false; }
+            if (int.TryParse(sel, out var n) && n >= 1 && n <= list.Count) file = list[n - 1].FullName;
+            else if (File.Exists(sel)) file = Path.GetFullPath(sel);
+            else { _s.Ui.Write("Opción no válida.", Level.Error); return false; }
         }
-        _s.Ui.Escribir($"Esto reemplaza los datos actuales de la base '{Cfg.BaseDatosEf}' con {Path.GetFileName(archivo)}.", Nivel.Aviso);
-        if (!string.Equals(_s.Ui.Preguntar("Escribe 'si' para continuar"), "si", StringComparison.OrdinalIgnoreCase))
+        _s.Ui.Write($"Esto reemplaza los datos actuales de la base '{Cfg.EfDatabase}' con {Path.GetFileName(file)}.", Level.Warning);
+        if (!string.Equals(_s.Ui.Ask("Escribe 'si' para continuar"), "si", StringComparison.OrdinalIgnoreCase))
         {
-            _s.Ui.Escribir("Cancelado.", Nivel.Tenue);
+            _s.Ui.Write("Cancelado.", Level.Muted);
             return false;
         }
-        _s.Ui.Escribir("Restaurando...", Nivel.Info);
-        var r = _s.Docker.RunConArchivos(
-            new[] { "exec", "-i", Contenedor, "psql", "-U", Cfg.UsuarioEf, "-d", Cfg.BaseDatosEf, "-q", "-v", "ON_ERROR_STOP=1" },
-            archivo, null);
-        if (r.Codigo == 0) { _s.Ui.Escribir("Base restaurada.", Nivel.Ok); return true; }
-        _s.Ui.Escribir($"La restauración falló:\n{r.Error.Trim()}", Nivel.Error);
+        _s.Ui.Write("Restaurando...", Level.Info);
+        var r = _s.Docker.RunWithFiles(
+            new[] { "exec", "-i", Container, "psql", "-U", Cfg.EfUser, "-d", Cfg.EfDatabase, "-q", "-v", "ON_ERROR_STOP=1" },
+            file, null);
+        if (r.Code == 0) { _s.Ui.Write("Base restaurada.", Level.Ok); return true; }
+        _s.Ui.Write($"La restauración falló:\n{r.Error.Trim()}", Level.Error);
         return false;
     }
 
@@ -255,35 +255,35 @@ public sealed class PostgresService
     /// Borra el contenedor y lo crea de nuevo con la configuración actual. Sin volumen con nombre se pierden los datos:
     /// se ofrece un respaldo antes y se confirma escribiendo el nombre del contenedor.
     /// </summary>
-    public bool Recrear()
+    public bool Recreate()
     {
-        if (!_s.AfirmarComp(Componente.Postgres) || !_s.Docker.IniciarDesktop()) return false;
-        var vol = Cfg.VolumenEf;
-        var e = Estado();
+        if (!_s.AssertComp(ProjectComponent.Postgres) || !_s.Docker.StartDesktop()) return false;
+        var vol = Cfg.EfVolume;
+        var e = State();
 
-        _s.Ui.Escribir($"\nRecrear borra el contenedor '{Contenedor}' y lo crea de nuevo con la configuración actual.", Nivel.Aviso);
-        if (vol.Length > 0) _s.Ui.Escribir($"Los datos están en el volumen '{vol}' y se conservan.", Nivel.Tenue);
-        else _s.Ui.Escribir("OJO: no usa un volumen con nombre, así que se PIERDEN todos los datos.", Nivel.Error);
+        _s.Ui.Write($"\nRecrear borra el contenedor '{Container}' y lo crea de nuevo con la configuración actual.", Level.Warning);
+        if (vol.Length > 0) _s.Ui.Write($"Los datos están en el volumen '{vol}' y se conservan.", Level.Muted);
+        else _s.Ui.Write("OJO: no usa un volumen con nombre, así que se PIERDEN todos los datos.", Level.Error);
 
-        string? respaldo = null;
-        if (e.Codigo != CodigoPostgres.NoExiste && vol.Length == 0 && _s.Ui.Confirmar("¿Hacer un respaldo antes?", true))
+        string? backup = null;
+        if (e.Code != PostgresCode.DoesNotExist && vol.Length == 0 && _s.Ui.Confirm("¿Hacer un respaldo antes?", true))
         {
-            if (!e.Corriendo) { _s.Docker.Run(new[] { "start", Contenedor }, 60); Esperar(); }
-            respaldo = Respaldar();
-            if (respaldo is null && !_s.Ui.Confirmar("El respaldo falló. ¿Continuar de todos modos?", false)) return false;
+            if (!e.Running) { _s.Docker.Run(new[] { "start", Container }, 60); Wait(); }
+            backup = Back();
+            if (backup is null && !_s.Ui.Confirm("El respaldo falló. ¿Continuar de todos modos?", false)) return false;
         }
-        if (_s.Ui.Preguntar($"Escribe el nombre del contenedor ({Contenedor}) para confirmar") != Contenedor)
+        if (_s.Ui.Ask($"Escribe el nombre del contenedor ({Container}) para confirmar") != Container)
         {
-            _s.Ui.Escribir("Cancelado.", Nivel.Tenue);
+            _s.Ui.Write("Cancelado.", Level.Muted);
             return false;
         }
-        if (e.Codigo != CodigoPostgres.NoExiste)
+        if (e.Code != PostgresCode.DoesNotExist)
         {
-            var r = _s.Docker.Run(new[] { "rm", "-f", Contenedor }, 60);
-            if (!r.Ok) { _s.Ui.Escribir($"No se pudo borrar: {r.Texto.Trim()}", Nivel.Error); return false; }
+            var r = _s.Docker.Run(new[] { "rm", "-f", Container }, 60);
+            if (!r.Ok) { _s.Ui.Write($"No se pudo borrar: {r.Text.Trim()}", Level.Error); return false; }
         }
-        if (!Crear() || !Esperar()) return false;
-        if (respaldo is not null && _s.Ui.Confirmar("¿Restaurar el respaldo que acabo de hacer?", true)) Restaurar(respaldo);
+        if (!Create() || !Wait()) return false;
+        if (backup is not null && _s.Ui.Confirm("¿Restaurar el respaldo que acabo de hacer?", true)) Restore(backup);
         return true;
     }
 }

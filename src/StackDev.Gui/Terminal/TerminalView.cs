@@ -15,55 +15,55 @@ using Microsoft.Web.WebView2.Wpf;
 namespace StackDev.Gui.Terminal;
 
 /// <summary>
-/// Una terminal: xterm.js dentro de un WebView2 como pantalla y un <see cref="SesionPty"/> (ConPTY) como programa.
+/// Una terminal: xterm.js dentro de un WebView2 como pantalla y un <see cref="SessionPty"/> (ConPTY) como programa.
 /// Copiar y pegar pasan por el portapapeles de Windows (Ctrl+C con selección, Ctrl+V, clic derecho).
 /// </summary>
 public sealed class TerminalView : Grid, IDisposable
 {
-    private static Task<CoreWebView2Environment>? _entorno;
+    private static Task<CoreWebView2Environment>? _environment;
     private static string? _html;
 
     private readonly WebView2 _web;
-    private readonly object _bloqueo = new();
-    private readonly StringBuilder _pendiente = new();
-    private int _programado;
-    private bool _iniciado;
-    private bool _cerrado;
-    private SesionPty? _pty;
+    private readonly object _lock = new();
+    private readonly StringBuilder _pending = new();
+    private int _scheduled;
+    private bool _started;
+    private bool _closed;
+    private SessionPty? _pty;
 
-    public string Linea { get; }
-    public string Carpeta { get; }
+    public string CommandLine { get; }
+    public string Folder { get; }
     private readonly IReadOnlyDictionary<string, string>? _env;
 
     /// <summary>El programa terminó (con su código de salida).</summary>
-    public event Action<TerminalView, int>? Terminado;
+    public event Action<TerminalView, int>? Finished;
 
     /// <summary>El programa cambió el título de la terminal (secuencia OSC).</summary>
-    public event Action<TerminalView, string>? TituloCambiado;
+    public event Action<TerminalView, string>? TitleChanged;
 
     /// <summary>Un atajo de la aplicación pulsado con el foco dentro de la terminal (next, prev, toggle, new, tab).</summary>
-    public event Action<string, int>? Atajo;
+    public event Action<string, int>? Shortcut;
 
-    public TerminalView(string linea, string carpeta, IReadOnlyDictionary<string, string>? env)
+    public TerminalView(string line, string folder, IReadOnlyDictionary<string, string>? env)
     {
-        Linea = linea;
-        Carpeta = carpeta;
+        CommandLine = line;
+        Folder = folder;
         _env = env;
         Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x11, 0x15));
         _web = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x08, 0x09, 0x0A) };
         Children.Add(_web);
         Loaded += (_, _) =>
         {
-            if (_iniciado) return;
-            _iniciado = true;
-            _ = IniciarAsync();
+            if (_started) return;
+            _started = true;
+            _ = StartAsync();
         };
     }
 
     // ------------------------------------------------------------ WebView2
 
-    private static Task<CoreWebView2Environment> Entorno() =>
-        _entorno ??= CoreWebView2Environment.CreateAsync(null,
+    private static Task<CoreWebView2Environment> CreateWebViewEnvironment() =>
+        _environment ??= CoreWebView2Environment.CreateAsync(null,
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "stackdev", "webview2"));
 
     private static string Html()
@@ -75,13 +75,13 @@ public sealed class TerminalView : Grid, IDisposable
         return _html = r.ReadToEnd();
     }
 
-    private async Task IniciarAsync()
+    private async Task StartAsync()
     {
         try
         {
-            var entorno = await Entorno();
-            await _web.EnsureCoreWebView2Async(entorno);
-            if (_cerrado) return;
+            var environment = await CreateWebViewEnvironment();
+            await _web.EnsureCoreWebView2Async(environment);
+            if (_closed) return;
             var c = _web.CoreWebView2;
             c.Settings.AreDefaultContextMenusEnabled = false;
             c.Settings.AreDevToolsEnabled = false;
@@ -89,39 +89,39 @@ public sealed class TerminalView : Grid, IDisposable
             c.Settings.IsStatusBarEnabled = false;
             c.Settings.IsZoomControlEnabled = false;
             c.Settings.IsBuiltInErrorPageEnabled = false;
-            c.WebMessageReceived += AlRecibirMensaje;
+            c.WebMessageReceived += OnMessageReceived;
             c.NavigateToString(Html());
         }
         catch (Exception ex)
         {
-            _entorno = null;
-            MostrarError(ex is WebView2RuntimeNotFoundException
+            _environment = null;
+            ShowError(ex is WebView2RuntimeNotFoundException
                 ? "Falta el runtime de WebView2. Instálalo desde https://developer.microsoft.com/microsoft-edge/webview2/ y reabre la aplicación."
                 : $"No se pudo iniciar la terminal: {ex.Message}");
         }
     }
 
-    private void MostrarError(string texto)
+    private void ShowError(string text)
     {
         Children.Clear();
         Children.Add(new TextBlock
         {
-            Text = texto,
+            Text = text,
             Foreground = (Brush)Application.Current.FindResource("ErrBrush"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(18),
         });
     }
 
-    private void Enviar(object mensaje)
+    private void Send(object message)
     {
-        try { _web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(mensaje)); }
+        try { _web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message)); }
         catch (Exception) { }
     }
 
     // ------------------------------------------------------------ Mensajes de la página
 
-    private void AlRecibirMensaje(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    private void OnMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         JsonDocument doc;
         try { doc = JsonDocument.Parse(e.WebMessageAsJson); }
@@ -129,98 +129,98 @@ public sealed class TerminalView : Grid, IDisposable
         using (doc)
         {
             var r = doc.RootElement;
-            if (!r.TryGetProperty("t", out var tipo)) return;
-            switch (tipo.GetString())
+            if (!r.TryGetProperty("t", out var type)) return;
+            switch (type.GetString())
             {
-                case "ready": Arrancar(r.GetProperty("c").GetInt32(), r.GetProperty("r").GetInt32()); break;
-                case "i": _pty?.Escribir(r.GetProperty("d").GetString() ?? ""); break;
-                case "r": _pty?.Redimensionar(r.GetProperty("c").GetInt32(), r.GetProperty("r").GetInt32()); break;
-                case "title": TituloCambiado?.Invoke(this, r.GetProperty("d").GetString() ?? ""); break;
-                case "copy": CopiarAlPortapapeles(r.GetProperty("d").GetString()); break;
-                case "pasteReq": Pegar(); break;
-                case "key": Atajo?.Invoke(r.GetProperty("d").GetString() ?? "", r.TryGetProperty("n", out var nn) ? nn.GetInt32() : 0); break;
+                case "ready": Start(r.GetProperty("c").GetInt32(), r.GetProperty("r").GetInt32()); break;
+                case "i": _pty?.Write(r.GetProperty("d").GetString() ?? ""); break;
+                case "r": _pty?.Resize(r.GetProperty("c").GetInt32(), r.GetProperty("r").GetInt32()); break;
+                case "title": TitleChanged?.Invoke(this, r.GetProperty("d").GetString() ?? ""); break;
+                case "copy": CopyToClipboard(r.GetProperty("d").GetString()); break;
+                case "pasteReq": Paste(); break;
+                case "key": Shortcut?.Invoke(r.GetProperty("d").GetString() ?? "", r.TryGetProperty("n", out var nn) ? nn.GetInt32() : 0); break;
             }
         }
     }
 
-    private void Arrancar(int columnas, int filas)
+    private void Start(int columns, int rows)
     {
-        if (_pty is not null || _cerrado) return;
+        if (_pty is not null || _closed) return;
         try
         {
-            var pty = SesionPty.Iniciar(Linea, Carpeta, _env, Math.Max(columnas, 20), Math.Max(filas, 5));
-            pty.Salida += AlLlegarSalida;
-            pty.Terminado += codigo => Dispatcher.BeginInvoke(new Action(() =>
+            var pty = SessionPty.Start(CommandLine, Folder, _env, Math.Max(columns, 20), Math.Max(rows, 5));
+            pty.Output += OnOutputArrived;
+            pty.Finished += code => Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (!_cerrado) Terminado?.Invoke(this, codigo);
+                if (!_closed) Finished?.Invoke(this, code);
             }));
             _pty = pty;
-            if (IsVisible) Enfocar();
+            if (IsVisible) Focus();
         }
         catch (Exception ex)
         {
-            Enviar(new { t = "o", d = $"\r\n\u001b[31mNo se pudo iniciar el shell: {ex.Message}\u001b[0m\r\n" });
+            Send(new { t = "o", d = $"\r\n\u001b[31mNo se pudo iniciar el shell: {ex.Message}\u001b[0m\r\n" });
         }
     }
 
-    private static void CopiarAlPortapapeles(string? texto)
+    private static void CopyToClipboard(string? text)
     {
-        if (string.IsNullOrEmpty(texto)) return;
-        try { Clipboard.SetText(texto); }
+        if (string.IsNullOrEmpty(text)) return;
+        try { Clipboard.SetText(text); }
         catch (ExternalException) { }   // el portapapeles lo tiene otro programa en este instante
     }
 
-    private void Pegar()
+    private void Paste()
     {
-        string texto;
-        try { texto = Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+        string text;
+        try { text = Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
         catch (ExternalException) { return; }
-        if (texto.Length > 0) Enviar(new { t = "paste", d = texto });
+        if (text.Length > 0) Send(new { t = "paste", d = text });
     }
 
     // ------------------------------------------------------------ Salida hacia la página
 
     /// <summary>Se llama desde el hilo de lectura: junta lo que llega y lo manda a la página en tandas, sin saturar la interfaz.</summary>
-    private void AlLlegarSalida(string texto)
+    private void OnOutputArrived(string text)
     {
-        lock (_bloqueo) _pendiente.Append(texto);
-        if (Interlocked.Exchange(ref _programado, 1) == 0)
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Vaciar));
+        lock (_lock) _pending.Append(text);
+        if (Interlocked.Exchange(ref _scheduled, 1) == 0)
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Empty));
     }
 
-    private void Vaciar()
+    private void Empty()
     {
-        string texto;
-        lock (_bloqueo)
+        string text;
+        lock (_lock)
         {
-            var n = Math.Min(_pendiente.Length, 65536);
-            if (n > 0 && n < _pendiente.Length && char.IsHighSurrogate(_pendiente[n - 1])) n--;   // no partir un par sustituto
-            texto = _pendiente.ToString(0, n);
-            _pendiente.Remove(0, n);
+            var n = Math.Min(_pending.Length, 65536);
+            if (n > 0 && n < _pending.Length && char.IsHighSurrogate(_pending[n - 1])) n--;   // no partir un par sustituto
+            text = _pending.ToString(0, n);
+            _pending.Remove(0, n);
         }
-        Interlocked.Exchange(ref _programado, 0);
+        Interlocked.Exchange(ref _scheduled, 0);
 
-        if (texto.Length > 0 && !_cerrado) Enviar(new { t = "o", d = texto });
+        if (text.Length > 0 && !_closed) Send(new { t = "o", d = text });
 
-        bool quedaMas;
-        lock (_bloqueo) quedaMas = _pendiente.Length > 0;
-        if (quedaMas && !_cerrado && Interlocked.Exchange(ref _programado, 1) == 0)
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Vaciar));
+        bool remainsMore;
+        lock (_lock) remainsMore = _pending.Length > 0;
+        if (remainsMore && !_closed && Interlocked.Exchange(ref _scheduled, 1) == 0)
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Empty));
     }
 
     // ------------------------------------------------------------ Uso
 
-    public void Enfocar()
+    public void Focus()
     {
-        if (_cerrado) return;
+        if (_closed) return;
         _web.Focus();
-        Enviar(new { t = "focus" });
+        Send(new { t = "focus" });
     }
 
     public void Dispose()
     {
-        if (_cerrado) return;
-        _cerrado = true;
+        if (_closed) return;
+        _closed = true;
         _pty?.Dispose();
         try { _web.Dispose(); } catch (Exception) { }
     }

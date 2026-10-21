@@ -1,7 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using StackDev.Core.Seguridad;
+using StackDev.Core.Security;
 
 namespace StackDev.Core.Config;
 
@@ -11,7 +11,7 @@ namespace StackDev.Core.Config;
 /// </summary>
 public static class ConfigJson
 {
-    public static readonly JsonSerializerOptions Opciones = new()
+    public static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
@@ -25,31 +25,31 @@ public static class ConfigJson
     };
 
     /// <summary>Lee la configuración; los secretos guardados como <c>dpapi:…</c> se descifran (en memoria siempre están en claro).</summary>
-    public static ProyectoConfig Leer(string json)
+    public static ProjectConfig Read(string json)
     {
-        var cfg = JsonSerializer.Deserialize<ProyectoConfig>(json, Opciones) ?? new ProyectoConfig();
-        Transformar(cfg, Proteccion.Descifrar, soloSecretos: false);
+        var cfg = JsonSerializer.Deserialize<ProjectConfig>(json, Options) ?? new ProjectConfig();
+        Transform(cfg, Protection.Decrypt, onlySecrets: false);
         return cfg;
     }
 
-    /// <summary>JSON en claro (copias de trabajo, pantallas de detección). Para guardar en disco se usa <see cref="EscribirProtegido"/>.</summary>
-    public static string Escribir(ProyectoConfig config) =>
-        JsonSerializer.Serialize(config, Opciones) + "\n";
+    /// <summary>JSON en claro (copias de trabajo, pantallas de detección). Para guardar en disco se usa <see cref="WriteProtected"/>.</summary>
+    public static string Write(ProjectConfig config) =>
+        JsonSerializer.Serialize(config, Options) + "\n";
 
     /// <summary>JSON para guardar en disco: la contraseña de Postgres y las variables de la API que parecen secretos van cifradas con DPAPI.</summary>
-    public static string EscribirProtegido(ProyectoConfig config)
+    public static string WriteProtected(ProjectConfig config)
     {
-        if (!Proteccion.Disponible) return Escribir(config);
-        var copia = JsonSerializer.Deserialize<ProyectoConfig>(JsonSerializer.Serialize(config, Opciones), Opciones) ?? new ProyectoConfig();
-        Transformar(copia, Proteccion.Cifrar, soloSecretos: true);
-        return Escribir(copia);
+        if (!Protection.Available) return Write(config);
+        var copy = JsonSerializer.Deserialize<ProjectConfig>(JsonSerializer.Serialize(config, Options), Options) ?? new ProjectConfig();
+        Transform(copy, Protection.Encrypt, onlySecrets: true);
+        return Write(copy);
     }
 
-    private static void Transformar(ProyectoConfig cfg, Func<string?, string> f, bool soloSecretos)
+    private static void Transform(ProjectConfig cfg, Func<string?, string> f, bool onlySecrets)
     {
         if (cfg.Postgres?.Password is { Length: > 0 } pw) cfg.Postgres.Password = f(pw);
         if (cfg.Api?.Env is { } env)
             foreach (var k in env.Keys.ToList())
-                if (!soloSecretos || Proteccion.PareceSecreto(k)) env[k] = f(env[k]);
+                if (!onlySecrets || Protection.LooksSecret(k)) env[k] = f(env[k]);
     }
 }

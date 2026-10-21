@@ -12,9 +12,9 @@ using StackDev.Core.Android;
 using StackDev.Core.Config;
 using StackDev.Core.Detection;
 using StackDev.Core.Docker;
-using StackDev.Core.Monitoreo;
-using StackDev.Core.Orquestacion;
-using StackDev.Core.Servicios;
+using StackDev.Core.Monitoring;
+using StackDev.Core.Orchestration;
+using StackDev.Core.Services;
 using StackDev.Core.State;
 using StackDev.Core.Ui;
 
@@ -22,187 +22,187 @@ namespace StackDev.Gui;
 
 public partial class MainWindow : Window
 {
-    private enum Vista { Inicio, Panel, Condiciones, Consola, Config, Terminales, Diagnostico, Servidor }
+    private enum ViewKind { Home, Panel, Conditions, ConsolePage, Config, Terminals, Diagnostics, Server }
 
     /// <summary>Una tarjeta del panel (Postgres, API, Web, Emulador, App) con su estado y sus botones.</summary>
-    private sealed class Tarjeta
+    private sealed class Card
     {
-        public required string Seccion { get; init; }
-        public required System.Windows.Shapes.Ellipse Punto { get; init; }
-        public required TextBlock Estado { get; init; }
-        public required TextBlock Detalle { get; init; }
+        public required string Section { get; init; }
+        public required System.Windows.Shapes.Ellipse Dot { get; init; }
+        public required TextBlock State { get; init; }
+        public required TextBlock Detail { get; init; }
     }
 
     private GuiUi _ui = null!;
-    private StateStore _estado = null!;
-    private Sesion? _s;
-    private MonitorEstado? _mon;
-    private ConsolaComandos? _cc;
+    private StateStore _state = null!;
+    private Session? _s;
+    private StatusMonitor? _mon;
+    private CommandConsole? _cc;
     private CancellationTokenSource? _cts;
-    private bool _ocupado;
-    private bool _cerrando;
-    private bool _salir;                                  // true = cerrar de verdad (no mandar a la bandeja)
-    private System.Windows.Forms.NotifyIcon? _bandeja;
-    private bool _avisoBandeja;
-    private Instantanea? _mostrada;
-    private DateTime _ultimoChequeoConfig = DateTime.UtcNow;
+    private bool _busy;
+    private bool _closing;
+    private bool _quit;                                  // true = cerrar de verdad (no mandar a la bandeja)
+    private System.Windows.Forms.NotifyIcon? _tray;
+    private bool _trayNotified;
+    private Snapshot? _shown;
+    private DateTime _lastConfigCheck = DateTime.UtcNow;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(700) };
-    private readonly List<Tarjeta> _tarjetas = new();
-    private readonly List<Button> _botonesAccion = new();
+    private readonly List<Card> _cards = new();
+    private readonly List<Button> _actionButtons = new();
     private readonly List<ToggleButton> _chips = new();
 
-    private enum ModoTerminal { Oculto, Mitad, Completo }
+    private enum TerminalMode { Hidden, Half, Full }
 
-    private Terminal.TerminalesView? _terminales;
-    private DiagnosticoView? _diag;
-    private ServidorView? _srv;
-    private ModoTerminal _modoTerm = ModoTerminal.Oculto;
-    private ModoTerminal _modoAplicado = ModoTerminal.Oculto;
-    private bool _salidaOculta;
-    private bool _limpiando;
-    private GridLength _alturaSalida = new(190);
+    private Terminal.TerminalsView? _terminals;
+    private DiagnosticsView? _diag;
+    private ServerView? _srv;
+    private TerminalMode _termMode = TerminalMode.Hidden;
+    private TerminalMode _appliedMode = TerminalMode.Hidden;
+    private bool _outputHidden;
+    private bool _cleaning;
+    private GridLength _outputHeight = new(190);
     private bool _rail;        // barra lateral reducida a iconos
-    private bool _railAntes;   // cómo estaba antes de abrir las terminales
+    private bool _railBefore;   // cómo estaba antes de abrir las terminales
 
     public MainWindow()
     {
         InitializeComponent();
-        _terminales = new Terminal.TerminalesView(this, () => _s);
-        DockTerminal.Child = _terminales;
-        _terminales.PedirOcultar += () => CambiarModoTerminal(ModoTerminal.Oculto);
-        _terminales.PedirAlternarCompleto += () =>
-            CambiarModoTerminal(_modoTerm == ModoTerminal.Completo ? ModoTerminal.Mitad : ModoTerminal.Completo);
-        _timer.Tick += (_, _) => Tic();
-        Principal.SizeChanged += (_, _) => AjustarEncabezado();
-        Loaded += async (_, _) => await ArrancarAsync();
-        Closing += AlCerrar;
-        _terminales.PedirAtajo += (accion, n) => AtajoTerminal(accion, n);
-        BtnNavegador.Content = Iconos.ConGlifo("\uE774", "Navegador");
-        _diag = new DiagnosticoView(this, () => _s, CorrerAsync);
-        VistaDiag.Children.Add(_diag);
-        _srv = new ServidorView(this, () => _s, () => new StackDev.Core.Servidores.ServidoresStore(_estado.Dir),
-            AbrirTerminalComando, GuardarDespliegue, (t, n) => _ui.Escribir(t, n));
-        VistaServidor.Children.Add(_srv);
-        CrearBandeja();
-        Application.Current.SessionEnding += (_, _) => _salir = true;   // apagar/cerrar sesión de Windows: sí se sale
+        _terminals = new Terminal.TerminalsView(this, () => _s);
+        TerminalDock.Child = _terminals;
+        _terminals.AskHide += () => ChangeTerminalMode(TerminalMode.Hidden);
+        _terminals.AskToggleFull += () =>
+            ChangeTerminalMode(_termMode == TerminalMode.Full ? TerminalMode.Half : TerminalMode.Full);
+        _timer.Tick += (_, _) => Tick();
+        MainArea.SizeChanged += (_, _) => AdjustHeader();
+        Loaded += async (_, _) => await StartAsync();
+        Closing += OnClose;
+        _terminals.AskShortcut += (action, n) => TerminalShortcut(action, n);
+        BtnBrowser.Content = Icons.WithGlyph("\uE774", "Navegador");
+        _diag = new DiagnosticsView(this, () => _s, RunAsync);
+        DiagnosticsHost.Children.Add(_diag);
+        _srv = new ServerView(this, () => _s, () => new StackDev.Core.Servers.ServerStore(_state.Dir),
+            OpenTerminalCommand, SaveDeployment, (t, n) => _ui.Write(t, n));
+        ServerHost.Children.Add(_srv);
+        CreateTray();
+        Application.Current.SessionEnding += (_, _) => _quit = true;   // apagar/cerrar sesión de Windows: sí se sale
         PreviewKeyDown += (_, e) =>
         {
             var mod = Keyboard.Modifiers;
-            var tecla = e.Key == Key.System ? e.SystemKey : e.Key;
-            if (tecla == Key.Q && mod == ModifierKeys.Control) { e.Handled = true; Salir(); return; }
-            if (tecla == Key.P && mod == ModifierKeys.Control && _s is not null)
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key == Key.Q && mod == ModifierKeys.Control) { e.Handled = true; Exit(); return; }
+            if (key == Key.P && mod == ModifierKeys.Control && _s is not null)
             {
                 e.Handled = true;
-                CambiarBarra_Click(BtnCambiarBarra, new RoutedEventArgs());
+                ChangeBar_Click(BtnChangeBar, new RoutedEventArgs());
                 return;
             }
             if (_s is null) return;
-            string? accion = null;
+            string? action = null;
             var n = 0;
-            if ((tecla == Key.T || tecla == Key.Tab) && (mod == ModifierKeys.Control || mod == (ModifierKeys.Control | ModifierKeys.Shift)))
-                accion = (mod & ModifierKeys.Shift) != 0 ? "prev" : "next";
-            else if (tecla == Key.Oem3 && mod == ModifierKeys.Control) accion = "toggle";
-            else if (tecla == Key.T && mod == (ModifierKeys.Control | ModifierKeys.Alt)) accion = "new";
-            else if (tecla >= Key.D1 && tecla <= Key.D9 && mod == (ModifierKeys.Control | ModifierKeys.Alt)) { accion = "tab"; n = tecla - Key.D0; }
-            if (accion is null) return;
+            if ((key == Key.T || key == Key.Tab) && (mod == ModifierKeys.Control || mod == (ModifierKeys.Control | ModifierKeys.Shift)))
+                action = (mod & ModifierKeys.Shift) != 0 ? "prev" : "next";
+            else if (key == Key.Oem3 && mod == ModifierKeys.Control) action = "toggle";
+            else if (key == Key.T && mod == (ModifierKeys.Control | ModifierKeys.Alt)) action = "new";
+            else if (key >= Key.D1 && key <= Key.D9 && mod == (ModifierKeys.Control | ModifierKeys.Alt)) { action = "tab"; n = key - Key.D0; }
+            if (action is null) return;
             e.Handled = true;
-            AtajoTerminal(accion, n);
+            TerminalShortcut(action, n);
         };
     }
 
-    private static Brush P(string clave) => (Brush)Application.Current.FindResource(clave);
+    private static Brush P(string key) => (Brush)Application.Current.FindResource(key);
 
     // ------------------------------------------------------------ Arranque y proyecto
 
-    private async Task ArrancarAsync()
+    private async Task StartAsync()
     {
-        _ui = new GuiUi(this, Salida);
-        _estado = StateStore.Abrir();
-        _compacto = _estado.Compacto == "1";
-        PonerTextoApariencia();
-        Ventana_StateChanged(this, EventArgs.Empty);
+        _ui = new GuiUi(this, Output);
+        _state = StateStore.Open();
+        _compact = _state.Compact == "1";
+        SetAppearanceText();
+        Window_StateChanged(this, EventArgs.Empty);
 
         var arg = Environment.GetCommandLineArgs().Skip(1).FirstOrDefault(a => !a.StartsWith('-'));
         if (arg is not null && Directory.Exists(arg))
         {
-            await AbrirProyectoAsync(Path.GetFullPath(arg));
+            await OpenProjectAsync(Path.GetFullPath(arg));
             return;
         }
 
-        var favorito = _estado.Favorito;
-        if (!string.IsNullOrWhiteSpace(favorito))
+        var favorite = _state.Favorite;
+        if (!string.IsNullOrWhiteSpace(favorite))
         {
-            if (Directory.Exists(favorito))
+            if (Directory.Exists(favorite))
             {
-                await AbrirProyectoAsync(favorito);
+                await OpenProjectAsync(favorite);
                 return;
             }
-            _ui.Escribir($"El proyecto favorito ya no existe: {favorito}", Nivel.Aviso);
+            _ui.Write($"El proyecto favorito ya no existe: {favorite}", Level.Warning);
         }
 
         // Sin favorito: se reabre el último proyecto que usaste
-        var ultimo = _estado.UltimoProyecto;
-        if (!string.IsNullOrWhiteSpace(ultimo) && Directory.Exists(ultimo))
+        var last = _state.LastProject;
+        if (!string.IsNullOrWhiteSpace(last) && Directory.Exists(last))
         {
-            await AbrirProyectoAsync(ultimo);
+            await OpenProjectAsync(last);
             return;
         }
-        ActualizarNav();
-        MostrarVista(Vista.Inicio);
+        UpdateNav();
+        ShowView(ViewKind.Home);
     }
 
     private System.Windows.Controls.Primitives.Popup? _selector;
 
     /// <summary>Lista desplegable de proyectos recientes para saltar de uno a otro sin pasar por Inicio.</summary>
-    private void CambiarBarra_Click(object sender, RoutedEventArgs e)
+    private void ChangeBar_Click(object sender, RoutedEventArgs e)
     {
-        if (_estado is null) return;
+        if (_state is null) return;
         if (_selector is { IsOpen: true }) { _selector.IsOpen = false; return; }
 
-        var lista = new StackPanel { MinWidth = 280 };
-        foreach (var ruta in _estado.LeerProyectos().Where(Directory.Exists).Take(12))
+        var list = new StackPanel { MinWidth = 280 };
+        foreach (var path in _state.ReadProjects().Where(Directory.Exists).Take(12))
         {
-            var actual = _s is not null && string.Equals(Path.GetFullPath(ruta), _s.Raiz, StringComparison.OrdinalIgnoreCase);
-            var fila = new StackPanel();
-            fila.Children.Add(new TextBlock
+            var current = _s is not null && string.Equals(Path.GetFullPath(path), _s.Root, StringComparison.OrdinalIgnoreCase);
+            var row = new StackPanel();
+            row.Children.Add(new TextBlock
             {
-                Text = (actual ? "✓ " : "") + System.IO.Path.GetFileName(ruta.TrimEnd('\\', '/')),
-                FontWeight = actual ? FontWeights.SemiBold : FontWeights.Normal,
+                Text = (current ? "✓ " : "") + System.IO.Path.GetFileName(path.TrimEnd('\\', '/')),
+                FontWeight = current ? FontWeights.SemiBold : FontWeights.Normal,
                 FontFamily = (FontFamily)FindResource("UiFont"),
                 FontSize = 13,
                 Foreground = P("TextBrush"),
             });
-            fila.Children.Add(new TextBlock { Text = ruta, FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 11, Foreground = P("MutedBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
+            row.Children.Add(new TextBlock { Text = path, FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 11, Foreground = P("MutedBrush"), TextTrimming = TextTrimming.CharacterEllipsis });
             var b = new Button
             {
-                Content = fila,
-                Style = (Style)FindResource("BtnIcono"),
+                Content = row,
+                Style = (Style)FindResource("BtnIcon"),
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(10, 6, 10, 6),
                 Width = 320,
             };
-            var destino = ruta;
+            var destination = path;
             b.Click += async (_, _) =>
             {
                 _selector!.IsOpen = false;
-                if (!actual) await AbrirDesdeInicio(destino);
+                if (!current) await OpenFromHome(destination);
             };
-            lista.Children.Add(b);
+            list.Children.Add(b);
         }
-        var todos = new Button
+        var all = new Button
         {
             Content = new TextBlock { Text = "Ver todos los proyectos…", FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 13, Foreground = P("AccentBrush") },
-            Style = (Style)FindResource("BtnIcono"),
+            Style = (Style)FindResource("BtnIcon"),
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Padding = new Thickness(10, 6, 10, 6),
             Width = 320,
         };
-        todos.Click += (_, _) => { _selector!.IsOpen = false; NavInicio.IsChecked = true; };
-        lista.Children.Add(todos);
+        all.Click += (_, _) => { _selector!.IsOpen = false; NavHome.IsChecked = true; };
+        list.Children.Add(all);
 
         _selector = new System.Windows.Controls.Primitives.Popup
         {
-            PlacementTarget = ChipProyecto.IsVisible ? ChipProyecto : BtnCambiarBarra,
+            PlacementTarget = ProjectChip.IsVisible ? ProjectChip : BtnChangeBar,
             Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
             StaysOpen = false,
             AllowsTransparency = true,
@@ -214,749 +214,749 @@ public partial class MainWindow : Window
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(4),
                 Margin = new Thickness(0, 4, 0, 8),
-                Child = lista,
+                Child = list,
             },
             IsOpen = true,
         };
     }
 
-    private async Task AbrirProyectoAsync(string raiz)
+    private async Task OpenProjectAsync(string root)
     {
-        raiz = Path.GetFullPath(raiz);
-        var padre = RaizProyecto.SugerirPadre(raiz);
-        if (padre is not null && Dialogos.Confirmar(this, $"«{Path.GetFileName(raiz)}» parece ser parte del proyecto en:\n{padre}\n\n¿Usar la carpeta raíz del proyecto?"))
-            raiz = padre;
-        _estado.UltimoProyecto = raiz;
-        _estado.AgregarProyecto(raiz);
+        root = Path.GetFullPath(root);
+        var parent = ProjectRoot.SuggestParent(root);
+        if (parent is not null && Dialogs.Confirm(this, $"«{Path.GetFileName(root)}» parece ser parte del proyecto en:\n{parent}\n\n¿Usar la carpeta raíz del proyecto?"))
+            root = parent;
+        _state.LastProject = root;
+        _state.AddProject(root);
 
         _timer.Stop();
         _mon?.Dispose();
         _mon = null;
-        _mostrada = null;
+        _shown = null;
 
-        var s = new Sesion(raiz, _estado, _ui, new OpcionesSesion());
-        s.Captura = linea => _ui.Escribir(linea);
+        var s = new Session(root, _state, _ui, new SessionOptions());
+        s.Capture = line => _ui.Write(line);
         _s = s;
 
-        Ocupar($"Abriendo {Path.GetFileName(raiz)}…");
-        try { await Task.Run(s.Iniciar); }
-        catch (Exception ex) { _ui.Escribir($"No pude abrir el proyecto: {ex.Message}", Nivel.Error); }
-        Liberar();
+        Occupy($"Abriendo {Path.GetFileName(root)}…");
+        try { await Task.Run(s.Start); }
+        catch (Exception ex) { _ui.Write($"No pude abrir el proyecto: {ex.Message}", Level.Error); }
+        Release();
 
-        _cc = new ConsolaComandos(s);
-        _mon = new MonitorEstado(s);
-        ActualizarNav();
+        _cc = new CommandConsole(s);
+        _mon = new StatusMonitor(s);
+        UpdateNav();
         NavPanel.IsChecked = true;
-        ConstruirTodo();
+        BuildAll();
         _timer.Start();
-        _ui.Escribir($"Proyecto abierto: {s.Raiz}", Nivel.Ok);
+        _ui.Write($"Proyecto abierto: {s.Root}", Level.Ok);
     }
 
-    private void ConstruirTodo()
+    private void BuildAll()
     {
         if (_s is null) return;
-        TxtProyecto.Text = _s.Ctx.Nombre;
-        TxtRuta.Text = _s.Raiz;
-        TxtRuta.ToolTip = _s.Raiz;
-        Title = $"stackdev — {_s.Ctx.Nombre}";
-        ActualizarFavorito();
-        ConstruirTarjetas();
-        ConstruirCondiciones();
-        RefrescarConsola();
-        RefrescarConfig();
-        RefrescarLateral();
-        MostrarVista(VistaActual());
-        if (_mostrada is not null) ActualizarTarjetas(_mostrada);
+        TxtProject.Text = _s.Ctx.Name;
+        TxtPath.Text = _s.Root;
+        TxtPath.ToolTip = _s.Root;
+        Title = $"stackdev — {_s.Ctx.Name}";
+        UpdateFavorite();
+        BuildCards();
+        BuildConditions();
+        RefreshConsole();
+        RefreshConfig();
+        RefreshSidebar();
+        ShowView(CurrentView());
+        if (_shown is not null) UpdateCards(_shown);
     }
 
-    private void RefrescarLateral()
+    private void RefreshSidebar()
     {
         if (_s is null) return;
-        TxtModo.Text = _s.ModoBuild;
-        TxtAvd.Text = _s.Ctx.Tiene(Componente.Movil) ? (_s.Avd ?? "(ninguno)") : "—";
+        TxtMode.Text = _s.BuildMode;
+        TxtAvd.Text = _s.Ctx.Has(ProjectComponent.Mobile) ? (_s.Avd ?? "(ninguno)") : "—";
     }
 
     // ------------------------------------------------------------ Ejecutar acciones
 
-    private bool _compacto;
+    private bool _compact;
 
-    private void PonerTextoApariencia()
+    private void SetAppearanceText()
     {
-        BtnAcento.Content = Apariencia.EsAmbar(_estado.Acento) ? "Ámbar (terminal vieja)" : "Verde (terminal)";
-        BtnDensidad.Content = _compacto ? "Compacta" : "Normal";
+        BtnAccent.Content = Appearance.IsAmber(_state.Accent) ? "Ámbar (terminal vieja)" : "Verde (terminal)";
+        BtnDensity.Content = _compact ? "Compacta" : "Normal";
     }
 
-    private void Acento_Click(object sender, RoutedEventArgs e)
+    private void Accent_Click(object sender, RoutedEventArgs e)
     {
-        var ambar = !Apariencia.EsAmbar(_estado.Acento);
-        _estado.Acento = ambar ? "ambar" : "verde";
-        var completo = Apariencia.Aplicar(_estado.Acento);
-        PonerTextoApariencia();
-        if (!completo) _ui.Escribir("El acento se aplica por completo al reiniciar stackdev.", Nivel.Info);
+        var amber = !Appearance.IsAmber(_state.Accent);
+        _state.Accent = amber ? "ambar" : "verde";
+        var full = Appearance.Apply(_state.Accent);
+        SetAppearanceText();
+        if (!full) _ui.Write("El acento se aplica por completo al reiniciar stackdev.", Level.Info);
     }
 
-    private void Densidad_Click(object sender, RoutedEventArgs e)
+    private void Density_Click(object sender, RoutedEventArgs e)
     {
-        _compacto = !_compacto;
-        _estado.Compacto = _compacto ? "1" : "";
-        PonerTextoApariencia();
-        ConstruirTarjetas();
-        _mostrada = null;
-        _mon?.Refrescar();
+        _compact = !_compact;
+        _state.Compact = _compact ? "1" : "";
+        SetAppearanceText();
+        BuildCards();
+        _shown = null;
+        _mon?.Refresh();
     }
 
     /// <summary>El logo parpadea mientras hay una acción en curso.</summary>
-    private void ParpadearLogo(bool activo)
+    private void BlinkLogo(bool active)
     {
-        if (activo)
+        if (active)
             Logo.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(1, 0.3, TimeSpan.FromMilliseconds(600))
             { AutoReverse = true, RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
         else
             Logo.BeginAnimation(OpacityProperty, null);
     }
 
-    private void Ocupar(string texto)
+    private void Occupy(string text)
     {
-        ParpadearLogo(true);
-        _ocupado = true;
-        PonerSalidaOculta(false);
-        TxtOcupado.Text = texto;
-        Progreso.Visibility = Visibility.Visible;
-        BtnCancelar.IsEnabled = true;
-        FijarBotones(false);
+        BlinkLogo(true);
+        _busy = true;
+        SetOutputHidden(false);
+        TxtBusy.Text = text;
+        BusyProgress.Visibility = Visibility.Visible;
+        BtnCancel.IsEnabled = true;
+        PinButtons(false);
     }
 
-    private void Liberar()
+    private void Release()
     {
-        ParpadearLogo(false);
-        _ocupado = false;
-        TxtOcupado.Text = "Listo";
-        Progreso.Visibility = Visibility.Collapsed;
-        BtnCancelar.IsEnabled = false;
-        FijarBotones(true);
+        BlinkLogo(false);
+        _busy = false;
+        TxtBusy.Text = "Listo";
+        BusyProgress.Visibility = Visibility.Collapsed;
+        BtnCancel.IsEnabled = false;
+        PinButtons(true);
     }
 
-    private void FijarBotones(bool activos)
+    private void PinButtons(bool active)
     {
-        foreach (var b in _botonesAccion) b.IsEnabled = activos;
-        BtnUp.IsEnabled = BtnDown.IsEnabled = BtnCheck.IsEnabled = activos;
-        BtnCambiar.IsEnabled = activos;
-        TxtBarra.IsEnabled = BtnBarra.IsEnabled = activos && _s is not null;
+        foreach (var b in _actionButtons) b.IsEnabled = active;
+        BtnUp.IsEnabled = BtnDown.IsEnabled = BtnCheck.IsEnabled = active;
+        BtnChange.IsEnabled = active;
+        TxtBar.IsEnabled = BtnBar.IsEnabled = active && _s is not null;
     }
 
     /// <summary>Corre algo de la lógica en segundo plano mostrando su salida. Una acción a la vez; «Cancelar acción» la detiene.</summary>
-    private async Task<bool> CorrerAsync(string titulo, Func<Sesion, bool> f)
+    private async Task<bool> RunAsync(string title, Func<Session, bool> f)
     {
         var s = _s;
-        if (s is null || _ocupado) return false;
+        if (s is null || _busy) return false;
 
         _cts = new CancellationTokenSource();
         s.Ct = _cts.Token;
-        _mon?.Pausar();
-        Ocupar(titulo + "…");
-        _ui.Escribir($"\n▶ {titulo}", Nivel.Titulo);
+        _mon?.Pause();
+        Occupy(title + "…");
+        _ui.Write($"\n▶ {title}", Level.Title);
 
         var ok = false;
         try { ok = await Task.Run(() => f(s)); }
-        catch (Exception ex) { _ui.Escribir($"Error inesperado: {ex.Message}", Nivel.Error); }
+        catch (Exception ex) { _ui.Write($"Error inesperado: {ex.Message}", Level.Error); }
 
-        var cancelado = _cts.IsCancellationRequested;
-        _ui.Escribir(cancelado ? "Detenido." : ok ? "✔ Listo." : "✘ No terminó bien.", cancelado ? Nivel.Aviso : ok ? Nivel.Ok : Nivel.Error);
+        var cancelled = _cts.IsCancellationRequested;
+        _ui.Write(cancelled ? "Detenido." : ok ? "✔ Listo." : "✘ No terminó bien.", cancelled ? Level.Warning : ok ? Level.Ok : Level.Error);
         s.Ct = CancellationToken.None;
         _cts.Dispose();
         _cts = null;
 
-        Liberar();
-        if (_desdeBarra) { _desdeBarra = false; TxtBarra.Focus(); }
-        _mon?.Reanudar();
-        RefrescarLateral();
-        RefrescarCondiciones();
-        RefrescarConsola();
+        Release();
+        if (_fromBar) { _fromBar = false; TxtBar.Focus(); }
+        _mon?.Resume();
+        RefreshSidebar();
+        RefreshConditions();
+        RefreshConsole();
         return ok;
     }
 
-    private void Cancelar_Click(object sender, RoutedEventArgs e) => _cts?.Cancel();
+    private void Cancel_Click(object sender, RoutedEventArgs e) => _cts?.Cancel();
 
-    private void Limpiar_Click(object sender, RoutedEventArgs e)
+    private void Clear_Click(object sender, RoutedEventArgs e)
     {
-        _limpiando = true;
-        _ui.Limpiar();
-        Dispatcher.InvokeAsync(() => _limpiando = false, DispatcherPriority.Background);
+        _cleaning = true;
+        _ui.Clean();
+        Dispatcher.InvokeAsync(() => _cleaning = false, DispatcherPriority.Background);
     }
 
     // ------------------------------------------------------------ Salida plegable
 
-    private void OcultarSalida_Click(object sender, RoutedEventArgs e) => PonerSalidaOculta(!_salidaOculta);
+    private void HideOutput_Click(object sender, RoutedEventArgs e) => SetOutputHidden(!_outputHidden);
 
     /// <summary>Con la salida oculta solo queda su cabecera y la línea de comandos; cualquier texto nuevo la vuelve a mostrar.</summary>
-    private void PonerSalidaOculta(bool ocultar)
+    private void SetOutputHidden(bool hide)
     {
-        if (_salidaOculta == ocultar) return;
-        _salidaOculta = ocultar;
-        if (ocultar && FilaSalida.Height.IsAbsolute && FilaSalida.Height.Value > 0) _alturaSalida = FilaSalida.Height;
-        Salida.Visibility = ocultar ? Visibility.Collapsed : Visibility.Visible;
-        Separador.Visibility = ocultar ? Visibility.Collapsed : Visibility.Visible;
-        FilaSalida.MinHeight = ocultar ? 0 : 90;
-        FilaSalida.Height = ocultar ? GridLength.Auto : _alturaSalida;
-        BtnOcultarSalida.Content = ocultar ? "\uE70E" : "\uE70D";   // chevron arriba (mostrar) / abajo (ocultar)
-        BtnOcultarSalida.ToolTip = ocultar ? "Mostrar la salida" : "Ocultar la salida (se muestra sola al ejecutar algo)";
+        if (_outputHidden == hide) return;
+        _outputHidden = hide;
+        if (hide && OutputRow.Height.IsAbsolute && OutputRow.Height.Value > 0) _outputHeight = OutputRow.Height;
+        Output.Visibility = hide ? Visibility.Collapsed : Visibility.Visible;
+        Separator.Visibility = hide ? Visibility.Collapsed : Visibility.Visible;
+        OutputRow.MinHeight = hide ? 0 : 90;
+        OutputRow.Height = hide ? GridLength.Auto : _outputHeight;
+        BtnHideOutput.Content = hide ? "\uE70E" : "\uE70D";   // chevron arriba (mostrar) / abajo (ocultar)
+        BtnHideOutput.ToolTip = hide ? "Mostrar la salida" : "Ocultar la salida (se muestra sola al ejecutar algo)";
     }
 
-    private void Salida_TextChanged(object sender, TextChangedEventArgs e)
+    private void Output_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_salidaOculta && !_limpiando) PonerSalidaOculta(false);
+        if (_outputHidden && !_cleaning) SetOutputHidden(false);
     }
 
-    private void Up_Click(object sender, RoutedEventArgs e) => _ = CorrerAsync("Levantar todo", s => s.Todo.Iniciar());
+    private void Up_Click(object sender, RoutedEventArgs e) => _ = RunAsync("Levantar todo", s => s.All.Start());
 
-    private void Down_Click(object sender, RoutedEventArgs e) => _ = CorrerAsync("Detener todo", s => s.Todo.Detener());
+    private void Down_Click(object sender, RoutedEventArgs e) => _ = RunAsync("Detener todo", s => s.All.Stop());
 
     private void Check_Click(object sender, RoutedEventArgs e) =>
-        _ = CorrerAsync("Verificar todo", s =>
+        _ = RunAsync("Verificar todo", s =>
         {
-            var res = s.Todo.Verificar();
+            var res = s.All.Verify();
             foreach (var r in res)
-                s.Ui.Escribir($"  {r.Paso,-28} {(r.Codigo == 0 ? "OK" : "FALLÓ (" + r.Codigo + ")")}  {r.Segundos} s", r.Codigo == 0 ? Nivel.Ok : Nivel.Error);
-            return res.All(r => r.Codigo == 0);
+                s.Ui.Write($"  {r.Step,-28} {(r.Code == 0 ? "OK" : "FALLÓ (" + r.Code + ")")}  {r.Seconds} s", r.Code == 0 ? Level.Ok : Level.Error);
+            return res.All(r => r.Code == 0);
         });
 
-    private void Modo_Click(object sender, RoutedEventArgs e)
+    private void Mode_Click(object sender, RoutedEventArgs e)
     {
-        if (_s is null || !_s.Ctx.Tiene(Componente.Movil)) return;
-        var a = Acciones.PorCodigo("b");
-        if (a is not null) _ = CorrerAsync(a.Titulo, a.Ejecutar);
+        if (_s is null || !_s.Ctx.Has(ProjectComponent.Mobile)) return;
+        var a = Operations.ByCode("b");
+        if (a is not null) _ = RunAsync(a.Title, a.Run);
     }
 
     // ------------------------------------------------------------ Panel de tarjetas
 
-    private static readonly (string Seccion, string Titulo, Componente Comp)[] Secciones =
+    private static readonly (string Section, string Title, ProjectComponent Comp)[] Sections =
     {
-        ("POSTGRES", "Postgres", Componente.Postgres),
-        ("API", "API", Componente.Api),
-        ("WEB", "Web", Componente.Web),
-        ("EMULADOR", "Emulador Android", Componente.Movil),
-        ("FLUTTER", "App Flutter", Componente.Movil),
+        ("POSTGRES", "Postgres", ProjectComponent.Postgres),
+        ("API", "API", ProjectComponent.Api),
+        ("WEB", "Web", ProjectComponent.Web),
+        ("EMULADOR", "Emulador Android", ProjectComponent.Mobile),
+        ("FLUTTER", "App Flutter", ProjectComponent.Mobile),
     };
 
-    private void VistaPanel_SizeChanged(object sender, SizeChangedEventArgs e) => AjustarTarjetas();
+    private void PanelHost_SizeChanged(object sender, SizeChangedEventArgs e) => AdjustCards();
 
     /// <summary>Con las terminales a la mitad las tarjetas se encogen para caber de dos en dos; si no, ancho normal.</summary>
     /// <summary>Con poco ancho (terminal a la mitad, ventana angosta) los botones bajan a una segunda fila para no pisar el título.</summary>
-    private void AjustarEncabezado()
+    private void AdjustHeader()
     {
-        var angosto = Principal.ActualWidth < 1300;
-        Grid.SetRow(PanelAcciones, angosto ? 1 : 0);
-        PanelAcciones.HorizontalAlignment = angosto ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-        PanelAcciones.Margin = angosto ? new Thickness(0, 14, 0, 0) : new Thickness(0);
+        var narrow = MainArea.ActualWidth < 1300;
+        Grid.SetRow(ActionsPanel, narrow ? 1 : 0);
+        ActionsPanel.HorizontalAlignment = narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        ActionsPanel.Margin = narrow ? new Thickness(0, 14, 0, 0) : new Thickness(0);
     }
 
     /// <summary>
     /// Reparte las tarjetas en columnas iguales que llenan el ancho (sin dejar huecos a un lado).
     /// Deja unos píxeles de seguridad: si las columnas miden justo el ancho, la última salta de fila.
     /// </summary>
-    private static void Repartir(Panel panel, double disponible, double minimo, double hueco)
+    private static void Distribute(Panel panel, double available, double minimum, double gap)
     {
-        if (disponible <= 0) return;
-        var util = disponible - 10;
-        var columnas = Math.Max(1, (int)Math.Floor(util / (minimo + hueco)));
-        var ancho = Math.Max(240, Math.Floor(util / columnas) - hueco);
-        foreach (var hijo in panel.Children)
+        if (available <= 0) return;
+        var util = available - 10;
+        var columns = Math.Max(1, (int)Math.Floor(util / (minimum + gap)));
+        var width = Math.Max(240, Math.Floor(util / columns) - gap);
+        foreach (var child in panel.Children)
         {
-            if (hijo is FrameworkElement fe && fe is Border or CredencialesCard)
+            if (child is FrameworkElement fe && fe is Border or CredentialsCard)
             {
-                fe.Width = ancho;
-                fe.Margin = new Thickness(0, 0, hueco, 16);
+                fe.Width = width;
+                fe.Margin = new Thickness(0, 0, gap, 16);
             }
         }
     }
 
-    private void AjustarTarjetas()
+    private void AdjustCards()
     {
-        var disponible = VistaPanel.ViewportWidth > 0 ? VistaPanel.ViewportWidth : VistaPanel.ActualWidth;
-        Repartir(PanelTarjetas, disponible, 360, _modoTerm == ModoTerminal.Mitad ? 12 : 16);
+        var available = PanelHost.ViewportWidth > 0 ? PanelHost.ViewportWidth : PanelHost.ActualWidth;
+        Distribute(CardsPanel, available, 360, _termMode == TerminalMode.Half ? 12 : 16);
     }
 
-    private void AjustarInicio()
+    private void AdjustHome()
     {
-        var disponible = ScrollInicio.ViewportWidth > 0 ? ScrollInicio.ViewportWidth : ScrollInicio.ActualWidth;
-        Repartir(PanelInicio, disponible, 380, 16);
+        var available = HomeScroll.ViewportWidth > 0 ? HomeScroll.ViewportWidth : HomeScroll.ActualWidth;
+        Distribute(HomePanel, available, 380, 16);
     }
 
     /// <summary>Configuración en dos columnas cuando hay ancho; en una sola si no.</summary>
-    private void VistaConfig_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void ConfigHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var ancha = VistaConfig.ActualWidth >= 1250;
-        ColCfgHueco.Width = new GridLength(ancha ? 16 : 0);
-        ColCfgB.Width = ancha ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
-        Grid.SetRow(ColConfigB, ancha ? 0 : 1);
-        Grid.SetColumn(ColConfigB, ancha ? 2 : 0);
-        Grid.SetColumnSpan(ColConfigB, ancha ? 1 : 3);
+        var wide = ConfigHost.ActualWidth >= 1250;
+        ColCfgGap.Width = new GridLength(wide ? 16 : 0);
+        ColCfgB.Width = wide ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        Grid.SetRow(ColConfigB, wide ? 0 : 1);
+        Grid.SetColumn(ColConfigB, wide ? 2 : 0);
+        Grid.SetColumnSpan(ColConfigB, wide ? 1 : 3);
     }
 
-    private void ScrollInicio_SizeChanged(object sender, SizeChangedEventArgs e) => AjustarInicio();
+    private void ScrollHome_SizeChanged(object sender, SizeChangedEventArgs e) => AdjustHome();
 
-    private void ConstruirTarjetas()
+    private void BuildCards()
     {
-        PanelTarjetas.Children.Clear();
-        _tarjetas.Clear();
-        _botonesAccion.Clear();
+        CardsPanel.Children.Clear();
+        _cards.Clear();
+        _actionButtons.Clear();
         if (_s is null) return;
 
-        foreach (var (seccion, titulo, comp) in Secciones)
+        foreach (var (section, title, comp) in Sections)
         {
-            if (!_s.Ctx.Tiene(comp)) continue;
+            if (!_s.Ctx.Has(comp)) continue;
 
-            var punto = new System.Windows.Shapes.Ellipse { Width = 10, Height = 10, Fill = P("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-            var estado = new TextBlock { Text = "Consultando…", Foreground = P("MutedBrush"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
-            var detalle = new TextBlock
+            var point = new System.Windows.Shapes.Ellipse { Width = 10, Height = 10, Fill = P("MutedBrush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+            var state = new TextBlock { Text = "Consultando…", Foreground = P("MutedBrush"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right };
+            var detail = new TextBlock
             {
                 Text = " ",
                 Foreground = P("MutedBrush"),
                 FontFamily = (FontFamily)FindResource("MonoFont"),
                 FontSize = 11,
-                Margin = new Thickness(0, 8, 0, _compacto ? 10 : 16),
+                Margin = new Thickness(0, 8, 0, _compact ? 10 : 16),
                 TextTrimming = TextTrimming.CharacterEllipsis,
             };
 
-            var cabecera = new Grid();
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition());
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var nombre = new TextBlock { Text = titulo, FontSize = 16, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            var bloqueNombre = new StackPanel { Orientation = Orientation.Horizontal };
-            bloqueNombre.Children.Add(Iconos.Insignia(seccion));
-            bloqueNombre.Children.Add(nombre);
-            Grid.SetColumn(bloqueNombre, 1);
-            Grid.SetColumn(estado, 2);
-            cabecera.Children.Add(punto);
-            cabecera.Children.Add(bloqueNombre);
-            cabecera.Children.Add(estado);
+            var header = new Grid();
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition());
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var name = new TextBlock { Text = title, FontSize = 16, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+            var blockName = new StackPanel { Orientation = Orientation.Horizontal };
+            blockName.Children.Add(Icons.Badge(section));
+            blockName.Children.Add(name);
+            Grid.SetColumn(blockName, 1);
+            Grid.SetColumn(state, 2);
+            header.Children.Add(point);
+            header.Children.Add(blockName);
+            header.Children.Add(state);
 
             // Abrir una terminal en la carpeta de este componente (a la mitad, junto al panel)
-            if (TerminalDeTarjeta(seccion) is { } destino)
+            if (CardTerminal(section) is { } destination)
             {
                 var btnTerm = new Button
                 {
                     Content = "\uE756",
                     FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-                    Style = (Style)FindResource("BtnIcono"),
-                    ToolTip = $"Abrir una terminal en {destino.Etiqueta}",
+                    Style = (Style)FindResource("BtnIcon"),
+                    ToolTip = $"Abrir una terminal en {destination.Label}",
                     Margin = new Thickness(8, 0, 0, 0),
                 };
-                btnTerm.Click += (_, _) => AbrirTerminal(destino.Etiqueta, destino.Carpeta);
+                btnTerm.Click += (_, _) => OpenTerminal(destination.Label, destination.Folder);
                 Grid.SetColumn(btnTerm, 4);
-                cabecera.Children.Add(btnTerm);
+                header.Children.Add(btnTerm);
             }
 
             // Abrir la web o la API en el navegador elegido
-            if (seccion is "API" or "WEB")
+            if (section is "API" or "WEB")
             {
-                var componente = comp;
+                var component = comp;
                 var btnWeb = new Button
                 {
                     Content = "\uE774",
-                    FontFamily = new FontFamily(Iconos.Fuente),
-                    Style = (Style)FindResource("BtnIcono"),
+                    FontFamily = new FontFamily(Icons.Font),
+                    Style = (Style)FindResource("BtnIcon"),
                     ToolTip = "Abrir en el navegador",
                     Margin = new Thickness(8, 0, 0, 0),
                 };
-                btnWeb.Click += (_, _) => _s?.Servicios.AbrirEnNavegador(componente);
+                btnWeb.Click += (_, _) => _s?.Services.OpenInBrowser(component);
                 Grid.SetColumn(btnWeb, 3);
-                cabecera.Children.Add(btnWeb);
+                header.Children.Add(btnWeb);
             }
 
-            var botones = new WrapPanel();
-            var primero = true;
-            foreach (var a in Acciones.Disponibles(_s).Where(x => x.Seccion == seccion))
+            var buttons = new WrapPanel();
+            var first = true;
+            foreach (var a in Operations.Available(_s).Where(x => x.Section == section))
             {
-                var accion = a;
-                var b = new Button { Content = Iconos.ConGlifo(Iconos.GlifoAccion(a.Nombre), a.Titulo), Style = (Style)FindResource("BtnChip"), ToolTip = $"Código: {a.Codigo}" };
-                if (primero)
+                var action = a;
+                var b = new Button { Content = Icons.WithGlyph(Icons.ActionGlyph(a.Name), a.Title), Style = (Style)FindResource("BtnChip"), ToolTip = $"Código: {a.Code}" };
+                if (first)
                 {
                     b.Background = P("AccentGradient");
                     b.BorderBrush = P("AccentBrush");
                     b.Foreground = P("AccentOnBrush");
                     b.FontWeight = FontWeights.SemiBold;
-                    primero = false;
+                    first = false;
                 }
-                b.Click += (_, _) => _ = CorrerAsync(accion.Titulo, accion.Ejecutar);
-                botones.Children.Add(b);
-                _botonesAccion.Add(b);
+                b.Click += (_, _) => _ = RunAsync(action.Title, action.Run);
+                buttons.Children.Add(b);
+                _actionButtons.Add(b);
             }
 
-            var contenido = new StackPanel();
-            contenido.Children.Add(cabecera);
-            contenido.Children.Add(detalle);
-            contenido.Children.Add(botones);
+            var content = new StackPanel();
+            content.Children.Add(header);
+            content.Children.Add(detail);
+            content.Children.Add(buttons);
 
-            PanelTarjetas.Children.Add(new Border
+            CardsPanel.Children.Add(new Border
             {
                 Style = (Style)FindResource("Card"),
                 Width = 380,
                 Margin = new Thickness(0, 0, 16, 16),
-                Padding = new Thickness(_compacto ? 14 : 20, _compacto ? 12 : 18, _compacto ? 14 : 20, _compacto ? 6 : 10),
-                Child = contenido,
+                Padding = new Thickness(_compact ? 14 : 20, _compact ? 12 : 18, _compact ? 14 : 20, _compact ? 6 : 10),
+                Child = content,
             });
-            _tarjetas.Add(new Tarjeta { Seccion = seccion, Punto = punto, Estado = estado, Detalle = detalle });
+            _cards.Add(new Card { Section = section, Dot = point, State = state, Detail = detail });
         }
 
-        Dispatcher.InvokeAsync(AjustarTarjetas, DispatcherPriority.Loaded);
+        Dispatcher.InvokeAsync(AdjustCards, DispatcherPriority.Loaded);
 
         // Las credenciales del proyecto, a continuación de la tarjeta de la app
-        PanelTarjetas.Children.Add(new CredencialesCard(new StackDev.Core.Credenciales.CredencialesStore(_s.Estado.CarpetaConfig(_s.Clave)), this));
+        CardsPanel.Children.Add(new CredentialsCard(new StackDev.Core.Credentials.CredentialsStore(_s.State.ConfigFolder(_s.Key)), this));
 
-        if (_tarjetas.Count == 0)
-            PanelTarjetas.Children.Add(new TextBlock
+        if (_cards.Count == 0)
+            CardsPanel.Children.Add(new TextBlock
             {
                 Text = "Este proyecto no tiene nada configurado. Abre «Configuración» para editar dev-menu.json o detectarlo de nuevo.",
                 Foreground = P("MutedBrush"),
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 520,
             });
-        FijarBotones(!_ocupado);
+        PinButtons(!_busy);
     }
 
-    private static string ColorServicio(CodigoServicio c) => c switch
+    private static string ServiceColor(ServiceCode c) => c switch
     {
-        CodigoServicio.Corriendo => "OkBrush",
-        CodigoServicio.Arrancando => "WarnBrush",
-        CodigoServicio.Error => "ErrBrush",
+        ServiceCode.Running => "OkBrush",
+        ServiceCode.Starting => "WarnBrush",
+        ServiceCode.Error => "ErrBrush",
         _ => "MutedBrush",
     };
 
-    private void Poner(string seccion, string colorClave, string estado, string detalle)
+    private void Put(string section, string colorKey, string state, string detail)
     {
-        var t = _tarjetas.FirstOrDefault(x => x.Seccion == seccion);
+        var t = _cards.FirstOrDefault(x => x.Section == section);
         if (t is null) return;
-        t.Punto.Fill = P(colorClave);
-        t.Estado.Text = estado;
-        t.Estado.Foreground = P(colorClave);
-        t.Detalle.Text = string.IsNullOrEmpty(detalle) ? " " : detalle;
+        t.Dot.Fill = P(colorKey);
+        t.State.Text = state;
+        t.State.Foreground = P(colorKey);
+        t.Detail.Text = string.IsNullOrEmpty(detail) ? " " : detail;
     }
 
-    private void ActualizarTarjetas(Instantanea i)
+    private void UpdateCards(Snapshot i)
     {
         var s = _s;
         if (s is null) return;
 
         if (i.Postgres is { } pg)
-            Poner("POSTGRES",
-                pg.Codigo == CodigoPostgres.Corriendo ? "OkBrush" : pg.Codigo == CodigoPostgres.Detenido ? "MutedBrush" : "WarnBrush",
-                pg.Corriendo ? "CORRIENDO" : pg.Codigo == CodigoPostgres.Detenido ? "DETENIDO" : "ATENCIÓN",
-                pg.Texto);
+            Put("POSTGRES",
+                pg.Code == PostgresCode.Running ? "OkBrush" : pg.Code == PostgresCode.Stopped ? "MutedBrush" : "WarnBrush",
+                pg.Running ? "CORRIENDO" : pg.Code == PostgresCode.Stopped ? "DETENIDO" : "ATENCIÓN",
+                pg.Text);
 
-        foreach (var (seccion, e, log) in new[] { ("API", i.Api, i.LogApi), ("WEB", i.Web, i.LogWeb) })
+        foreach (var (section, e, log) in new[] { ("API", i.Api, i.LogApi), ("WEB", i.Web, i.LogWeb) })
         {
             if (e is null) continue;
-            var corto = e.Codigo switch
+            var brief = e.Code switch
             {
-                CodigoServicio.Corriendo => "CORRIENDO",
-                CodigoServicio.Arrancando => "ARRANCANDO",
-                CodigoServicio.Error => "TERMINÓ CON ERROR",
+                ServiceCode.Running => "CORRIENDO",
+                ServiceCode.Starting => "ARRANCANDO",
+                ServiceCode.Error => "TERMINÓ CON ERROR",
                 _ => "DETENIDA",
             };
-            Poner(seccion, ColorServicio(e.Codigo), corto, e.Corriendo ? (e.Url ?? "") : (log ?? e.Url ?? ""));
+            Put(section, ServiceColor(e.Code), brief, e.Running ? (e.Url ?? "") : (log ?? e.Url ?? ""));
         }
 
-        if (s.Ctx.Tiene(Componente.Movil))
+        if (s.Ctx.Has(ProjectComponent.Mobile))
         {
-            if (i.Emulador is { } emu)
-                Poner("EMULADOR",
-                    emu.Codigo == CodigoEmu.Ok ? "OkBrush" : emu.Codigo == CodigoEmu.NoResponde ? "ErrBrush" : "MutedBrush",
-                    emu.Codigo == CodigoEmu.Ok ? "CORRIENDO" : emu.Codigo == CodigoEmu.NoResponde ? "NO RESPONDE" : "DETENIDO",
-                    $"{emu.Texto}   ·   AVD: {s.Avd ?? "(ninguno)"}" + (string.IsNullOrEmpty(i.Condiciones) || i.Condiciones == "Normal" ? "" : $"   ·   {i.Condiciones}")
-                    + (i.Telefonos.Length > 0 ? $"   ·   Teléfonos: {i.Telefonos}" : ""));
+            if (i.Emulator is { } emu)
+                Put("EMULADOR",
+                    emu.Code == EmuCode.Ok ? "OkBrush" : emu.Code == EmuCode.NotResponding ? "ErrBrush" : "MutedBrush",
+                    emu.Code == EmuCode.Ok ? "CORRIENDO" : emu.Code == EmuCode.NotResponding ? "NO RESPONDE" : "DETENIDO",
+                    $"{emu.Text}   ·   AVD: {s.Avd ?? "(ninguno)"}" + (string.IsNullOrEmpty(i.Conditions) || i.Conditions == "Normal" ? "" : $"   ·   {i.Conditions}")
+                    + (i.Phones.Length > 0 ? $"   ·   Teléfonos: {i.Phones}" : ""));
             else
-                Poner("EMULADOR", "MutedBrush", "SIN SDK", "No encontré el Android SDK (movil.androidSdk en dev-menu.json)");
+                Put("EMULADOR", "MutedBrush", "SIN SDK", "No encontré el Android SDK (mobile.androidSdk en dev-menu.json)");
 
-            Poner("FLUTTER", i.App ? "OkBrush" : "MutedBrush", i.App ? "CORRIENDO" : "DETENIDA",
-                i.App ? $"flutter run ({s.ModoBuild}) en {s.Servicios.AppsVivas().Count} sesión(es), cada una en su ventana" : $"Modo: {s.ModoBuild}");
+            Put("FLUTTER", i.App ? "OkBrush" : "MutedBrush", i.App ? "CORRIENDO" : "DETENIDA",
+                i.App ? $"flutter run ({s.BuildMode}) en {s.Services.LiveApps().Count} sesión(es), cada una en su ventana" : $"Modo: {s.BuildMode}");
         }
     }
 
-    private void Tic()
+    private void Tick()
     {
         if (_s is null || _mon is null) return;
 
-        if ((DateTime.UtcNow - _ultimoGit).TotalSeconds >= 20)
+        if ((DateTime.UtcNow - _lastGit).TotalSeconds >= 20)
         {
-            _ultimoGit = DateTime.UtcNow;
-            _ = ActualizarGitAsync();
+            _lastGit = DateTime.UtcNow;
+            _ = UpdateGitAsync();
         }
 
-        var u = _mon.Ultima;
-        if (u is not null && !ReferenceEquals(u, _mostrada))
+        var u = _mon.Last;
+        if (u is not null && !ReferenceEquals(u, _shown))
         {
-            _mostrada = u;
-            ActualizarTarjetas(u);
-            if (VistaActual() == Vista.Condiciones) TxtCondActivas.Text = TextoCondiciones();
+            _shown = u;
+            UpdateCards(u);
+            if (CurrentView() == ViewKind.Conditions) TxtActiveConds.Text = ConditionsText();
         }
 
-        if (!_ocupado && (DateTime.UtcNow - _ultimoChequeoConfig).TotalSeconds >= 2)
+        if (!_busy && (DateTime.UtcNow - _lastConfigCheck).TotalSeconds >= 2)
         {
-            _ultimoChequeoConfig = DateTime.UtcNow;
-            if (_s.RecargarSiCambio())
+            _lastConfigCheck = DateTime.UtcNow;
+            if (_s.ReloadIfChanged())
             {
-                _ui.Escribir("dev-menu.json cambió: lo recargué.", Nivel.Info);
-                _mon.Refrescar();
-                ConstruirTodo();
+                _ui.Write("dev-menu.json cambió: lo recargué.", Level.Info);
+                _mon.Refresh();
+                BuildAll();
             }
         }
     }
 
     // ------------------------------------------------------------ Navegación
 
-    private Vista VistaActual() =>
-        NavInicio.IsChecked == true ? Vista.Inicio :
-        NavTerminales.IsChecked == true ? Vista.Terminales :
-        NavDiag.IsChecked == true ? Vista.Diagnostico :
-        NavServidor.IsChecked == true ? Vista.Servidor :
-        NavCond.IsChecked == true ? Vista.Condiciones :
-        NavConsola.IsChecked == true ? Vista.Consola :
-        NavConfig.IsChecked == true ? Vista.Config : Vista.Panel;
+    private ViewKind CurrentView() =>
+        NavHome.IsChecked == true ? ViewKind.Home :
+        NavTerminals.IsChecked == true ? ViewKind.Terminals :
+        NavDiagnostics.IsChecked == true ? ViewKind.Diagnostics :
+        NavServer.IsChecked == true ? ViewKind.Server :
+        NavCond.IsChecked == true ? ViewKind.Conditions :
+        NavConsole.IsChecked == true ? ViewKind.ConsolePage :
+        NavConfig.IsChecked == true ? ViewKind.Config : ViewKind.Panel;
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
-        MostrarVista(VistaActual());
+        ShowView(CurrentView());
     }
 
-    private void MostrarVista(Vista v)
+    private void ShowView(ViewKind v)
     {
-        VistaInicio.Visibility = v == Vista.Inicio ? Visibility.Visible : Visibility.Collapsed;
-        PanelAcciones.Visibility = v == Vista.Inicio || _s is null ? Visibility.Collapsed : Visibility.Visible;
-        VistaPanel.Visibility = v == Vista.Panel ? Visibility.Visible : Visibility.Collapsed;
-        VistaCond.Visibility = v == Vista.Condiciones ? Visibility.Visible : Visibility.Collapsed;
-        VistaDiag.Visibility = v == Vista.Diagnostico ? Visibility.Visible : Visibility.Collapsed;
-        VistaServidor.Visibility = v == Vista.Servidor ? Visibility.Visible : Visibility.Collapsed;
-        VistaConsola.Visibility = v == Vista.Consola ? Visibility.Visible : Visibility.Collapsed;
+        HomeHost.Visibility = v == ViewKind.Home ? Visibility.Visible : Visibility.Collapsed;
+        ActionsPanel.Visibility = v == ViewKind.Home || _s is null ? Visibility.Collapsed : Visibility.Visible;
+        PanelHost.Visibility = v == ViewKind.Panel ? Visibility.Visible : Visibility.Collapsed;
+        CondHost.Visibility = v == ViewKind.Conditions ? Visibility.Visible : Visibility.Collapsed;
+        DiagnosticsHost.Visibility = v == ViewKind.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
+        ServerHost.Visibility = v == ViewKind.Server ? Visibility.Visible : Visibility.Collapsed;
+        ConsoleHost.Visibility = v == ViewKind.ConsolePage ? Visibility.Visible : Visibility.Collapsed;
 
         // «Terminales» del menú = las terminales a pantalla completa; al irse a otra vista pasan a la mitad
-        if (v == Vista.Terminales) _modoTerm = ModoTerminal.Completo;
-        else if (_modoTerm == ModoTerminal.Completo) _modoTerm = ModoTerminal.Mitad;
-        AplicarModoTerminal();
-        VistaConfig.Visibility = v == Vista.Config ? Visibility.Visible : Visibility.Collapsed;
+        if (v == ViewKind.Terminals) _termMode = TerminalMode.Full;
+        else if (_termMode == TerminalMode.Full) _termMode = TerminalMode.Half;
+        ApplyTerminalMode();
+        ConfigHost.Visibility = v == ViewKind.Config ? Visibility.Visible : Visibility.Collapsed;
 
-        (TxtTitulo.Text, TxtSubtitulo.Text) = v switch
+        (TxtTitle.Text, TxtSubtitle.Text) = v switch
         {
-            Vista.Inicio => ("Proyectos", "Los proyectos que has abierto. Elige uno para continuar."),
-            Vista.Diagnostico => ("Diagnóstico", "Compara tu configuración con Docker y el proyecto, y administra contenedores y volúmenes."),
-            Vista.Servidor => ("Servidor", "Tus servidores, el estado de la API de este proyecto y sus logs en vivo."),
-            Vista.Condiciones => ("Condiciones del dispositivo", "Red, batería, tema, texto, pantalla y ubicación del emulador."),
-            Vista.Terminales => ("Terminales", "Terminales reales con pestañas: abre varias, divídelas o elige la carpeta del proyecto."),
-            Vista.Consola => ("Consola de comandos", "Cualquier comando en una carpeta del proyecto; tareas y últimos comandos."),
-            Vista.Config => ("Configuración", "Cómo se lee dev-menu.json y dónde se guarda todo."),
+            ViewKind.Home => ("Proyectos", "Los proyectos que has abierto. Elige uno para continuar."),
+            ViewKind.Diagnostics => ("Diagnóstico", "Compara tu configuración con Docker y el proyecto, y administra contenedores y volúmenes."),
+            ViewKind.Server => ("Servidor", "Tus servidores, el estado de la API de este proyecto y sus logs en vivo."),
+            ViewKind.Conditions => ("Condiciones del dispositivo", "Red, batería, tema, texto, pantalla y ubicación del emulador."),
+            ViewKind.Terminals => ("Terminales", "Terminales reales con pestañas: abre varias, divídelas o elige la carpeta del proyecto."),
+            ViewKind.ConsolePage => ("Consola de comandos", "Cualquier comando en una carpeta del proyecto; tareas y últimos comandos."),
+            ViewKind.Config => ("Configuración", "Cómo se lee dev-menu.json y dónde se guarda todo."),
             _ => ("Panel", "Estado en vivo de lo que corre en este proyecto."),
         };
-        TxtTituloVentana.Text = _s is null || v == Vista.Inicio ? "stackdev" : $"{_s.Ctx.Nombre}  ·  {TxtTitulo.Text}";
-        if (v == Vista.Inicio) RefrescarInicio();
-        if (v == Vista.Condiciones) RefrescarCondiciones();
-        if (v == Vista.Diagnostico && _diag is not null) _ = _diag.ActualizarAsync();
-        if (v == Vista.Servidor) _srv?.Actualizar();
-        if (v == Vista.Consola) RefrescarConsola();
+        TxtWindowTitle.Text = _s is null || v == ViewKind.Home ? "stackdev" : $"{_s.Ctx.Name}  ·  {TxtTitle.Text}";
+        if (v == ViewKind.Home) RefreshHome();
+        if (v == ViewKind.Conditions) RefreshConditions();
+        if (v == ViewKind.Diagnostics && _diag is not null) _ = _diag.UpdateAsync();
+        if (v == ViewKind.Server) _srv?.Update();
+        if (v == ViewKind.ConsolePage) RefreshConsole();
     }
 
     // ------------------------------------------------------------ Condiciones del dispositivo
 
-    private string TextoCondiciones() => _s is null ? "" : $"Activas ahora: {_s.Condiciones.Texto()}";
+    private string ConditionsText() => _s is null ? "" : $"Activas ahora: {_s.Conditions.Text()}";
 
-    private void ConstruirCondiciones()
+    private void BuildConditions()
     {
-        PanelCond.Children.Clear();
+        CondPanel.Children.Clear();
         _chips.Clear();
         if (_s is null) return;
-        if (!_s.Ctx.Tiene(Componente.Movil))
+        if (!_s.Ctx.Has(ProjectComponent.Mobile))
         {
-            PanelCond.Children.Add(new TextBlock { Text = "Este proyecto no tiene móvil configurado.", Foreground = P("MutedBrush") });
+            CondPanel.Children.Add(new TextBlock { Text = "Este proyecto no tiene móvil configurado.", Foreground = P("MutedBrush") });
             return;
         }
 
-        foreach (var grupo in CondicionesService.Presets.GroupBy(p => p.Cat))
+        foreach (var group in ConditionsService.Presets.GroupBy(p => p.Cat))
         {
-            var fila = new WrapPanel();
-            var delGrupo = new List<ToggleButton>();
-            foreach (var p in grupo)
+            var row = new WrapPanel();
+            var ofGroup = new List<ToggleButton>();
+            foreach (var p in group)
             {
                 var preset = p;
                 var chip = new ToggleButton { Content = p.Txt, Tag = p, Style = (Style)FindResource("ChipToggle") };
                 chip.Checked += (_, _) =>
                 {
                     // Dentro de una categoría solo una opción a la vez.
-                    foreach (var otro in delGrupo.Where(o => !ReferenceEquals(o, chip) && o.IsChecked == true)) otro.IsChecked = false;
+                    foreach (var other in ofGroup.Where(o => !ReferenceEquals(o, chip) && o.IsChecked == true)) other.IsChecked = false;
                 };
-                delGrupo.Add(chip);
+                ofGroup.Add(chip);
                 _chips.Add(chip);
-                fila.Children.Add(chip);
+                row.Children.Add(chip);
             }
-            var tarjeta = new StackPanel();
-            tarjeta.Children.Add(new TextBlock { Text = grupo.Key.ToUpperInvariant(), FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 8) });
-            tarjeta.Children.Add(fila);
-            PanelCond.Children.Add(new Border { Style = (Style)FindResource("Card"), Margin = new Thickness(0, 0, 0, 12), Child = tarjeta });
+            var card = new StackPanel();
+            card.Children.Add(new TextBlock { Text = group.Key.ToUpperInvariant(), FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 8) });
+            card.Children.Add(row);
+            CondPanel.Children.Add(new Border { Style = (Style)FindResource("Card"), Margin = new Thickness(0, 0, 0, 12), Child = card });
         }
-        RefrescarCondiciones();
+        RefreshConditions();
     }
 
     /// <summary>Marca las condiciones que están activas según lo guardado para este emulador.</summary>
-    private void RefrescarCondiciones()
+    private void RefreshConditions()
     {
-        if (_s is null || !_s.Ctx.Tiene(Componente.Movil)) return;
-        TxtCondActivas.Text = TextoCondiciones();
-        var activas = _s.Condiciones.Activas();
+        if (_s is null || !_s.Ctx.Has(ProjectComponent.Mobile)) return;
+        TxtActiveConds.Text = ConditionsText();
+        var active = _s.Conditions.Active();
         foreach (var chip in _chips)
         {
             var p = (Preset)chip.Tag;
-            chip.IsChecked = activas.TryGetValue(p.Cat, out var v) && v == p.Txt;
+            chip.IsChecked = active.TryGetValue(p.Cat, out var v) && v == p.Txt;
         }
     }
 
-    private void CondAplicar_Click(object sender, RoutedEventArgs e)
+    private void CondApply_Click(object sender, RoutedEventArgs e)
     {
-        var elegidas = _chips.Where(c => c.IsChecked == true).Select(c => ((Preset)c.Tag).N.ToString()).ToList();
-        if (elegidas.Count == 0) { _ui.Escribir("Marca al menos una condición.", Nivel.Aviso); return; }
-        _ = CorrerAsync("Aplicar condiciones", s => s.Condiciones.AplicarNumeros(elegidas));
+        var chosen = _chips.Where(c => c.IsChecked == true).Select(c => ((Preset)c.Tag).N.ToString()).ToList();
+        if (chosen.Count == 0) { _ui.Write("Marca al menos una condición.", Level.Warning); return; }
+        _ = RunAsync("Aplicar condiciones", s => s.Conditions.ApplyNumbers(chosen));
     }
 
-    private void CondRestablecer_Click(object sender, RoutedEventArgs e) =>
-        _ = CorrerAsync("Restablecer condiciones", s => s.Condiciones.Restablecer());
+    private void CondReset_Click(object sender, RoutedEventArgs e) =>
+        _ = RunAsync("Restablecer condiciones", s => s.Conditions.Reset());
 
     // ------------------------------------------------------------ Consola de comandos
 
-    private void RefrescarConsola()
+    private void RefreshConsole()
     {
         if (_s is null || _cc is null) return;
-        TxtDirConsola.Text = _cc.Prompt;
-        TxtDirBarra.Text = _cc.Prompt;
-        BtnAliasApi.Visibility = _s.Ctx.Tiene(Componente.Api) ? Visibility.Visible : Visibility.Collapsed;
-        BtnAliasWeb.Visibility = _s.Ctx.Tiene(Componente.Web) ? Visibility.Visible : Visibility.Collapsed;
-        BtnAliasMovil.Visibility = _s.Ctx.Tiene(Componente.Movil) ? Visibility.Visible : Visibility.Collapsed;
+        TxtConsoleDir.Text = _cc.Prompt;
+        TxtBarDir.Text = _cc.Prompt;
+        BtnAliasApi.Visibility = _s.Ctx.Has(ProjectComponent.Api) ? Visibility.Visible : Visibility.Collapsed;
+        BtnAliasWeb.Visibility = _s.Ctx.Has(ProjectComponent.Web) ? Visibility.Visible : Visibility.Collapsed;
+        BtnAliasMobile.Visibility = _s.Ctx.Has(ProjectComponent.Mobile) ? Visibility.Visible : Visibility.Collapsed;
 
-        ListaComandos.Items.Clear();
+        CommandList.Items.Clear();
         var n = 1;
         foreach (var it in _cc.Items())
-            ListaComandos.Items.Add($"{n++,2}   {(it.Tarea ? "★ " : "")}{it.Titulo}");
+            CommandList.Items.Add($"{n++,2}   {(it.Task ? "★ " : "")}{it.Title}");
     }
 
     private int _hist = -1;
-    private bool _desdeBarra;
-    private readonly List<string> _comandosBarra = new();
+    private bool _fromBar;
+    private readonly List<string> _barCommands = new();
 
-    private void BarraEjecutar_Click(object sender, RoutedEventArgs e)
+    private void BarRun_Click(object sender, RoutedEventArgs e)
     {
-        var texto = TxtBarra.Text;
-        if (_s is null || string.IsNullOrWhiteSpace(texto)) return;
-        PonerSalidaOculta(false);
-        if (_ocupado) { _ui.Escribir("Hay una acción en curso: espera o usa «Cancelar acción».", Nivel.Aviso); return; }
+        var text = TxtBar.Text;
+        if (_s is null || string.IsNullOrWhiteSpace(text)) return;
+        SetOutputHidden(false);
+        if (_busy) { _ui.Write("Hay una acción en curso: espera o usa «Cancelar acción».", Level.Warning); return; }
         _hist = -1;
-        _desdeBarra = true;
-        _comandosBarra.Add(texto.Trim());
-        _estado.AgregarHistorialBarra(_s.Clave, texto);
-        EjecutarTexto(texto);
-        TxtBarra.Clear();
+        _fromBar = true;
+        _barCommands.Add(text.Trim());
+        _state.AddBarHistory(_s.Key, text);
+        RunText(text);
+        TxtBar.Clear();
     }
 
-    private void TxtBarra_KeyDown(object sender, KeyEventArgs e)
+    private void TxtBar_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            BarraEjecutar_Click(sender, e);
+            BarRun_Click(sender, e);
             e.Handled = true;
         }
         else if (e.Key is Key.Up or Key.Down)
         {
             e.Handled = true;
-            NavegarHistorial(e.Key == Key.Up ? 1 : -1);
+            NavigateHistory(e.Key == Key.Up ? 1 : -1);
         }
-        else if (e.Key == Key.Escape && TxtBarra.Text.Length > 0)
+        else if (e.Key == Key.Escape && TxtBar.Text.Length > 0)
         {
             _hist = -1;
-            TxtBarra.Clear();
+            TxtBar.Clear();
             e.Handled = true;
         }
     }
 
-    private void HistArriba_Click(object sender, RoutedEventArgs e) { NavegarHistorial(1); TxtBarra.Focus(); }
+    private void HistUp_Click(object sender, RoutedEventArgs e) { NavigateHistory(1); TxtBar.Focus(); }
 
-    private void HistAbajo_Click(object sender, RoutedEventArgs e) { NavegarHistorial(-1); TxtBarra.Focus(); }
+    private void HistDown_Click(object sender, RoutedEventArgs e) { NavigateHistory(-1); TxtBar.Focus(); }
 
     /// <summary>↑ (delta = 1) va a un comando más viejo, ↓ (-1) a uno más nuevo; pasado el más nuevo deja la línea vacía.</summary>
-    private void NavegarHistorial(int delta)
+    private void NavigateHistory(int delta)
     {
         if (_s is null) return;
-        var historial = _comandosBarra.AsEnumerable().Reverse()
-            .Concat(_estado.LeerHistorialBarra(_s.Clave))
-            .Concat(_estado.LeerRecientes(_s.Clave).Select(r => r.Comando))
+        var history = _barCommands.AsEnumerable().Reverse()
+            .Concat(_state.ReadBarHistory(_s.Key))
+            .Concat(_state.ReadRecent(_s.Key).Select(r => r.Command))
             .Where(c => !string.IsNullOrWhiteSpace(c)).Distinct().ToList();
-        if (historial.Count == 0)
+        if (history.Count == 0)
         {
-            _ui.Escribir("Aún no hay comandos en el historial: escribe uno y pulsa Enter.", Nivel.Tenue);
+            _ui.Write("Aún no hay comandos en el historial: escribe uno y pulsa Enter.", Level.Muted);
             return;
         }
-        _hist = Math.Clamp(_hist + delta, -1, historial.Count - 1);
-        TxtBarra.Text = _hist < 0 ? "" : historial[_hist];
-        TxtBarra.CaretIndex = TxtBarra.Text.Length;
+        _hist = Math.Clamp(_hist + delta, -1, history.Count - 1);
+        TxtBar.Text = _hist < 0 ? "" : history[_hist];
+        TxtBar.CaretIndex = TxtBar.Text.Length;
     }
 
     private void Alias_Click(object sender, RoutedEventArgs e)
     {
         if (_cc is null || sender is not Button { Tag: string alias }) return;
-        _cc.Procesar(alias);
-        RefrescarConsola();
+        _cc.HandleInput(alias);
+        RefreshConsole();
     }
 
-    private void EjecutarTexto(string texto)
+    private void RunText(string text)
     {
-        if (_cc is null || string.IsNullOrWhiteSpace(texto)) return;
+        if (_cc is null || string.IsNullOrWhiteSpace(text)) return;
         var cc = _cc;
-        _ = CorrerAsync(texto.Trim(), _ => { cc.Procesar(texto); return true; });
+        _ = RunAsync(text.Trim(), _ => { cc.HandleInput(text); return true; });
     }
 
-    private void EjecutarComando_Click(object sender, RoutedEventArgs e)
+    private void RunCommand_Click(object sender, RoutedEventArgs e)
     {
-        EjecutarTexto(TxtComando.Text);
-        TxtComando.Clear();
+        RunText(TxtCommand.Text);
+        TxtCommand.Clear();
     }
 
-    private void EjecutarVentana_Click(object sender, RoutedEventArgs e)
+    private void RunWindow_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(TxtComando.Text)) return;
-        EjecutarTexto("v " + TxtComando.Text.Trim());
-        TxtComando.Clear();
+        if (string.IsNullOrWhiteSpace(TxtCommand.Text)) return;
+        RunText("v " + TxtCommand.Text.Trim());
+        TxtCommand.Clear();
     }
 
-    private void TxtComando_KeyDown(object sender, KeyEventArgs e)
+    private void TxtCommand_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Enter) return;
-        EjecutarComando_Click(sender, e);
+        RunCommand_Click(sender, e);
         e.Handled = true;
     }
 
-    private void ListaComandos_DoubleClick(object sender, MouseButtonEventArgs e)
+    private void CommandList_DoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (ListaComandos.SelectedIndex < 0) return;
-        EjecutarTexto((ListaComandos.SelectedIndex + 1).ToString());
+        if (CommandList.SelectedIndex < 0) return;
+        RunText((CommandList.SelectedIndex + 1).ToString());
     }
 
     // ------------------------------------------------------------ Configuración
 
-    private TextBlock TituloResumen(string texto) => new()
+    private TextBlock SummaryTitle(string text) => new()
     {
-        Text = texto, FontSize = 10.5, FontWeight = FontWeights.SemiBold, Foreground = P("MutedBrush"), Margin = new Thickness(0, 10, 0, 8),
+        Text = text, FontSize = 10.5, FontWeight = FontWeights.SemiBold, Foreground = P("MutedBrush"), Margin = new Thickness(0, 10, 0, 8),
     };
 
     /// <summary>Una etiqueta pequeña (puerto, imagen, URL…) con fondo propio.</summary>
-    private Border Chip(string texto, string colorClave = "TextBrush", bool mono = true, bool iconos = false)
+    private Border Chip(string text, string colorKey = "TextBrush", bool mono = true, bool icons = false)
     {
-        var t = new TextBlock { FontSize = 11.5, Foreground = P(colorClave), VerticalAlignment = VerticalAlignment.Center };
-        if (iconos && texto.Length > 1)
+        var t = new TextBlock { FontSize = 11.5, Foreground = P(colorKey), VerticalAlignment = VerticalAlignment.Center };
+        if (icons && text.Length > 1)
         {
-            t.Inlines.Add(new System.Windows.Documents.Run(texto[..1]) { FontFamily = new FontFamily(Iconos.Fuente) });
-            t.Inlines.Add(new System.Windows.Documents.Run(texto[1..]));
+            t.Inlines.Add(new System.Windows.Documents.Run(text[..1]) { FontFamily = new FontFamily(Icons.Font) });
+            t.Inlines.Add(new System.Windows.Documents.Run(text[1..]));
         }
         else
         {
-            t.Text = texto;
+            t.Text = text;
             if (mono) t.FontFamily = (FontFamily)FindResource("MonoFont");
         }
         return new Border
@@ -966,33 +966,33 @@ public partial class MainWindow : Window
         };
     }
 
-    private UIElement FilaComponente(string clave, string nombre, string principal, params string[] etiquetas)
+    private UIElement ComponentRow(string key, string name, string main, params string[] labels)
     {
         var g = new Grid { Margin = new Thickness(0, 0, 0, 10) };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var ficha = Iconos.Insignia(clave, 32);
-        ficha.VerticalAlignment = VerticalAlignment.Top;
-        g.Children.Add(ficha);
-        var n = new TextBlock { Text = nombre, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+        var tile = Icons.Badge(key, 32);
+        tile.VerticalAlignment = VerticalAlignment.Top;
+        g.Children.Add(tile);
+        var n = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), VerticalAlignment = VerticalAlignment.Top };
         Grid.SetColumn(n, 1);
         g.Children.Add(n);
-        var cuerpo = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-        if (principal.Length > 0)
-            cuerpo.Children.Add(new TextBlock
+        var body = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        if (main.Length > 0)
+            body.Children.Add(new TextBlock
             {
-                Text = principal, FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+                Text = main, FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 12, 4),
             });
-        foreach (var e in etiquetas.Where(x => !string.IsNullOrWhiteSpace(x)))
-            cuerpo.Children.Add(Chip(e));
-        Grid.SetColumn(cuerpo, 2);
-        g.Children.Add(cuerpo);
+        foreach (var e in labels.Where(x => !string.IsNullOrWhiteSpace(x)))
+            body.Children.Add(Chip(e));
+        Grid.SetColumn(body, 2);
+        g.Children.Add(body);
         return g;
     }
 
-    private static Border FichaGlifoPequena(string glifo, string hex)
+    private static Border SmallGlyphTile(string glyph, string hex)
     {
         var col = (Color)ColorConverter.ConvertFromString(hex);
         return new Border
@@ -1003,14 +1003,14 @@ public partial class MainWindow : Window
             BorderThickness = new Thickness(1),
             Child = new TextBlock
             {
-                Text = glifo, FontFamily = new FontFamily(Iconos.Fuente), FontSize = 15, Foreground = new SolidColorBrush(col),
+                Text = glyph, FontFamily = new FontFamily(Icons.Font), FontSize = 15, Foreground = new SolidColorBrush(col),
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
             },
         };
     }
 
     /// <summary>Una ruta: ficha con icono, nombre, la ruta en una caja (carpeta atenuada, nombre final resaltado) y botones de copiar / abrir.</summary>
-    private UIElement FilaRuta(string etiqueta, string glifo, string color, string ruta, bool esArchivo, string? aviso, string? ok = null)
+    private UIElement PathRow(string label, string glyph, string color, string path, bool isFile, string? warning, string? ok = null)
     {
         var g = new Grid { Margin = new Thickness(0, 0, 0, 10) };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1018,106 +1018,106 @@ public partial class MainWindow : Window
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var ficha = FichaGlifoPequena(glifo, color);
-        ficha.Margin = new Thickness(0, 0, 10, 0);
-        g.Children.Add(ficha);
+        var tile = SmallGlyphTile(glyph, color);
+        tile.Margin = new Thickness(0, 0, 10, 0);
+        g.Children.Add(tile);
 
-        var nombre = new TextBlock { Text = etiqueta, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), VerticalAlignment = VerticalAlignment.Top };
-        Grid.SetColumn(nombre, 1);
-        g.Children.Add(nombre);
+        var name = new TextBlock { Text = label, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0), VerticalAlignment = VerticalAlignment.Top };
+        Grid.SetColumn(name, 1);
+        g.Children.Add(name);
 
         // Carpeta atenuada + último tramo resaltado
-        var texto = new TextBlock { FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12, TextWrapping = TextWrapping.Wrap };
-        var corte = Math.Max(ruta.LastIndexOf('\\'), ruta.LastIndexOf('/'));
-        if (corte > 0)
+        var text = new TextBlock { FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        var cut = Math.Max(path.LastIndexOf('\\'), path.LastIndexOf('/'));
+        if (cut > 0)
         {
-            texto.Inlines.Add(new System.Windows.Documents.Run(ruta[..(corte + 1)]) { Foreground = P("MutedBrush") });
-            texto.Inlines.Add(new System.Windows.Documents.Run(ruta[(corte + 1)..]) { Foreground = P("TextBrush"), FontWeight = FontWeights.SemiBold });
+            text.Inlines.Add(new System.Windows.Documents.Run(path[..(cut + 1)]) { Foreground = P("MutedBrush") });
+            text.Inlines.Add(new System.Windows.Documents.Run(path[(cut + 1)..]) { Foreground = P("TextBrush"), FontWeight = FontWeights.SemiBold });
         }
-        else texto.Inlines.Add(new System.Windows.Documents.Run(ruta) { Foreground = P("TextBrush") });
+        else text.Inlines.Add(new System.Windows.Documents.Run(path) { Foreground = P("TextBrush") });
 
-        var cuerpo = new StackPanel();
-        cuerpo.Children.Add(new Border
+        var body = new StackPanel();
+        body.Children.Add(new Border
         {
             Background = P("Surface2Brush"), BorderBrush = P("LineBrush"), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 7, 10, 7), Child = texto,
+            CornerRadius = new CornerRadius(8), Padding = new Thickness(10, 7, 10, 7), Child = text,
         });
-        if (aviso is not null || ok is not null)
+        if (warning is not null || ok is not null)
         {
-            var marcas = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
-            if (ok is not null) marcas.Children.Add(Chip("\uE73E  " + ok, "OkBrush", mono: false, iconos: true));
-            if (aviso is not null) marcas.Children.Add(Chip("\uE7BA  " + aviso, "WarnBrush", mono: false, iconos: true));
-            cuerpo.Children.Add(marcas);
+            var marks = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+            if (ok is not null) marks.Children.Add(Chip("\uE73E  " + ok, "OkBrush", mono: false, icons: true));
+            if (warning is not null) marks.Children.Add(Chip("\uE7BA  " + warning, "WarnBrush", mono: false, icons: true));
+            body.Children.Add(marks);
         }
-        Grid.SetColumn(cuerpo, 2);
-        g.Children.Add(cuerpo);
+        Grid.SetColumn(body, 2);
+        g.Children.Add(body);
 
-        var botones = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8, 1, 0, 0) };
-        var copiar = new Button
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(8, 1, 0, 0) };
+        var copy = new Button
         {
-            Content = "\uE8C8", FontFamily = new FontFamily(Iconos.Fuente), Style = (Style)FindResource("BtnIcono"), ToolTip = "Copiar la ruta",
+            Content = "\uE8C8", FontFamily = new FontFamily(Icons.Font), Style = (Style)FindResource("BtnIcon"), ToolTip = "Copiar la ruta",
         };
-        copiar.Click += async (_, _) =>
+        copy.Click += async (_, _) =>
         {
-            try { Clipboard.SetText(ruta); } catch { return; }
-            copiar.Content = "\uE73E";
+            try { Clipboard.SetText(path); } catch { return; }
+            copy.Content = "\uE73E";
             await Task.Delay(1200);
-            copiar.Content = "\uE8C8";
+            copy.Content = "\uE8C8";
         };
-        var abrir = new Button
+        var open = new Button
         {
-            Content = "\uE838", FontFamily = new FontFamily(Iconos.Fuente), Style = (Style)FindResource("BtnIcono"),
-            ToolTip = esArchivo ? "Abrir la carpeta que lo contiene" : "Abrir la carpeta",
+            Content = "\uE838", FontFamily = new FontFamily(Icons.Font), Style = (Style)FindResource("BtnIcon"),
+            ToolTip = isFile ? "Abrir la carpeta que lo contiene" : "Abrir la carpeta",
         };
-        abrir.Click += (_, _) => AbrirCarpeta(esArchivo ? (Path.GetDirectoryName(ruta) ?? ruta) : ruta);
-        botones.Children.Add(copiar);
-        botones.Children.Add(abrir);
-        Grid.SetColumn(botones, 3);
-        g.Children.Add(botones);
+        open.Click += (_, _) => OpenFolder(isFile ? (Path.GetDirectoryName(path) ?? path) : path);
+        buttons.Children.Add(copy);
+        buttons.Children.Add(open);
+        Grid.SetColumn(buttons, 3);
+        g.Children.Add(buttons);
         return g;
     }
 
-    private void RefrescarConfig()
+    private void RefreshConfig()
     {
         if (_s is null) return;
         var c = _s.Ctx;
-        PanelResumen.Children.Clear();
+        SummaryPanel.Children.Clear();
 
         // ---- Componentes: icono, nombre, dónde vive y sus datos como etiquetas
-        PanelResumen.Children.Add(TituloResumen("COMPONENTES"));
-        if (c.Tiene(Componente.Postgres))
+        SummaryPanel.Children.Add(SummaryTitle("COMPONENTES"));
+        if (c.Has(ProjectComponent.Postgres))
         {
             var pg = c.Config.Postgres!;
-            PanelResumen.Children.Add(FilaComponente("POSTGRES", "Postgres", pg.ContenedorEf, $"localhost:{pg.PuertoEf}", pg.ImagenEf));
+            SummaryPanel.Children.Add(ComponentRow("POSTGRES", "Postgres", pg.EfContainer, $"localhost:{pg.EfPort}", pg.EfImage));
         }
-        foreach (var (comp, clave) in new[] { (Componente.Api, "API"), (Componente.Web, "WEB"), (Componente.Movil, "FLUTTER") })
-            if (c.Tiene(comp))
-                PanelResumen.Children.Add(FilaComponente(clave, Sesion.Nombres[comp], _s.Rel(c.Carpeta(comp)), c.Url(comp) ?? ""));
-        if (c.Tareas.Count > 0)
-            PanelResumen.Children.Add(FilaComponente("FLUTTER", "Tareas", "", c.Tareas.Select(t => t.Nombre).ToArray()));
+        foreach (var (comp, key) in new[] { (ProjectComponent.Api, "API"), (ProjectComponent.Web, "WEB"), (ProjectComponent.Mobile, "FLUTTER") })
+            if (c.Has(comp))
+                SummaryPanel.Children.Add(ComponentRow(key, Session.Names[comp], _s.Rel(c.Folder(comp)), c.Url(comp) ?? ""));
+        if (c.Tasks.Count > 0)
+            SummaryPanel.Children.Add(ComponentRow("FLUTTER", "Tareas", "", c.Tasks.Select(t => t.Name).ToArray()));
 
         // ---- Rutas
-        PanelResumen.Children.Add(TituloResumen("RUTAS"));
-        PanelResumen.Children.Add(FilaRuta("Archivo", "\uE8A5", "#6FA8FF", _s.Store.Ruta, true,
-            _s.Store.EnElRepo ? "Está dentro del proyecto: usa «Mover fuera del proyecto»" : null,
-            _s.Store.EnElRepo ? null : "Fuera del repositorio"));
-        PanelResumen.Children.Add(FilaRuta("Estado", "\uE838", "#22D3EE", _s.Estado.Dir, false, null));
-        if (_s.Sdk is not null) PanelResumen.Children.Add(FilaRuta("Android SDK", "\uE8EA", "#F5B94A", _s.Sdk, false, null));
+        SummaryPanel.Children.Add(SummaryTitle("RUTAS"));
+        SummaryPanel.Children.Add(PathRow("Archivo", "\uE8A5", "#6FA8FF", _s.Store.FilePath, true,
+            _s.Store.InRepo ? "Está dentro del proyecto: usa «Mover fuera del proyecto»" : null,
+            _s.Store.InRepo ? null : "Fuera del repositorio"));
+        SummaryPanel.Children.Add(PathRow("Estado", "\uE838", "#22D3EE", _s.State.Dir, false, null));
+        if (_s.Sdk is not null) SummaryPanel.Children.Add(PathRow("Android SDK", "\uE8EA", "#F5B94A", _s.Sdk, false, null));
 
         // ---- Secretos
-        PanelResumen.Children.Add(TituloResumen("SECRETOS"));
-        var cifrado = StackDev.Core.Seguridad.Proteccion.Disponible;
-        var fila = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
-        fila.Children.Add(Chip(cifrado ? "\uE72E  Cifrados con DPAPI" : "\uE785  Sin cifrar", cifrado ? "OkBrush" : "WarnBrush", mono: false, iconos: true));
-        fila.Children.Add(new TextBlock
+        SummaryPanel.Children.Add(SummaryTitle("SECRETOS"));
+        var encrypted = StackDev.Core.Security.Protection.Available;
+        var row = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) };
+        row.Children.Add(Chip(encrypted ? "\uE72E  Cifrados con DPAPI" : "\uE785  Sin cifrar", encrypted ? "OkBrush" : "WarnBrush", mono: false, icons: true));
+        row.Children.Add(new TextBlock
         {
-            Text = cifrado
+            Text = encrypted
                 ? "Contraseña de Postgres, variables secretas de la API y credenciales. Solo tu usuario en este equipo puede leerlos."
                 : "El cifrado DPAPI solo existe en Windows.",
             Foreground = P("MutedBrush"), FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 4), MaxWidth = 560,
         });
-        PanelResumen.Children.Add(fila);
-        RefrescarNavegadores();
+        SummaryPanel.Children.Add(row);
+        RefreshBrowsers();
     }
 
     // ------------------------------------------------------------ Navegador
@@ -1125,248 +1125,248 @@ public partial class MainWindow : Window
     private System.Windows.Controls.Primitives.Popup? _menu;
 
     /// <summary>Lista desplegable oscura bajo un botón (los menús de WPF por defecto salen claros).</summary>
-    private void MostrarMenu(FrameworkElement ancla, IEnumerable<(string Texto, Action Accion)> items)
+    private void ShowMenu(FrameworkElement anchor, IEnumerable<(string Text, Action Operation)> items)
     {
         if (_menu is { IsOpen: true }) _menu.IsOpen = false;
-        var lista = new StackPanel { MinWidth = Math.Max(220, ancla.ActualWidth) };
-        foreach (var (texto, accion) in items)
+        var list = new StackPanel { MinWidth = Math.Max(220, anchor.ActualWidth) };
+        foreach (var (text, action) in items)
         {
-            var elegido = accion;
+            var chosen = action;
             var b = new Button
             {
-                Content = new TextBlock { Text = texto, FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 13, Foreground = P("TextBrush") },
-                Style = (Style)FindResource("BtnIcono"),
+                Content = new TextBlock { Text = text, FontFamily = (FontFamily)FindResource("UiFont"), FontSize = 13, Foreground = P("TextBrush") },
+                Style = (Style)FindResource("BtnIcon"),
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(10, 6, 10, 6),
             };
-            b.Click += (_, _) => { _menu!.IsOpen = false; elegido(); };
-            lista.Children.Add(b);
+            b.Click += (_, _) => { _menu!.IsOpen = false; chosen(); };
+            list.Children.Add(b);
         }
         _menu = new System.Windows.Controls.Primitives.Popup
         {
-            PlacementTarget = ancla,
+            PlacementTarget = anchor,
             Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
             StaysOpen = false,
             AllowsTransparency = true,
             Child = new Border
             {
                 Background = P("SurfaceBrush"), BorderBrush = P("LineBrush"), BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8), Padding = new Thickness(4), Margin = new Thickness(0, 4, 0, 8), Child = lista,
+                CornerRadius = new CornerRadius(8), Padding = new Thickness(4), Margin = new Thickness(0, 4, 0, 8), Child = list,
             },
             IsOpen = true,
         };
     }
 
-    private void RefrescarNavegadores()
+    private void RefreshBrowsers()
     {
-        BtnNavGlobal.Content = StackDev.Core.Proc.Navegadores.Nombre(_estado?.Navegador) + "   ▾";
-        var propio = _s?.Ctx.Config.Navegador;
-        BtnNavProyecto.Content = (string.IsNullOrWhiteSpace(propio) ? "Igual que el de todos los proyectos" : StackDev.Core.Proc.Navegadores.Nombre(propio)) + "   ▾";
-        BtnNavProyecto.IsEnabled = _s is not null;
-        var efectivo = string.IsNullOrWhiteSpace(propio) ? _estado?.Navegador : propio;
-        var nombreNav = string.IsNullOrWhiteSpace(efectivo) ? "Predeterminado" : StackDev.Core.Proc.Navegadores.Nombre(efectivo);
-        BtnNavRapido.Content = Iconos.ConGlifo("\uE774", nombreNav + "  ▾");
+        BtnNavGlobal.Content = StackDev.Core.Proc.Browsers.Name(_state?.Browser) + "   ▾";
+        var own = _s?.Ctx.Config.Browser;
+        BtnNavProject.Content = (string.IsNullOrWhiteSpace(own) ? "Igual que el de todos los proyectos" : StackDev.Core.Proc.Browsers.Name(own)) + "   ▾";
+        BtnNavProject.IsEnabled = _s is not null;
+        var effective = string.IsNullOrWhiteSpace(own) ? _state?.Browser : own;
+        var nameNav = string.IsNullOrWhiteSpace(effective) ? "Predeterminado" : StackDev.Core.Proc.Browsers.Name(effective);
+        BtnNavQuick.Content = Icons.WithGlyph("\uE774", nameNav + "  ▾");
     }
 
     /// <summary>Cambio rápido de navegador desde el panel: para este proyecto, o (última opción) para todos.</summary>
-    private void NavRapido_Click(object sender, RoutedEventArgs e)
+    private void NavQuick_Click(object sender, RoutedEventArgs e)
     {
-        if (_s is null || _estado is null) return;
-        var ops = OpcionesNavegador(v =>
+        if (_s is null || _state is null) return;
+        var ops = BrowserOptions(v =>
         {
-            var copia = ConfigJson.Leer(ConfigJson.Escribir(_s.Ctx.Config));
-            copia.Navegador = v;
-            _s.AplicarConfig(copia);
-            RefrescarNavegadores();
+            var copy = ConfigJson.Read(ConfigJson.Write(_s.Ctx.Config));
+            copy.Browser = v;
+            _s.ApplyConfig(copy);
+            RefreshBrowsers();
         }, "Igual que el de todos los proyectos");
         ops.Add(("Cambiar el de todos los proyectos…", () => Dispatcher.InvokeAsync(() =>
-            MostrarMenu(BtnNavRapido, OpcionesNavegador(v => { _estado.Navegador = v; RefrescarNavegadores(); }, null)))));
-        MostrarMenu(BtnNavRapido, ops);
+            ShowMenu(BtnNavQuick, BrowserOptions(v => { _state.Browser = v; RefreshBrowsers(); }, null)))));
+        ShowMenu(BtnNavQuick, ops);
     }
 
-    private List<(string Texto, Action Accion)> OpcionesNavegador(Action<string?> poner, string? textoSinValor)
+    private List<(string Text, Action Operation)> BrowserOptions(Action<string?> put, string? textWithoutValue)
     {
         var ops = new List<(string, Action)>();
-        if (textoSinValor is not null) ops.Add((textoSinValor, () => poner(null)));
-        ops.Add(("Predeterminado del sistema", () => poner("")));
-        foreach (var n in StackDev.Core.Proc.Navegadores.Instalados())
+        if (textWithoutValue is not null) ops.Add((textWithoutValue, () => put(null)));
+        ops.Add(("Predeterminado del sistema", () => put("")));
+        foreach (var n in StackDev.Core.Proc.Browsers.Installed())
         {
             var id = n.Id;
-            ops.Add((n.Nombre, () => poner(id)));
+            ops.Add((n.Name, () => put(id)));
         }
         ops.Add(("Otro programa…", () =>
         {
             var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Elige el navegador", Filter = "Programas (*.exe)|*.exe" };
-            if (dlg.ShowDialog(this) == true) poner(dlg.FileName);
+            if (dlg.ShowDialog(this) == true) put(dlg.FileName);
         }));
         return ops;
     }
 
     private void NavGlobal_Click(object sender, RoutedEventArgs e)
     {
-        if (_estado is null) return;
-        MostrarMenu(BtnNavGlobal, OpcionesNavegador(v => { _estado.Navegador = v; RefrescarNavegadores(); }, null));
+        if (_state is null) return;
+        ShowMenu(BtnNavGlobal, BrowserOptions(v => { _state.Browser = v; RefreshBrowsers(); }, null));
     }
 
-    private void NavProyecto_Click(object sender, RoutedEventArgs e)
+    private void NavProject_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
-        MostrarMenu(BtnNavProyecto, OpcionesNavegador(v =>
+        ShowMenu(BtnNavProject, BrowserOptions(v =>
         {
-            var copia = ConfigJson.Leer(ConfigJson.Escribir(_s.Ctx.Config));
-            copia.Navegador = v;
-            _s.AplicarConfig(copia);
-            RefrescarNavegadores();
+            var copy = ConfigJson.Read(ConfigJson.Write(_s.Ctx.Config));
+            copy.Browser = v;
+            _s.ApplyConfig(copy);
+            RefreshBrowsers();
         }, "Igual que el de todos los proyectos"));
     }
 
     /// <summary>Botón de la cabecera: abre la web y/o la API del proyecto en el navegador elegido.</summary>
-    private void Navegador_Click(object sender, RoutedEventArgs e)
+    private void Browser_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
         var s = _s;
-        var items = new List<(string Texto, Action Accion)>();
-        var abribles = new List<Componente>();
-        foreach (var (comp, nombre) in new[] { (Componente.Web, "Web"), (Componente.Api, "API") })
+        var items = new List<(string Text, Action Operation)>();
+        var openable = new List<ProjectComponent>();
+        foreach (var (comp, name) in new[] { (ProjectComponent.Web, "Web"), (ProjectComponent.Api, "API") })
         {
-            if (!s.Ctx.Tiene(comp) || s.Ctx.UrlParaAbrir(comp) is not { } url) continue;
+            if (!s.Ctx.Has(comp) || s.Ctx.UrlToOpen(comp) is not { } url) continue;
             var c = comp;
-            abribles.Add(c);
-            items.Add(($"{nombre}    {url}", () => s.Servicios.AbrirEnNavegador(c)));
+            openable.Add(c);
+            items.Add(($"{name}    {url}", () => s.Services.OpenInBrowser(c)));
         }
-        if (items.Count == 0) { _ui.Escribir("Este proyecto no tiene una URL de web o API para abrir.", Nivel.Aviso); return; }
-        if (items.Count == 1) { items[0].Accion(); return; }
-        items.Add(("Abrir las dos", () => { foreach (var c2 in abribles) s.Servicios.AbrirEnNavegador(c2); }));
-        MostrarMenu(BtnNavegador, items);
+        if (items.Count == 0) { _ui.Write("Este proyecto no tiene una URL de web o API para abrir.", Level.Warning); return; }
+        if (items.Count == 1) { items[0].Operation(); return; }
+        items.Add(("Abrir las dos", () => { foreach (var c2 in openable) s.Services.OpenInBrowser(c2); }));
+        ShowMenu(BtnBrowser, items);
     }
 
-    private void NavProbar_Click(object sender, RoutedEventArgs e)
+    private void NavTest_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
-        var url = _s.Ctx.UrlParaAbrir(Componente.Web) ?? _s.Ctx.UrlParaAbrir(Componente.Api) ?? "https://example.com";
-        _s.Ejecutor.AbrirNavegador(url);
+        var url = _s.Ctx.UrlToOpen(ProjectComponent.Web) ?? _s.Ctx.UrlToOpen(ProjectComponent.Api) ?? "https://example.com";
+        _s.Executor.OpenBrowser(url);
     }
 
-    private async void CfgComponentes_Click(object sender, RoutedEventArgs e)
+    private async void CfgComponents_Click(object sender, RoutedEventArgs e)
     {
-        if (_s is null || _ocupado) return;
-        var nueva = ComponentesDialog.Mostrar(this, _s);
-        if (nueva is null) return;
+        if (_s is null || _busy) return;
+        var fresh = ComponentsDialog.Show(this, _s);
+        if (fresh is null) return;
         var s = _s;
-        await CorrerAsync("Guardar componentes", x => { x.AplicarConfig(nueva); return true; });
-        _mon?.Refrescar();
-        ConstruirTodo();
-        _ui.Escribir("Componentes actualizados.", Nivel.Ok);
+        await RunAsync("Guardar componentes", x => { x.ApplyConfig(fresh); return true; });
+        _mon?.Refresh();
+        BuildAll();
+        _ui.Write("Componentes actualizados.", Level.Ok);
     }
 
-    private void CfgMover_Click(object sender, RoutedEventArgs e)
+    private void CfgMove_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
-        if (!_s.Store.EnElRepo) { _ui.Escribir("La configuración ya está fuera del proyecto.", Nivel.Info); return; }
-        var destino = _s.Store.CopiarAfuera();
-        _s.Store.Cargar();
-        RefrescarConfig();
-        _ui.Escribir($"Copiada a {destino}. Desde ahora se usa esa.", Nivel.Ok);
-        _ui.Escribir("El dev-menu.json de la carpeta del proyecto no se borró: elimínalo tú (o agrégalo al .gitignore).", Nivel.Aviso);
+        if (!_s.Store.InRepo) { _ui.Write("La configuración ya está fuera del proyecto.", Level.Info); return; }
+        var destination = _s.Store.CopyOut();
+        _s.Store.Load();
+        RefreshConfig();
+        _ui.Write($"Copiada a {destination}. Desde ahora se usa esa.", Level.Ok);
+        _ui.Write("El dev-menu.json de la carpeta del proyecto no se borró: elimínalo tú (o agrégalo al .gitignore).", Level.Warning);
     }
 
-    private void CfgEditar_Click(object sender, RoutedEventArgs e) => _s?.AbrirEditorConfig();
+    private void CfgEdit_Click(object sender, RoutedEventArgs e) => _s?.OpenConfigEditor();
 
-    private void CfgRedetectar_Click(object sender, RoutedEventArgs e)
+    private void CfgRedetect_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
-        if (!Dialogos.Confirmar(this, "Esto reemplaza dev-menu.json (queda una copia .bak). ¿Seguir?", false)) return;
-        _ = Redetectar();
+        if (!Dialogs.Confirm(this, "Esto reemplaza dev-menu.json (queda una copia .bak). ¿Seguir?", false)) return;
+        _ = Redetect();
     }
 
-    private async Task Redetectar()
+    private async Task Redetect()
     {
-        await CorrerAsync("Detectar de nuevo", s => { s.Redetectar(); return true; });
-        ConstruirTodo();
+        await RunAsync("Detectar de nuevo", s => { s.Redetect(); return true; });
+        BuildAll();
     }
 
-    private void CfgSincronizar_Click(object sender, RoutedEventArgs e)
+    private void CfgSync_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
-        var r = _estado.Migrar(StateStore.DirAnterior(), forzar: true);
-        _ui.Escribir($"Estado de previous-state: {r.Copiados} archivos copiados, {r.Omitidos} sin cambios.", Nivel.Ok);
+        var r = _state.Migrate(StateStore.DirPrevious(), force: true);
+        _ui.Write($"Estado de previous-state: {r.Copied} archivos copiados, {r.Skipped} sin cambios.", Level.Ok);
     }
 
-    private void AbrirCarpeta(string ruta)
+    private void OpenFolder(string path)
     {
         try
         {
-            Directory.CreateDirectory(ruta);
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{ruta}\"") { UseShellExecute = true });
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
         }
         catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
         {
-            _ui.Escribir($"No pude abrir {ruta}: {ex.Message}", Nivel.Error);
+            _ui.Write($"No pude abrir {path}: {ex.Message}", Level.Error);
         }
     }
 
     private void CfgLogs_Click(object sender, RoutedEventArgs e)
     {
-        if (_s is not null) AbrirCarpeta(Path.GetDirectoryName(_s.Servicios.RutaLog("api"))!);
+        if (_s is not null) OpenFolder(Path.GetDirectoryName(_s.Services.LogPath("api"))!);
     }
 
-    private void CfgEstado_Click(object sender, RoutedEventArgs e) => AbrirCarpeta(_estado.Dir);
+    private void CfgStatus_Click(object sender, RoutedEventArgs e) => OpenFolder(_state.Dir);
 
     // ------------------------------------------------------------ Proyecto y cierre
 
     // ------------------------------------------------------------ Barra superior propia
 
-    private void Minimizar_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
-    private void Maximizar_Click(object sender, RoutedEventArgs e) =>
+    private void Maximize_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     // ------------------------------------------------------------ Segundo plano (bandeja del sistema)
 
     /// <summary>La X no cierra: manda la aplicación a la bandeja y todo (terminales, API, emulador) sigue vivo. Mayús+clic sale del todo.</summary>
-    private void Cerrar_Click(object sender, RoutedEventArgs e)
+    private void Close_Click(object sender, RoutedEventArgs e)
     {
-        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) Salir(); else OcultarABandeja();
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) Exit(); else HideToTray();
     }
 
-    private void CrearBandeja()
+    private void CreateTray()
     {
         try
         {
             var info = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/stackdev.ico"));
-            _bandeja = new System.Windows.Forms.NotifyIcon
+            _tray = new System.Windows.Forms.NotifyIcon
             {
                 Text = "stackdev",
                 Icon = info is null ? null : new System.Drawing.Icon(info.Stream),
                 Visible = true,
             };
             var menu = new System.Windows.Forms.ContextMenuStrip();
-            menu.Items.Add("Abrir stackdev", null, (_, _) => Dispatcher.Invoke(MostrarDesdeBandeja));
+            menu.Items.Add("Abrir stackdev", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-            menu.Items.Add("Salir", null, (_, _) => Dispatcher.Invoke(Salir));
-            _bandeja.ContextMenuStrip = menu;
-            _bandeja.MouseClick += (_, ev) =>
+            menu.Items.Add("Salir", null, (_, _) => Dispatcher.Invoke(Exit));
+            _tray.ContextMenuStrip = menu;
+            _tray.MouseClick += (_, ev) =>
             {
-                if (ev.Button == System.Windows.Forms.MouseButtons.Left) Dispatcher.Invoke(MostrarDesdeBandeja);
+                if (ev.Button == System.Windows.Forms.MouseButtons.Left) Dispatcher.Invoke(ShowFromTray);
             };
         }
-        catch (Exception) { _bandeja = null; }   // sin icono de bandeja la X vuelve a cerrar normalmente
+        catch (Exception) { _tray = null; }   // sin icono de bandeja la X vuelve a cerrar normalmente
     }
 
-    private void OcultarABandeja()
+    private void HideToTray()
     {
-        if (_bandeja is null) { Salir(); return; }
+        if (_tray is null) { Exit(); return; }
         Hide();
-        if (!_avisoBandeja)
+        if (!_trayNotified)
         {
-            _avisoBandeja = true;
-            _bandeja.ShowBalloonTip(2500, "stackdev sigue en segundo plano",
+            _trayNotified = true;
+            _tray.ShowBalloonTip(2500, "stackdev sigue en segundo plano",
                 "Haz clic en el icono para volver a abrirlo. Clic derecho → Salir para cerrarlo del todo.",
                 System.Windows.Forms.ToolTipIcon.Info);
         }
     }
 
-    private void MostrarDesdeBandeja()
+    private void ShowFromTray()
     {
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
@@ -1374,137 +1374,137 @@ public partial class MainWindow : Window
         Topmost = true; Topmost = false;   // la trae al frente aunque otra ventana tenga el foco
     }
 
-    private void Salir()
+    private void Exit()
     {
-        _salir = true;
+        _quit = true;
         if (!IsVisible) Show();   // el diálogo de «¿qué hago con lo que corre?» necesita la ventana visible
         Close();
     }
 
-    private void Ventana_StateChanged(object? sender, EventArgs e)
+    private void Window_StateChanged(object? sender, EventArgs e)
     {
-        var maximizada = WindowState == WindowState.Maximized;
+        var maximized = WindowState == WindowState.Maximized;
         // Maximizada, una ventana con marco propio se pasa unos píxeles del borde de la pantalla.
         var rb = SystemParameters.WindowResizeBorderThickness;
-        Raiz.Margin = maximizada ? new Thickness(rb.Left, rb.Top, rb.Right, rb.Bottom + 10) : new Thickness(0);
-        BtnMaximizar.Content = maximizada ? "\uE923" : "\uE922";
+        Root.Margin = maximized ? new Thickness(rb.Left, rb.Top, rb.Right, rb.Bottom + 10) : new Thickness(0);
+        BtnMaximize.Content = maximized ? "\uE923" : "\uE922";
     }
 
-    private void Lateral_Click(object sender, RoutedEventArgs e)
+    private void Sidebar_Click(object sender, RoutedEventArgs e)
     {
         _rail = !_rail;
-        AplicarRail();
+        ApplyRail();
     }
 
     // ------------------------------------------------------------ Terminales: mitad, completo u ocultas
 
-    private void CambiarModoTerminal(ModoTerminal m)
+    private void ChangeTerminalMode(TerminalMode m)
     {
-        _modoTerm = m;
-        if (m == ModoTerminal.Completo)
+        _termMode = m;
+        if (m == TerminalMode.Full)
         {
-            if (NavTerminales.IsChecked != true) { NavTerminales.IsChecked = true; return; }   // Nav_Checked aplica el modo
+            if (NavTerminals.IsChecked != true) { NavTerminals.IsChecked = true; return; }   // Nav_Checked aplica el modo
         }
-        else if (VistaActual() == Vista.Terminales)
+        else if (CurrentView() == ViewKind.Terminals)
         {
-            (_s is null ? NavInicio : NavPanel).IsChecked = true;   // salir de la vista Terminales; Nav_Checked aplica el modo
+            (_s is null ? NavHome : NavPanel).IsChecked = true;   // salir de la vista Terminales; Nav_Checked aplica el modo
             return;
         }
-        AplicarModoTerminal();
+        ApplyTerminalMode();
     }
 
-    private void AplicarModoTerminal(bool crearPrimera = true)
+    private void ApplyTerminalMode(bool createFirst = true)
     {
-        var m = _modoTerm;
-        Principal.Visibility = m == ModoTerminal.Completo ? Visibility.Collapsed : Visibility.Visible;
-        ColPrincipal.MinWidth = m == ModoTerminal.Mitad ? 460 : 0;
+        var m = _termMode;
+        MainArea.Visibility = m == TerminalMode.Full ? Visibility.Collapsed : Visibility.Visible;
+        ColMain.MinWidth = m == TerminalMode.Half ? 460 : 0;
         // En mitad el panel cede espacio: 2/5 para las tarjetas, 3/5 para la terminal
-        ColPrincipal.Width = m == ModoTerminal.Completo ? new GridLength(0)
-            : new GridLength(m == ModoTerminal.Mitad && _modoAplicado == ModoTerminal.Oculto ? 2 : 1, GridUnitType.Star);
-        DockTerminal.Visibility = m == ModoTerminal.Oculto ? Visibility.Collapsed : Visibility.Visible;
-        ColTerminal.MinWidth = m == ModoTerminal.Oculto ? 0 : 360;
-        ColTerminal.Width = m == ModoTerminal.Oculto ? new GridLength(0)
-            : new GridLength(m == ModoTerminal.Mitad && _modoAplicado == ModoTerminal.Oculto ? 3 : 1, GridUnitType.Star);
-        DivisorTerminal.Visibility = m == ModoTerminal.Mitad ? Visibility.Visible : Visibility.Collapsed;
-        _terminales?.MarcarCompleto(m == ModoTerminal.Completo);
-        Dispatcher.InvokeAsync(AjustarTarjetas, DispatcherPriority.Loaded);
+        ColMain.Width = m == TerminalMode.Full ? new GridLength(0)
+            : new GridLength(m == TerminalMode.Half && _appliedMode == TerminalMode.Hidden ? 2 : 1, GridUnitType.Star);
+        TerminalDock.Visibility = m == TerminalMode.Hidden ? Visibility.Collapsed : Visibility.Visible;
+        ColTerminal.MinWidth = m == TerminalMode.Hidden ? 0 : 360;
+        ColTerminal.Width = m == TerminalMode.Hidden ? new GridLength(0)
+            : new GridLength(m == TerminalMode.Half && _appliedMode == TerminalMode.Hidden ? 3 : 1, GridUnitType.Star);
+        TerminalDivider.Visibility = m == TerminalMode.Half ? Visibility.Visible : Visibility.Collapsed;
+        _terminals?.MarkComplete(m == TerminalMode.Full);
+        Dispatcher.InvokeAsync(AdjustCards, DispatcherPriority.Loaded);
 
-        var abre = _modoAplicado == ModoTerminal.Oculto && m != ModoTerminal.Oculto;
-        var cierra = _modoAplicado != ModoTerminal.Oculto && m == ModoTerminal.Oculto;
-        _modoAplicado = m;
-        if (abre) { _railAntes = _rail; _rail = true; }       // con las terminales abiertas el menú pasa a iconos
-        else if (cierra) _rail = _railAntes;
-        AplicarRail();
-        if (abre && crearPrimera) _terminales?.AlMostrar();
+        var opens = _appliedMode == TerminalMode.Hidden && m != TerminalMode.Hidden;
+        var closes = _appliedMode != TerminalMode.Hidden && m == TerminalMode.Hidden;
+        _appliedMode = m;
+        if (opens) { _railBefore = _rail; _rail = true; }       // con las terminales abiertas el menú pasa a iconos
+        else if (closes) _rail = _railBefore;
+        ApplyRail();
+        if (opens && createFirst) _terminals?.OnShow();
     }
 
     /// <summary>Abre (si hace falta, a la mitad) la terminal de una carpeta; si ya hay una pestaña para ella, la muestra.</summary>
-    private void AbrirTerminal(string etiqueta, string carpeta)
+    private void OpenTerminal(string label, string folder)
     {
-        if (_terminales is null) return;
-        if (_modoTerm == ModoTerminal.Oculto)
+        if (_terminals is null) return;
+        if (_termMode == TerminalMode.Hidden)
         {
-            _modoTerm = ModoTerminal.Mitad;
-            AplicarModoTerminal(crearPrimera: false);
+            _termMode = TerminalMode.Half;
+            ApplyTerminalMode(createFirst: false);
         }
-        _terminales.Abrir(etiqueta, carpeta);
+        _terminals.Open(label, folder);
     }
 
     /// <summary>Abre una pestaña de terminal que ejecuta una línea propia (ssh, logs del servidor…).</summary>
-    private void AbrirTerminalComando(string etiqueta, string linea)
+    private void OpenTerminalCommand(string label, string line)
     {
-        if (_terminales is null) return;
-        if (_modoTerm == ModoTerminal.Oculto)
+        if (_terminals is null) return;
+        if (_termMode == TerminalMode.Hidden)
         {
-            _modoTerm = ModoTerminal.Mitad;
-            AplicarModoTerminal(crearPrimera: false);
+            _termMode = TerminalMode.Half;
+            ApplyTerminalMode(createFirst: false);
         }
-        _terminales.AbrirComando(etiqueta, linea);
+        _terminals.OpenCommand(label, line);
     }
 
     /// <summary>Guarda en dev-menu.json a qué servidor se sube este proyecto.</summary>
-    private void GuardarDespliegue(StackDev.Core.Config.DespliegueConfig? d)
+    private void SaveDeployment(StackDev.Core.Config.DeploymentConfig? d)
     {
         if (_s is null) return;
-        var copia = StackDev.Core.Config.ConfigJson.Leer(StackDev.Core.Config.ConfigJson.Escribir(_s.Ctx.Config));
-        copia.Despliegue = d;
-        _s.AplicarConfig(copia);
-        _ui.Escribir("Despliegue del proyecto guardado.", Nivel.Ok);
+        var copy = StackDev.Core.Config.ConfigJson.Read(StackDev.Core.Config.ConfigJson.Write(_s.Ctx.Config));
+        copy.Deployment = d;
+        _s.ApplyConfig(copy);
+        _ui.Write("Despliegue del proyecto guardado.", Level.Ok);
     }
 
     /// <summary>Atajos de terminales: funcionan igual con el foco en la ventana o dentro de una terminal.</summary>
-    private void AtajoTerminal(string accion, int n)
+    private void TerminalShortcut(string action, int n)
     {
-        if (_terminales is null || _s is null) return;
-        if (accion == "toggle")
+        if (_terminals is null || _s is null) return;
+        if (action == "toggle")
         {
-            CambiarModoTerminal(_modoTerm == ModoTerminal.Oculto ? ModoTerminal.Mitad : ModoTerminal.Oculto);
+            ChangeTerminalMode(_termMode == TerminalMode.Hidden ? TerminalMode.Half : TerminalMode.Hidden);
             return;
         }
-        var estabaOculto = _modoTerm == ModoTerminal.Oculto;
-        if (estabaOculto)
+        var wasHidden = _termMode == TerminalMode.Hidden;
+        if (wasHidden)
         {
-            _modoTerm = ModoTerminal.Mitad;
-            AplicarModoTerminal();          // crea la primera terminal si no hay ninguna
-            if (accion is "next" or "prev") return;   // ya se muestra la primera; no saltar de pestaña
+            _termMode = TerminalMode.Half;
+            ApplyTerminalMode();          // crea la primera terminal si no hay ninguna
+            if (action is "next" or "prev") return;   // ya se muestra la primera; no saltar de pestaña
         }
-        _terminales.Atajo(accion, n);
+        _terminals.Shortcut(action, n);
     }
 
-    private void TerminalRaiz_Click(object sender, RoutedEventArgs e)
+    private void RootTerminal_Click(object sender, RoutedEventArgs e)
     {
-        if (_s is not null) AbrirTerminal("raíz", _s.Raiz);
+        if (_s is not null) OpenTerminal("raíz", _s.Root);
     }
 
-    private (string Etiqueta, string Carpeta)? TerminalDeTarjeta(string seccion)
+    private (string Label, string Folder)? CardTerminal(string section)
     {
         if (_s is null) return null;
-        return seccion switch
+        return section switch
         {
-            "POSTGRES" => ("raíz", _s.Raiz),
-            "API" => ("api", CarpetaTerminal(Componente.Api, "api", "backend", "server", "src")),
-            "WEB" => ("web", CarpetaTerminal(Componente.Web, "web", "frontend", "client", "app")),
-            "FLUTTER" => ("móvil", CarpetaTerminal(Componente.Movil, "mobile", "movil", "app", "flutter")),
+            "POSTGRES" => ("raíz", _s.Root),
+            "API" => ("api", TerminalFolder(ProjectComponent.Api, "api", "backend", "server", "src")),
+            "WEB" => ("web", TerminalFolder(ProjectComponent.Web, "web", "frontend", "client", "app")),
+            "FLUTTER" => ("móvil", TerminalFolder(ProjectComponent.Mobile, "mobile", "movil", "app", "flutter")),
             _ => null,
         };
     }
@@ -1513,21 +1513,21 @@ public partial class MainWindow : Window
     /// Carpeta configurada del componente; si es la propia raíz (los comandos usan rutas relativas),
     /// se prefiere la subcarpeta con el nombre típico, para que la terminal abra donde se trabaja.
     /// </summary>
-    private string CarpetaTerminal(Componente c, params string[] candidatas)
+    private string TerminalFolder(ProjectComponent c, params string[] candidates)
     {
-        var raiz = _s!.Raiz;
-        var conf = _s.Ctx.Carpeta(c);
-        if (!string.Equals(Path.GetFullPath(conf).TrimEnd('\\', '/'), Path.GetFullPath(raiz).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+        var root = _s!.Root;
+        var conf = _s.Ctx.Folder(c);
+        if (!string.Equals(Path.GetFullPath(conf).TrimEnd('\\', '/'), Path.GetFullPath(root).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
             return conf;
-        foreach (var n in candidatas)
+        foreach (var n in candidates)
         {
-            var dir = Path.Combine(raiz, n);
+            var dir = Path.Combine(root, n);
             if (Directory.Exists(dir)) return dir;
         }
         return conf;
     }
 
-    private static readonly (string Texto, string Glifo)[] NavIconos =
+    private static readonly (string Text, string Glyph)[] NavIcons =
     {
         ("Proyectos", "\uE8B7"),
         ("Panel", "\uE80A"),
@@ -1540,119 +1540,119 @@ public partial class MainWindow : Window
     };
 
     /// <summary>Menú lateral completo (texto) o reducido a iconos pequeños.</summary>
-    private void AplicarRail()
+    private void ApplyRail()
     {
-        ColLateral.Width = new GridLength(_rail ? 60 : 240);
-        TarjetaProyecto.Visibility = PieLateral.Visibility = _rail ? Visibility.Collapsed : Visibility.Visible;
-        LateralInterno.Margin = _rail ? new Thickness(8, 16, 8, 16) : new Thickness(16);
-        var botones = new[] { NavInicio, NavPanel, NavTerminales, NavDiag, NavServidor, NavCond, NavConsola, NavConfig };
-        for (var i = 0; i < botones.Length; i++)
+        ColSidebar.Width = new GridLength(_rail ? 60 : 240);
+        ProjectCard.Visibility = SidebarFooter.Visibility = _rail ? Visibility.Collapsed : Visibility.Visible;
+        SidebarInner.Margin = _rail ? new Thickness(8, 16, 8, 16) : new Thickness(16);
+        var buttons = new[] { NavHome, NavPanel, NavTerminals, NavDiagnostics, NavServer, NavCond, NavConsole, NavConfig };
+        for (var i = 0; i < buttons.Length; i++)
         {
-            var (texto, glifo) = NavIconos[i];
-            botones[i].ToolTip = _rail ? texto : null;
-            botones[i].Content = _rail
+            var (text, glyph) = NavIcons[i];
+            buttons[i].ToolTip = _rail ? text : null;
+            buttons[i].Content = _rail
                 ? new TextBlock
                 {
-                    Text = glifo,
+                    Text = glyph,
                     FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
                     FontSize = 16,
                     HorizontalAlignment = HorizontalAlignment.Center,
                 }
-                : ConIconoNav(glifo, texto);
+                : WithNavIcon(glyph, text);
         }
     }
 
-    private static object ConIconoNav(string glifo, string texto)
+    private static object WithNavIcon(string glyph, string text)
     {
-        var fila = new StackPanel { Orientation = Orientation.Horizontal };
-        fila.Children.Add(new TextBlock
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new TextBlock
         {
-            Text = glifo,
-            FontFamily = new FontFamily(Iconos.Fuente),
+            Text = glyph,
+            FontFamily = new FontFamily(Icons.Font),
             FontSize = 15,
             Width = 22,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0),
         });
-        fila.Children.Add(new TextBlock { Text = texto, VerticalAlignment = VerticalAlignment.Center });
-        return fila;
+        row.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+        return row;
     }
 
-    private void Atras_Click(object sender, RoutedEventArgs e) => NavInicio.IsChecked = true;
+    private void Back_Click(object sender, RoutedEventArgs e) => NavHome.IsChecked = true;
 
-    private bool EsFavorito(string? ruta)
+    private bool IsFavorite(string? path)
     {
-        var fav = _estado.Favorito;
-        if (string.IsNullOrWhiteSpace(fav) || string.IsNullOrWhiteSpace(ruta)) return false;
-        return string.Equals(Path.GetFullPath(fav), Path.GetFullPath(ruta), StringComparison.OrdinalIgnoreCase);
+        var fav = _state.Favorite;
+        if (string.IsNullOrWhiteSpace(fav) || string.IsNullOrWhiteSpace(path)) return false;
+        return string.Equals(Path.GetFullPath(fav), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Solo uno puede ser favorito: marcar otro quita el anterior; volver a pulsar lo quita.</summary>
-    private void AlternarFavorito(string ruta)
+    private void ToggleFavorite(string path)
     {
-        if (EsFavorito(ruta))
+        if (IsFavorite(path))
         {
-            _estado.Favorito = null;
-            _ui.Escribir("Ya no hay proyecto favorito.", Nivel.Tenue);
+            _state.Favorite = null;
+            _ui.Write("Ya no hay proyecto favorito.", Level.Muted);
         }
         else
         {
-            _estado.Favorito = Path.GetFullPath(ruta);
-            _ui.Escribir($"Favorito: {ruta}. Se abrirá al iniciar la aplicación.", Nivel.Ok);
+            _state.Favorite = Path.GetFullPath(path);
+            _ui.Write($"Favorito: {path}. Se abrirá al iniciar la aplicación.", Level.Ok);
         }
-        ActualizarFavorito();
-        if (VistaActual() == Vista.Inicio) RefrescarInicio();
+        UpdateFavorite();
+        if (CurrentView() == ViewKind.Home) RefreshHome();
     }
 
     // ------------------------------------------------------------ Chip del proyecto (~/proyecto on rama*)
 
-    private string? _raizGit;
-    private string? _rama;
-    private bool _sucio;
-    private DateTime _ultimoGit = DateTime.MinValue;
+    private string? _gitRoot;
+    private string? _branch;
+    private bool _dirty;
+    private DateTime _lastGit = DateTime.MinValue;
 
-    private void PintarChip()
+    private void PaintChip()
     {
         if (_s is null)
         {
-            ChipProyecto.Visibility = Visibility.Collapsed;
-            TxtTituloVentana.Visibility = Visibility.Visible;
+            ProjectChip.Visibility = Visibility.Collapsed;
+            TxtWindowTitle.Visibility = Visibility.Visible;
             return;
         }
-        ChipProyecto.Visibility = Visibility.Visible;
-        TxtTituloVentana.Visibility = Visibility.Collapsed;
+        ProjectChip.Visibility = Visibility.Visible;
+        TxtWindowTitle.Visibility = Visibility.Collapsed;
         var t = new TextBlock { FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center };
         t.Inlines.Add(new Run("~/") { Foreground = P("MutedBrush") });
-        t.Inlines.Add(new Run(_s.Ctx.Nombre) { Foreground = P("TextBrush") });
-        if (_rama is not null)
+        t.Inlines.Add(new Run(_s.Ctx.Name) { Foreground = P("TextBrush") });
+        if (_branch is not null)
         {
             t.Inlines.Add(new Run("  on  ") { Foreground = P("MutedBrush") });
-            t.Inlines.Add(new Run(_rama) { Foreground = P("AccentBrush") });
-            if (_sucio) t.Inlines.Add(new Run("*") { Foreground = P("WarnBrush") });
+            t.Inlines.Add(new Run(_branch) { Foreground = P("AccentBrush") });
+            if (_dirty) t.Inlines.Add(new Run("*") { Foreground = P("WarnBrush") });
         }
         t.Inlines.Add(new Run("   ▾") { Foreground = P("MutedBrush") });
-        ChipProyecto.Content = t;
-        ChipProyecto.ToolTip = $"{_s.Raiz}\nCambiar de proyecto (Ctrl+P)";
+        ProjectChip.Content = t;
+        ProjectChip.ToolTip = $"{_s.Root}\nCambiar de proyecto (Ctrl+P)";
     }
 
-    private async Task ActualizarGitAsync()
+    private async Task UpdateGitAsync()
     {
-        var raiz = _s?.Raiz;
-        if (raiz is null) return;
-        var (rama, sucio) = await Task.Run(() => LeerGit(raiz));
-        if (!string.Equals(raiz, _s?.Raiz, StringComparison.OrdinalIgnoreCase)) return;
-        _rama = rama;
-        _sucio = sucio;
-        PintarChip();
+        var root = _s?.Root;
+        if (root is null) return;
+        var (branch, dirty) = await Task.Run(() => ReadGit(root));
+        if (!string.Equals(root, _s?.Root, StringComparison.OrdinalIgnoreCase)) return;
+        _branch = branch;
+        _dirty = dirty;
+        PaintChip();
     }
 
-    private static (string? Rama, bool Sucio) LeerGit(string raiz)
+    private static (string? Rama, bool Sucio) ReadGit(string root)
     {
-        static string? Git(string raiz, string args)
+        static string? Git(string root, string args)
         {
             try
             {
-                using var p = Process.Start(new ProcessStartInfo("git", $"-C \"{raiz}\" {args}")
+                using var p = Process.Start(new ProcessStartInfo("git", $"-C \"{root}\" {args}")
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -1660,88 +1660,88 @@ public partial class MainWindow : Window
                     CreateNoWindow = true,
                 });
                 if (p is null) return null;
-                var salida = p.StandardOutput.ReadToEnd();
+                var output = p.StandardOutput.ReadToEnd();
                 if (!p.WaitForExit(3000)) { try { p.Kill(); } catch { } return null; }
-                return p.ExitCode == 0 ? salida.Trim() : null;
+                return p.ExitCode == 0 ? output.Trim() : null;
             }
             catch { return null; }
         }
 
-        var rama = Git(raiz, "rev-parse --abbrev-ref HEAD");
-        if (string.IsNullOrEmpty(rama)) return (null, false);
-        if (rama == "HEAD") rama = Git(raiz, "rev-parse --short HEAD") ?? "HEAD";
-        var sucio = !string.IsNullOrEmpty(Git(raiz, "status --porcelain"));
-        return (rama, sucio);
+        var branch = Git(root, "rev-parse --abbrev-ref HEAD");
+        if (string.IsNullOrEmpty(branch)) return (null, false);
+        if (branch == "HEAD") branch = Git(root, "rev-parse --short HEAD") ?? "HEAD";
+        var dirty = !string.IsNullOrEmpty(Git(root, "status --porcelain"));
+        return (branch, dirty);
     }
 
-    private void ActualizarFavorito()
+    private void UpdateFavorite()
     {
-        BtnFavoritoBarra.Visibility = _s is null ? Visibility.Collapsed : Visibility.Visible;
-        BtnCambiarBarra.Visibility = Visibility.Collapsed;   // lo reemplaza el chip del proyecto
-        if (!string.Equals(_raizGit, _s?.Raiz, StringComparison.OrdinalIgnoreCase))
+        BtnBarFavorite.Visibility = _s is null ? Visibility.Collapsed : Visibility.Visible;
+        BtnChangeBar.Visibility = Visibility.Collapsed;   // lo reemplaza el chip del proyecto
+        if (!string.Equals(_gitRoot, _s?.Root, StringComparison.OrdinalIgnoreCase))
         {
-            _raizGit = _s?.Raiz;
-            _rama = null;
-            _sucio = false;
-            _ultimoGit = DateTime.UtcNow;
-            _ = ActualizarGitAsync();
+            _gitRoot = _s?.Root;
+            _branch = null;
+            _dirty = false;
+            _lastGit = DateTime.UtcNow;
+            _ = UpdateGitAsync();
         }
-        PintarChip();
-        var fav = _s is not null && EsFavorito(_s.Raiz);
-        BtnFavoritoBarra.Content = fav ? "★" : "☆";
-        BtnFavoritoBarra.Foreground = P(fav ? "WarnBrush" : "MutedBrush");
+        PaintChip();
+        var fav = _s is not null && IsFavorite(_s.Root);
+        BtnBarFavorite.Content = fav ? "★" : "☆";
+        BtnBarFavorite.Foreground = P(fav ? "WarnBrush" : "MutedBrush");
     }
 
-    private void FavoritoBarra_Click(object sender, RoutedEventArgs e)
+    private void BarFavorite_Click(object sender, RoutedEventArgs e)
     {
-        if (_s is not null) AlternarFavorito(_s.Raiz);
+        if (_s is not null) ToggleFavorite(_s.Root);
     }
 
-    private void CambiarProyecto_Click(object sender, RoutedEventArgs e) => NavInicio.IsChecked = true;
+    private void ChangeProjectClick(object sender, RoutedEventArgs e) => NavHome.IsChecked = true;
 
-    private async void AbrirCarpeta_Click(object sender, RoutedEventArgs e)
+    private async void OpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (_ocupado) return;
-        var ruta = Dialogos.Proyecto(this, _estado.UltimoProyecto);
-        if (ruta is null) return;
-        await AbrirDesdeInicio(ruta);
+        if (_busy) return;
+        var path = Dialogs.Project(this, _state.LastProject);
+        if (path is null) return;
+        await OpenFromHome(path);
     }
 
-    private async Task AbrirDesdeInicio(string ruta)
+    private async Task OpenFromHome(string path)
     {
-        if (_ocupado) { _ui.Escribir("Espera a que termine la acción en curso.", Nivel.Aviso); return; }
-        if (!Directory.Exists(ruta)) { _ui.Escribir($"Esa carpeta ya no existe: {ruta}", Nivel.Aviso); RefrescarInicio(); return; }
-        if (_s is not null && string.Equals(Path.GetFullPath(ruta), _s.Raiz, StringComparison.OrdinalIgnoreCase))
+        if (_busy) { _ui.Write("Espera a que termine la acción en curso.", Level.Warning); return; }
+        if (!Directory.Exists(path)) { _ui.Write($"Esa carpeta ya no existe: {path}", Level.Warning); RefreshHome(); return; }
+        if (_s is not null && string.Equals(Path.GetFullPath(path), _s.Root, StringComparison.OrdinalIgnoreCase))
         {
             NavPanel.IsChecked = true;
             return;
         }
-        await AbrirProyectoAsync(ruta);
+        await OpenProjectAsync(path);
     }
 
-    private void ActualizarNav()
+    private void UpdateNav()
     {
-        var hay = _s is not null;
-        TxtBarra.IsEnabled = BtnBarra.IsEnabled = hay && !_ocupado;
-        ActualizarFavorito();
-        NavPanel.IsEnabled = NavTerminales.IsEnabled = NavDiag.IsEnabled = NavCond.IsEnabled = NavConsola.IsEnabled = NavConfig.IsEnabled = hay;
-        if (!hay)
+        var has = _s is not null;
+        TxtBar.IsEnabled = BtnBar.IsEnabled = has && !_busy;
+        UpdateFavorite();
+        NavPanel.IsEnabled = NavTerminals.IsEnabled = NavDiagnostics.IsEnabled = NavCond.IsEnabled = NavConsole.IsEnabled = NavConfig.IsEnabled = has;
+        if (!has)
         {
-            TxtProyecto.Text = "Sin proyecto";
-            TxtRuta.Text = "";
-            TxtModo.Text = "—";
+            TxtProject.Text = "Sin proyecto";
+            TxtPath.Text = "";
+            TxtMode.Text = "—";
             TxtAvd.Text = "—";
-            TxtDirBarra.Text = ">";
+            TxtBarDir.Text = ">";
         }
     }
 
-    private void RefrescarInicio()
+    private void RefreshHome()
     {
-        PanelInicio.Children.Clear();
-        var lista = _estado.LeerProyectos();
-        if (lista.Count == 0)
+        HomePanel.Children.Clear();
+        var list = _state.ReadProjects();
+        if (list.Count == 0)
         {
-            PanelInicio.Children.Add(new TextBlock
+            HomePanel.Children.Add(new TextBlock
             {
                 Text = "Aún no has abierto ningún proyecto. Usa «Abrir carpeta…» para empezar.",
                 Foreground = P("MutedBrush"),
@@ -1749,129 +1749,129 @@ public partial class MainWindow : Window
             return;
         }
 
-        foreach (var ruta in lista)
+        foreach (var path in list)
         {
-            var carpeta = ruta;
-            var existe = Directory.Exists(ruta);
-            var nombre = Path.GetFileName(ruta.TrimEnd('\\', '/'));
-            if (string.IsNullOrEmpty(nombre)) nombre = ruta;
-            var partes = new List<string>();
-            if (existe)
+            var folder = path;
+            var exists = Directory.Exists(path);
+            var name = Path.GetFileName(path.TrimEnd('\\', '/'));
+            if (string.IsNullOrEmpty(name)) name = path;
+            var parts = new List<string>();
+            if (exists)
             {
                 try
                 {
-                    var st = new ConfigStore(ruta, _estado.CarpetaConfig(StateStore.Clave(ruta)));
-                    if (st.Existe)
+                    var st = new ConfigStore(path, _state.ConfigFolder(StateStore.Key(path)));
+                    if (st.Exists)
                     {
-                        st.Cargar();
+                        st.Load();
                         if (st.Error is null)
                         {
-                            var c = st.Contexto;
-                            nombre = c.Nombre;
-                            if (c.Tiene(Componente.Postgres)) partes.Add("Postgres");
-                            if (c.Tiene(Componente.Api)) partes.Add("API");
-                            if (c.Tiene(Componente.Web)) partes.Add("Web");
-                            if (c.Tiene(Componente.Movil)) partes.Add("Móvil");
+                            var c = st.Context;
+                            name = c.Name;
+                            if (c.Has(ProjectComponent.Postgres)) parts.Add("Postgres");
+                            if (c.Has(ProjectComponent.Api)) parts.Add("API");
+                            if (c.Has(ProjectComponent.Web)) parts.Add("Web");
+                            if (c.Has(ProjectComponent.Mobile)) parts.Add("Móvil");
                         }
                     }
                 }
                 catch (Exception) { /* una configuración dañada no debe romper la lista */ }
             }
 
-            var abierto = _s is not null && string.Equals(_s.Raiz, Path.GetFullPath(ruta), StringComparison.OrdinalIgnoreCase);
+            var isOpen = _s is not null && string.Equals(_s.Root, Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
 
-            var esFav = EsFavorito(ruta);
-            var cabecera = new Grid();
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition());
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            cabecera.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            cabecera.Children.Add(new TextBlock { Text = nombre, FontSize = 16, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
-            if (abierto || !existe)
+            var isFav = IsFavorite(path);
+            var header = new Grid();
+            header.ColumnDefinitions.Add(new ColumnDefinition());
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.Children.Add(new TextBlock { Text = name, FontSize = 16, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center });
+            if (isOpen || !exists)
             {
-                var etiqueta = new TextBlock
+                var label = new TextBlock
                 {
-                    Text = abierto ? "ABIERTO" : "NO EXISTE",
+                    Text = isOpen ? "ABIERTO" : "NO EXISTE",
                     FontSize = 10,
-                    Foreground = P(abierto ? "OkBrush" : "WarnBrush"),
+                    Foreground = P(isOpen ? "OkBrush" : "WarnBrush"),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 6, 0),
                 };
-                Grid.SetColumn(etiqueta, 1);
-                cabecera.Children.Add(etiqueta);
+                Grid.SetColumn(label, 1);
+                header.Children.Add(label);
             }
-            var estrella = new Button
+            var star = new Button
             {
-                Content = esFav ? "★" : "☆",
-                Style = (Style)FindResource("BtnIcono"),
-                Foreground = P(esFav ? "WarnBrush" : "MutedBrush"),
-                ToolTip = esFav ? "Quitar de favorito" : "Hacer favorito: se abrirá al iniciar la aplicación",
+                Content = isFav ? "★" : "☆",
+                Style = (Style)FindResource("BtnIcon"),
+                Foreground = P(isFav ? "WarnBrush" : "MutedBrush"),
+                ToolTip = isFav ? "Quitar de favorito" : "Hacer favorito: se abrirá al iniciar la aplicación",
             };
-            estrella.Click += (_, _) => AlternarFavorito(carpeta);
-            Grid.SetColumn(estrella, 2);
-            cabecera.Children.Add(estrella);
+            star.Click += (_, _) => ToggleFavorite(folder);
+            Grid.SetColumn(star, 2);
+            header.Children.Add(star);
 
-            var botones = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-            var abrir = new Button { Content = abierto ? "Ir al panel" : "Abrir", Style = (Style)FindResource("BtnChip"), Background = P("AccentBrush"), BorderBrush = P("AccentBrush"), Foreground = P("AccentOnBrush") };
-            abrir.Click += async (_, _) => await AbrirDesdeInicio(carpeta);
-            var quitar = new Button { Content = "Quitar de la lista", Style = (Style)FindResource("BtnChip") };
-            quitar.Click += (_, _) => { _estado.QuitarProyecto(carpeta); RefrescarInicio(); };
-            botones.Children.Add(abrir);
-            botones.Children.Add(quitar);
+            var buttons = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+            var open = new Button { Content = isOpen ? "Ir al panel" : "Abrir", Style = (Style)FindResource("BtnChip"), Background = P("AccentBrush"), BorderBrush = P("AccentBrush"), Foreground = P("AccentOnBrush") };
+            open.Click += async (_, _) => await OpenFromHome(folder);
+            var remove = new Button { Content = "Quitar de la lista", Style = (Style)FindResource("BtnChip") };
+            remove.Click += (_, _) => { _state.RemoveProject(folder); RefreshHome(); };
+            buttons.Children.Add(open);
+            buttons.Children.Add(remove);
 
-            var contenido = new StackPanel();
-            contenido.Children.Add(cabecera);
-            contenido.Children.Add(new TextBlock { Text = ruta, FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = ruta });
-            if (partes.Count > 0)
-                contenido.Children.Add(new TextBlock { Text = string.Join("  ·  ", partes), FontSize = 12, Foreground = P("MutedBrush"), Margin = new Thickness(0, 8, 0, 0) });
-            contenido.Children.Add(botones);
+            var content = new StackPanel();
+            content.Children.Add(header);
+            content.Children.Add(new TextBlock { Text = path, FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 4, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = path });
+            if (parts.Count > 0)
+                content.Children.Add(new TextBlock { Text = string.Join("  ·  ", parts), FontSize = 12, Foreground = P("MutedBrush"), Margin = new Thickness(0, 8, 0, 0) });
+            content.Children.Add(buttons);
 
-            PanelInicio.Children.Add(new Border
+            HomePanel.Children.Add(new Border
             {
                 Style = (Style)FindResource("Card"),
                 Width = 380,
                 Margin = new Thickness(0, 0, 16, 16),
-                Child = contenido,
+                Child = content,
             });
         }
-        Dispatcher.InvokeAsync(AjustarInicio, DispatcherPriority.Loaded);
+        Dispatcher.InvokeAsync(AdjustHome, DispatcherPriority.Loaded);
     }
 
-    private async void AlCerrar(object? sender, System.ComponentModel.CancelEventArgs e)
+    private async void OnClose(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (!_salir && !_cerrando && _bandeja is not null)
+        if (!_quit && !_closing && _tray is not null)
         {
             e.Cancel = true;      // Alt+F4 o cerrar desde la barra de tareas: también a segundo plano
-            OcultarABandeja();
+            HideToTray();
             return;
         }
-        if (_cerrando) { _bandeja?.Dispose(); _terminales?.CerrarTodo(); _mon?.Dispose(); return; }
-        if (_s is null) { _bandeja?.Dispose(); _terminales?.CerrarTodo(); return; }
+        if (_closing) { _tray?.Dispose(); _terminals?.CloseAll(); _mon?.Dispose(); return; }
+        if (_s is null) { _tray?.Dispose(); _terminals?.CloseAll(); return; }
 
         e.Cancel = true;   // se decide primero qué hacer con lo que sigue corriendo
-        _salir = false;    // si al final se cancela, la próxima X vuelve a ir a segundo plano
-        if (_ocupado)
+        _quit = false;    // si al final se cancela, la próxima X vuelve a ir a segundo plano
+        if (_busy)
         {
-            if (!Dialogos.Confirmar(this, "Hay una acción en curso. ¿Cancelarla y salir?", false)) return;
+            if (!Dialogs.Confirm(this, "Hay una acción en curso. ¿Cancelarla y salir?", false)) return;
             _cts?.Cancel();
-            while (_ocupado) await Task.Delay(100);
+            while (_busy) await Task.Delay(100);
         }
 
         var s = _s;
-        Instantanea? foto = null;
+        Snapshot? photo = null;
         _timer.Stop();
-        try { foto = await Task.Run(() => Instantanea.Tomar(s)); } catch (Exception) { }
+        try { photo = await Task.Run(() => Snapshot.Take(s)); } catch (Exception) { }
 
-        if (foto is { HayAlgoCorriendo: true })
+        if (photo is { AnythingRunning: true })
         {
-            var i = Dialogos.Elegir(this, "Hay cosas corriendo. ¿Qué hago?",
+            var i = Dialogs.Choose(this, "Hay cosas corriendo. ¿Qué hago?",
                 new[] { "Detener todo y salir", "Salir y dejar todo corriendo" }, 0);
             if (i < 0) { _timer.Start(); return; }
             if (i == 0)
             {
-                await CorrerAsync("Detener todo", x => x.Todo.Detener());
+                await RunAsync("Detener todo", x => x.All.Stop());
             }
         }
-        _cerrando = true;
+        _closing = true;
         Close();
     }
 }

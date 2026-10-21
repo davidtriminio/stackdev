@@ -6,7 +6,7 @@ public partial class App : Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
-        try { Apariencia.Aplicar(StackDev.Core.State.StateStore.Abrir().Acento); } catch { }
+        try { Appearance.Apply(StackDev.Core.State.StateStore.Open().Accent); } catch { }
         base.OnStartup(e);
     }
 

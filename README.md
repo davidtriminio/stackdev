@@ -90,15 +90,15 @@ Está en la raíz del repo. Es el mismo formato de siempre; se pueden agregar ca
 
 | Sección | Campos |
 |---|---|
-| `nombre` | Nombre del proyecto |
-| `postgres` | `contenedor`, `imagen`, `puerto`, `usuario`, `password`, `baseDatos`, `volumen` (vacío = sin volumen con nombre) |
-| `api` | `carpeta`, `url`, `abrir` (ruta que se abre en el navegador, p. ej. `/scalar`), `env`, `iniciar`, `test`, `build` |
-| `web` | `carpeta`, `url`, `iniciar`, `test`, `build`, `instalar` |
-| `movil` | `carpeta`, `androidSdk`, `avd`, `argsRun`, `analizar`, `test`, `formato`, `generar` |
-| `levantarTodo` | Orden de "levantar todo": `postgres`, `api`, `web`, `emulador` |
-| `tareas` | Lista de `{ nombre, carpeta, comando }` |
+| `name` | Nombre del proyecto |
+| `postgres` | `container`, `image`, `port`, `user`, `password`, `database`, `volume` (vacío = sin volumen con nombre) |
+| `api` | `folder`, `url`, `open` (ruta que se abre en el navegador, p. ej. `/scalar`), `env`, `start`, `test`, `build` |
+| `web` | `folder`, `url`, `start`, `test`, `build`, `install` |
+| `mobile` | `folder`, `androidSdk`, `avd`, `argsRun`, `parse`, `test`, `format`, `generate` |
+| `startAll` | Orden de "levantar todo": `postgres`, `api`, `web`, `emulador` |
+| `tasks` | Lista de `{ name, folder, command }` |
 
-- Las rutas son relativas a la raíz del repo; los comandos corren en la `carpeta` de su componente.
+- Las rutas son relativas a la raíz del repo; los comandos corren en la `folder` de su componente.
 - `api.env` aplica a la API **y a cualquier comando dentro de la carpeta de la API** (así `dotnet ef` funciona sin preparar nada).
 - `{?Texto}` dentro de un comando pide un valor al ejecutar la tarea; si se deja vacío, se cancela.
 - Si editas el archivo, la herramienta lo recarga sola.

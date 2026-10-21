@@ -4,56 +4,56 @@ using StackDev.Core.Ui;
 namespace StackDev.Cli.Ui;
 
 /// <summary>La pantalla interactiva: mensajes con color, confirmaciones y listas con flechas.</summary>
-public sealed class SpectreUi : IConsolaUi
+public sealed class SpectreUi : IConsoleUi
 {
-    public bool Interactiva => !Console.IsInputRedirected;
+    public bool Interactive => !Console.IsInputRedirected;
 
-    public void Escribir(string texto, Nivel nivel = Nivel.Normal)
+    public void Write(string text, Level level = Level.Normal)
     {
-        if (texto.Length == 0) { AnsiConsole.WriteLine(); return; }
-        var lineas = texto.Split('\n');
-        foreach (var l in lineas)
+        if (text.Length == 0) { AnsiConsole.WriteLine(); return; }
+        var lines = text.Split('\n');
+        foreach (var l in lines)
         {
             var e = Markup.Escape(l.TrimEnd('\r'));
-            AnsiConsole.MarkupLine(nivel switch
+            AnsiConsole.MarkupLine(level switch
             {
-                Nivel.Titulo => $"[bold cyan]{e}[/]",
-                Nivel.Info => $"[cyan]{e}[/]",
-                Nivel.Ok => $"[green]{e}[/]",
-                Nivel.Aviso => $"[yellow]{e}[/]",
-                Nivel.Error => $"[red]{e}[/]",
-                Nivel.Tenue => $"[grey]{e}[/]",
+                Level.Title => $"[bold cyan]{e}[/]",
+                Level.Info => $"[cyan]{e}[/]",
+                Level.Ok => $"[green]{e}[/]",
+                Level.Warning => $"[yellow]{e}[/]",
+                Level.Error => $"[red]{e}[/]",
+                Level.Muted => $"[grey]{e}[/]",
                 _ => e,
             });
         }
     }
 
-    public void EscribirInline(string texto) => AnsiConsole.Markup(Markup.Escape(texto));
+    public void WriteInline(string text) => AnsiConsole.Markup(Markup.Escape(text));
 
-    public bool Confirmar(string pregunta, bool porDefecto = true) =>
-        AnsiConsole.Confirm(Markup.Escape(pregunta), porDefecto);
+    public bool Confirm(string question, bool byDefault = true) =>
+        AnsiConsole.Confirm(Markup.Escape(question), byDefault);
 
-    public string? Preguntar(string pregunta, string? porDefecto = null)
+    public string? Ask(string question, string? byDefault = null)
     {
-        var p = new TextPrompt<string>(Markup.Escape(pregunta)).AllowEmpty();
-        if (!string.IsNullOrEmpty(porDefecto)) p = p.DefaultValue(porDefecto);
+        var p = new TextPrompt<string>(Markup.Escape(question)).AllowEmpty();
+        if (!string.IsNullOrEmpty(byDefault)) p = p.DefaultValue(byDefault);
         var r = AnsiConsole.Prompt(p).Trim();
         return r.Length == 0 ? null : r;
     }
 
-    public int Elegir(string titulo, IReadOnlyList<string> opciones, int porDefecto = -1)
+    public int Choose(string title, IReadOnlyList<string> options, int byDefault = -1)
     {
         // El primero de la lista es el que queda seleccionado: el valor por defecto va arriba.
-        var orden = new List<int>();
-        if (porDefecto >= 0 && porDefecto < opciones.Count) orden.Add(porDefecto);
-        for (var i = 0; i < opciones.Count; i++) if (i != porDefecto) orden.Add(i);
-        orden.Add(-1);
+        var order = new List<int>();
+        if (byDefault >= 0 && byDefault < options.Count) order.Add(byDefault);
+        for (var i = 0; i < options.Count; i++) if (i != byDefault) order.Add(i);
+        order.Add(-1);
 
         var prompt = new SelectionPrompt<int>()
-            .Title(Markup.Escape(titulo))
+            .Title(Markup.Escape(title))
             .PageSize(15)
-            .UseConverter(i => i < 0 ? "[grey]Cancelar[/]" : Markup.Escape(opciones[i]))
-            .AddChoices(orden);
+            .UseConverter(i => i < 0 ? "[grey]Cancelar[/]" : Markup.Escape(options[i]))
+            .AddChoices(order);
         return AnsiConsole.Prompt(prompt);
     }
 }
