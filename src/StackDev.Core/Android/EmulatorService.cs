@@ -6,17 +6,17 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Android;
 
-public enum CodigoEmu { Ninguno, Ok, NoResponde }
+public enum EmuCode { None, Ok, NotResponding }
 
-public sealed record EstadoEmu(CodigoEmu Codigo, string? Serial, string Texto);
+public sealed record EmuState(EmuCode Code, string? Serial, string Text);
 
-public enum ResultadoArranque { Ok, Tiempo, Cancelado, Muerto }
+public enum StartupResult { Ok, Timeout, Cancelled, Dead }
 
 /// <summary>Seguimiento del arranque de un emulador (para poder esperar varias cosas a la vez).</summary>
-public sealed class EsperaEmu
+public sealed class EmuWait
 {
     public string? Serial { get; set; }
-    public bool Centrado { get; set; }
+    public bool Centered { get; set; }
 }
 
 /// <summary>
@@ -25,64 +25,64 @@ public sealed class EsperaEmu
 /// </summary>
 public sealed class EmulatorService
 {
-    private readonly Sesion _s;
+    private readonly Session _s;
 
-    public EmulatorService(Sesion s) { _s = s; }
+    public EmulatorService(Session s) { _s = s; }
 
-    private bool HayAndroid(bool avisar = true)
+    private bool HasAndroid(bool warn = true)
     {
         if (_s.EmulatorExe is not null && _s.Adb is not null) return true;
-        if (avisar)
+        if (warn)
         {
-            _s.Ui.Escribir("No encontré el Android SDK (emulator y platform-tools).", Nivel.Error);
-            _s.Ui.Escribir("Pon la ruta en movil.androidSdk de dev-menu.json.", Nivel.Aviso);
+            _s.Ui.Write("No encontré el Android SDK (emulator y platform-tools).", Level.Error);
+            _s.Ui.Write("Pon la ruta en mobile.androidSdk de dev-menu.json.", Level.Warning);
         }
         return false;
     }
 
     // ------------------------------------------------------------ Estado
 
-    public static Process[] Procesos() =>
+    public static Process[] Processes() =>
         Process.GetProcesses().Where(p =>
         {
             try { return p.ProcessName.StartsWith("qemu-system-", StringComparison.OrdinalIgnoreCase) || p.ProcessName.Equals("emulator", StringComparison.OrdinalIgnoreCase); }
             catch (InvalidOperationException) { return false; }
         }).ToArray();
 
-    public bool HayProceso() => Procesos().Length > 0;
+    public bool HasProcess() => Processes().Length > 0;
 
     /// <summary>
     /// Ninguno / Ok / NoResponde. Se considera que no responde si la ventana de qemu está congelada, si
     /// <c>adb shell echo ok</c> no contesta en 5 s, si adb lo ve "offline", o si el proceso existe pero adb no lo ve.
     /// </summary>
-    public EstadoEmu Estado()
+    public EmuState State()
     {
-        var procs = Procesos();
-        if (procs.Length == 0) return new(CodigoEmu.Ninguno, null, "DETENIDO");
-        if (_s.Adb is null) return new(CodigoEmu.NoResponde, null, "SIN ADB");
+        var procs = Processes();
+        if (procs.Length == 0) return new(EmuCode.None, null, "DETENIDO");
+        if (_s.Adb is null) return new(EmuCode.NotResponding, null, "SIN ADB");
 
-        var emus = _s.Adb.Emuladores();
-        var dev = emus.Where(e => e.Estado == "device").ToList();
+        var emus = _s.Adb.Emulators();
+        var dev = emus.Where(e => e.State == "device").ToList();
         if (dev.Count > 0)
         {
             var s = dev[0].Serial;
-            var congelada = procs.Any(p => SinRespuesta(p));
-            var eco = _s.Adb.Eco(s);
-            if (!congelada && eco is not null && eco.Contains("ok")) return new(CodigoEmu.Ok, s, $"CORRIENDO  {s}");
-            var motivo = congelada ? "ventana congelada" : "adb no contesta";
-            return new(CodigoEmu.NoResponde, s, $"NO RESPONDE ({s}, {motivo})");
+            var frozen = procs.Any(p => NoResponse(p));
+            var echo = _s.Adb.Echo(s);
+            if (!frozen && echo is not null && echo.Contains("ok")) return new(EmuCode.Ok, s, $"CORRIENDO  {s}");
+            var reason = frozen ? "ventana congelada" : "adb no contesta";
+            return new(EmuCode.NotResponding, s, $"NO RESPONDE ({s}, {reason})");
         }
-        if (emus.Count > 0) return new(CodigoEmu.NoResponde, emus[0].Serial, $"SIN RESPUESTA ({emus[0].Serial} {emus[0].Estado})");
-        return new(CodigoEmu.NoResponde, null, "SIN CONEXIÓN ADB (arrancando o colgado)");
+        if (emus.Count > 0) return new(EmuCode.NotResponding, emus[0].Serial, $"SIN RESPUESTA ({emus[0].Serial} {emus[0].State})");
+        return new(EmuCode.NotResponding, null, "SIN CONEXIÓN ADB (arrancando o colgado)");
     }
 
-    private static bool SinRespuesta(Process p)
+    private static bool NoResponse(Process p)
     {
         try { return p.MainWindowHandle != IntPtr.Zero && !p.Responding; }
         catch (InvalidOperationException) { return false; }
     }
 
-    public string NombreAvd(string serial) => _s.Adb?.NombreAvd(serial) ?? "?";
+    public string AvdName(string serial) => _s.Adb?.AvdName(serial) ?? "?";
 
     // ------------------------------------------------------------ AVDs
 
@@ -105,60 +105,60 @@ public sealed class EmulatorService
         return null;
     }
 
-    public static string? AvdDir(string? nombre)
+    public static string? AvdDir(string? name)
     {
         var home = AvdHome();
-        if (home is null || string.IsNullOrEmpty(nombre)) return null;
-        var ini = Path.Combine(home, nombre + ".ini");
+        if (home is null || string.IsNullOrEmpty(name)) return null;
+        var ini = Path.Combine(home, name + ".ini");
         if (File.Exists(ini))
         {
-            var linea = File.ReadAllLines(ini).FirstOrDefault(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s*path\s*="));
-            if (linea is not null)
+            var line = File.ReadAllLines(ini).FirstOrDefault(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s*path\s*="));
+            if (line is not null)
             {
-                var p = linea[(linea.IndexOf('=') + 1)..].Trim();
+                var p = line[(line.IndexOf('=') + 1)..].Trim();
                 if (Directory.Exists(p)) return p;
             }
         }
-        var d = Path.Combine(home, nombre + ".avd");
+        var d = Path.Combine(home, name + ".avd");
         return Directory.Exists(d) ? d : null;
     }
 
-    public List<string> ListaAvds()
+    public List<string> AvdList()
     {
         if (_s.EmulatorExe is null) return new();
         var r = ProcessRunner.Run(_s.EmulatorExe, new[] { "-list-avds" }, 20, env: _s.EnvAndroid, ct: _s.Ct);
-        return r.Salida.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("INFO", StringComparison.Ordinal)).ToList();
+        return r.Output.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("INFO", StringComparison.Ordinal)).ToList();
     }
 
     /// <summary>Muestra la lista y deja elegir. Devuelve null si se cancela.</summary>
-    public string? ElegirAvd()
+    public string? ChooseAvd()
     {
-        var avds = ListaAvds();
+        var avds = AvdList();
         if (avds.Count == 0)
         {
-            _s.Ui.Escribir("No hay AVDs creados. Crea uno en Android Studio (Device Manager).", Nivel.Error);
+            _s.Ui.Write("No hay AVDs creados. Crea uno en Android Studio (Device Manager).", Level.Error);
             return null;
         }
-        var porDefecto = _s.Avd is null ? -1 : avds.IndexOf(_s.Avd);
-        var textos = avds.Select(a => a == _s.Avd ? $"{a}  (último usado)" : a).ToList();
-        var i = _s.Ui.Elegir("Emuladores disponibles:", textos, porDefecto);
+        var byDefault = _s.Avd is null ? -1 : avds.IndexOf(_s.Avd);
+        var texts = avds.Select(a => a == _s.Avd ? $"{a}  (último usado)" : a).ToList();
+        var i = _s.Ui.Choose("Emuladores disponibles:", texts, byDefault);
         if (i < 0) return null;
         _s.Avd = avds[i];
         return _s.Avd;
     }
 
     /// <summary>Los .lock que deja un emulador cerrado a la fuerza hacen fallar el siguiente arranque.</summary>
-    public void LimpiarLocks()
+    public void CleanLocks()
     {
-        if (HayProceso()) return;
+        if (HasProcess()) return;
         var dirs = new List<string>();
         var home = AvdHome();
         if (home is not null)
         {
             try { dirs.AddRange(Directory.GetDirectories(home, "*.avd")); } catch (IOException) { }
         }
-        var propio = AvdDir(_s.Avd);
-        if (propio is not null) dirs.Add(propio);
+        var own = AvdDir(_s.Avd);
+        if (own is not null) dirs.Add(own);
         foreach (var d in dirs.Distinct())
         {
             try
@@ -173,48 +173,48 @@ public sealed class EmulatorService
     }
 
     /// <summary>Si el AVD está configurado para arrancar siempre en frío, ofrece cambiarlo a Quick Boot.</summary>
-    public void ConfirmarQuickBoot(string nombre)
+    public void ConfirmQuickBoot(string name)
     {
-        var dir = AvdDir(nombre);
+        var dir = AvdDir(name);
         if (dir is null) return;
         var cfg = Path.Combine(dir, "config.ini");
         if (File.Exists(cfg))
         {
-            var lineas = File.ReadAllLines(cfg);
-            if (lineas.Any(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s*fastboot\.forceColdBoot\s*=\s*yes")))
+            var lines = File.ReadAllLines(cfg);
+            if (lines.Any(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s*fastboot\.forceColdBoot\s*=\s*yes")))
             {
-                _s.Ui.Escribir("Este AVD está configurado para arrancar SIEMPRE desde cero (Cold boot).", Nivel.Aviso);
-                if (_s.Ui.Confirmar("¿Cambiarlo a Quick Boot (restaurar estado)?", true))
+                _s.Ui.Write("Este AVD está configurado para arrancar SIEMPRE desde cero (Cold boot).", Level.Warning);
+                if (_s.Ui.Confirm("¿Cambiarlo a Quick Boot (restaurar estado)?", true))
                 {
-                    var nuevas = lineas.Select(l =>
+                    var fresh = lines.Select(l =>
                         System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s*fastboot\.forceColdBoot\s*=") ? "fastboot.forceColdBoot=no"
                         : System.Text.RegularExpressions.Regex.IsMatch(l, @"^\s*fastboot\.forceFastBoot\s*=") ? "fastboot.forceFastBoot=yes"
                         : l).ToArray();
-                    File.WriteAllLines(cfg, nuevas, new System.Text.UTF8Encoding(false));
-                    _s.Ui.Escribir("Quick Boot activado.", Nivel.Ok);
+                    File.WriteAllLines(cfg, fresh, new System.Text.UTF8Encoding(false));
+                    _s.Ui.Write("Quick Boot activado.", Level.Ok);
                 }
             }
         }
         if (Directory.Exists(Path.Combine(dir, "snapshots", "default_boot")))
-            _s.Ui.Escribir("Se restaurará el estado guardado (Quick Boot).", Nivel.Tenue);
+            _s.Ui.Write("Se restaurará el estado guardado (Quick Boot).", Level.Muted);
         else
         {
-            _s.Ui.Escribir("No hay estado guardado: este arranque será completo.", Nivel.Tenue);
-            _s.Ui.Escribir("Al detenerlo desde la herramienta se guarda y el próximo será rápido.", Nivel.Tenue);
+            _s.Ui.Write("No hay estado guardado: este arranque será completo.", Level.Muted);
+            _s.Ui.Write("Al detenerlo desde la herramienta se guarda y el próximo será rápido.", Level.Muted);
         }
     }
 
     // ------------------------------------------------------------ Centrar
 
-    public bool Centrar()
+    public bool Center()
     {
-        if (_s.Op.NoCentrar) return true;
-        var p = Procesos()
+        if (_s.Op.NoCenter) return true;
+        var p = Processes()
             .Where(x => x.ProcessName.StartsWith("qemu-system-", StringComparison.OrdinalIgnoreCase))
             .Where(x => { try { return x.MainWindowHandle != IntPtr.Zero; } catch (InvalidOperationException) { return false; } })
             .OrderBy(x => x.MainWindowTitle.StartsWith("Android Emulator", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .FirstOrDefault();
-        return p is not null && Win32Window.Centrar(p.Id, p.MainWindowHandle);
+        return p is not null && Win32Window.Center(p.Id, p.MainWindowHandle);
     }
 
     // ------------------------------------------------------------ Arranque
@@ -223,126 +223,126 @@ public sealed class EmulatorService
     /// "" mientras sigue arrancando, "OK" cuando <c>sys.boot_completed</c> es 1, o el motivo del fallo.
     /// La ventana se centra una vez al aparecer y otra al terminar de cargar (puede cambiar de tamaño).
     /// </summary>
-    public string TestListo(EsperaEmu espera)
+    public string TestReady(EmuWait wait)
     {
-        if (!espera.Centrado) espera.Centrado = Centrar();
-        if (!HayProceso()) return "se cerró inesperadamente";
-        espera.Serial ??= _s.Adb?.Emuladores().FirstOrDefault(e => e.Estado == "device")?.Serial;
-        if (espera.Serial is not null && _s.Adb!.ArranqueCompleto(espera.Serial))
+        if (!wait.Centered) wait.Centered = Center();
+        if (!HasProcess()) return "se cerró inesperadamente";
+        wait.Serial ??= _s.Adb?.Emulators().FirstOrDefault(e => e.State == "device")?.Serial;
+        if (wait.Serial is not null && _s.Adb!.FullStartup(wait.Serial))
         {
-            Centrar();
+            Center();
             return "OK";
         }
         return "";
     }
 
-    public ResultadoArranque EsperarArranque(int segundos = 180)
+    public StartupResult WaitForStartup(int seconds = 180)
     {
-        _s.Ui.EscribirInline("Esperando el emulador (C o Ctrl+C para dejar de esperar)");
-        var limite = Environment.TickCount64 + segundos * 1000L;
-        var espera = new EsperaEmu();
+        _s.Ui.WriteInline("Esperando el emulador (C o Ctrl+C para dejar de esperar)");
+        var limit = Environment.TickCount64 + seconds * 1000L;
+        var wait = new EmuWait();
         while (true)
         {
-            var r = TestListo(espera);
+            var r = TestReady(wait);
             if (r == "OK")
             {
-                _s.Ui.Escribir("");
-                _s.Ui.Escribir($"Emulador listo: {_s.Avd} ({espera.Serial})", Nivel.Ok);
-                return ResultadoArranque.Ok;
+                _s.Ui.Write("");
+                _s.Ui.Write($"Emulador listo: {_s.Avd} ({wait.Serial})", Level.Ok);
+                return StartupResult.Ok;
             }
-            if (r.Length > 0) { _s.Ui.Escribir(""); return ResultadoArranque.Muerto; }
-            if (Environment.TickCount64 > limite) { _s.Ui.Escribir(""); return ResultadoArranque.Tiempo; }
-            if (_s.Ct.IsCancellationRequested || Teclado.PulsoCancelar()) { _s.Ui.Escribir(""); return ResultadoArranque.Cancelado; }
-            _s.Ui.EscribirInline(".");
+            if (r.Length > 0) { _s.Ui.Write(""); return StartupResult.Dead; }
+            if (Environment.TickCount64 > limit) { _s.Ui.Write(""); return StartupResult.Timeout; }
+            if (_s.Ct.IsCancellationRequested || ConsoleKeys.PressCancel()) { _s.Ui.Write(""); return StartupResult.Cancelled; }
+            _s.Ui.WriteInline(".");
             _s.Ct.WaitHandle.WaitOne(2000);
         }
     }
 
     /// <summary>Lanza el proceso del emulador (sin esperar). Siempre con <c>-netdelay none -netspeed full -no-boot-anim</c>.</summary>
-    public bool IniciarProceso(string nombre, bool frio)
+    public bool StartProcess(string name, bool cold)
     {
-        if (!HayAndroid()) return false;
+        if (!HasAndroid()) return false;
         var psi = new ProcessStartInfo(_s.EmulatorExe!) { UseShellExecute = false, CreateNoWindow = true };
-        foreach (var a in new[] { "-avd", nombre, "-netdelay", "none", "-netspeed", "full", "-no-boot-anim" }) psi.ArgumentList.Add(a);
-        if (frio)
+        foreach (var a in new[] { "-avd", name, "-netdelay", "none", "-netspeed", "full", "-no-boot-anim" }) psi.ArgumentList.Add(a);
+        if (cold)
         {
             psi.ArgumentList.Add("-no-snapshot-load");
-            _s.Ui.Escribir("Arranque desde cero: tardará un poco más.", Nivel.Tenue);
+            _s.Ui.Write("Arranque desde cero: tardará un poco más.", Level.Muted);
         }
-        else ConfirmarQuickBoot(nombre);
+        else ConfirmQuickBoot(name);
         if (_s.EnvAndroid is not null) foreach (var (k, v) in _s.EnvAndroid) psi.Environment[k] = v;
 
-        _s.Avd = nombre;
-        _s.Estado.GuardarUltimoAvd(_s.Clave, nombre);
-        _s.Ui.Escribir($"Iniciando emulador '{nombre}' en segundo plano...", Nivel.Info);
+        _s.Avd = name;
+        _s.State.SaveLastAvd(_s.Key, name);
+        _s.Ui.Write($"Iniciando emulador '{name}' en segundo plano...", Level.Info);
         try { Process.Start(psi); return true; }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            _s.Ui.Escribir($"No se pudo iniciar el emulador: {ex.Message}", Nivel.Error);
+            _s.Ui.Write($"No se pudo iniciar el emulador: {ex.Message}", Level.Error);
             return false;
         }
     }
 
     /// <summary>
-    /// Sin parámetros arranca el último emulador usado (rápido, sin preguntas); <paramref name="elegir"/> muestra la lista.
+    /// Sin parámetros arranca el último emulador usado (rápido, sin preguntas); <paramref name="choose"/> muestra la lista.
     /// Si no arranca ofrece: seguir esperando, reintentar desde cero, elegir otro o cerrarlo.
     /// </summary>
-    public bool Iniciar(string? nombre = null, bool frio = false, bool elegir = false)
+    public bool Start(string? name = null, bool cold = false, bool choose = false)
     {
-        if (!_s.AfirmarComp(Componente.Movil) || !HayAndroid()) return false;
-        var estado = Estado();
-        if (estado.Codigo == CodigoEmu.Ok)
+        if (!_s.AssertComp(ProjectComponent.Mobile) || !HasAndroid()) return false;
+        var state = State();
+        if (state.Code == EmuCode.Ok)
         {
-            _s.Ui.Escribir($"Ya hay un emulador corriendo: {NombreAvd(estado.Serial!)} ({estado.Serial}).", Nivel.Aviso);
-            _s.Ui.Escribir("Usa «Iniciar otro / cambiar» para cambiarlo.", Nivel.Aviso);
+            _s.Ui.Write($"Ya hay un emulador corriendo: {AvdName(state.Serial!)} ({state.Serial}).", Level.Warning);
+            _s.Ui.Write("Usa «Iniciar otro / cambiar» para cambiarlo.", Level.Warning);
             return true;
         }
-        if (estado.Codigo == CodigoEmu.NoResponde)
+        if (state.Code == EmuCode.NotResponding)
         {
-            _s.Ui.Escribir($"Hay un emulador abierto que no responde: {estado.Texto}", Nivel.Aviso);
-            if (!_s.Ui.Confirmar("¿Cerrarlo a la fuerza y continuar?", true)) return false;
-            Detener(forzar: true);
+            _s.Ui.Write($"Hay un emulador abierto que no responde: {state.Text}", Level.Warning);
+            if (!_s.Ui.Confirm("¿Cerrarlo a la fuerza y continuar?", true)) return false;
+            Stop(force: true);
         }
 
-        if (nombre is null && !elegir && _s.Avd is not null)
+        if (name is null && !choose && _s.Avd is not null)
         {
-            if (ListaAvds().Contains(_s.Avd)) nombre = _s.Avd;
-            else _s.Ui.Escribir($"El último emulador usado ({_s.Avd}) ya no existe; elige otro.", Nivel.Aviso);
+            if (AvdList().Contains(_s.Avd)) name = _s.Avd;
+            else _s.Ui.Write($"El último emulador usado ({_s.Avd}) ya no existe; elige otro.", Level.Warning);
         }
-        nombre ??= ElegirAvd();
-        if (nombre is null) { _s.Ui.Escribir("Cancelado.", Nivel.Tenue); return false; }
+        name ??= ChooseAvd();
+        if (name is null) { _s.Ui.Write("Cancelado.", Level.Muted); return false; }
 
-        if (!IniciarProceso(nombre, frio)) return false;
+        if (!StartProcess(name, cold)) return false;
 
         while (true)
         {
-            var r = EsperarArranque(180);
-            if (r == ResultadoArranque.Ok) { _s.Condiciones.TrasArranque(); return true; }
+            var r = WaitForStartup(180);
+            if (r == StartupResult.Ok) { _s.Conditions.AfterStartup(); return true; }
 
-            _s.Ui.Escribir(r switch
+            _s.Ui.Write(r switch
             {
-                ResultadoArranque.Muerto => "El emulador se cerró inesperadamente.",
-                ResultadoArranque.Tiempo => "El emulador no terminó de arrancar en 3 minutos.",
+                StartupResult.Dead => "El emulador se cerró inesperadamente.",
+                StartupResult.Timeout => "El emulador no terminó de arrancar en 3 minutos.",
                 _ => "Espera cancelada.",
-            }, r == ResultadoArranque.Cancelado ? Nivel.Aviso : Nivel.Error);
+            }, r == StartupResult.Cancelled ? Level.Warning : Level.Error);
 
-            var opciones = new List<(string Texto, string Clave)>();
-            if (r != ResultadoArranque.Muerto) opciones.Add(("Seguir esperando", "esperar"));
-            opciones.Add(("Reintentar este emulador desde cero", "frio"));
-            opciones.Add(("Elegir otro emulador", "otro"));
-            opciones.Add(("Cerrarlo y salir", "cerrar"));
-            if (r != ResultadoArranque.Muerto) opciones.Add(("Dejarlo abierto y salir", "dejar"));
+            var options = new List<(string Text, string Key)>();
+            if (r != StartupResult.Dead) options.Add(("Seguir esperando", "esperar"));
+            options.Add(("Reintentar este emulador desde cero", "frio"));
+            options.Add(("Elegir otro emulador", "otro"));
+            options.Add(("Cerrarlo y salir", "cerrar"));
+            if (r != StartupResult.Dead) options.Add(("Dejarlo abierto y salir", "dejar"));
 
             // Sin una persona delante (comando sin interfaz) no se insiste: se cierra para no dejar un emulador a medias
-            var i = _s.Ui.Interactiva ? _s.Ui.Elegir("¿Qué hacemos?", opciones.Select(o => o.Texto).ToList(), -1) : -1;
-            var eleccion = i < 0 ? (r == ResultadoArranque.Cancelado ? "dejar" : "cerrar") : opciones[i].Clave;
-            switch (eleccion)
+            var i = _s.Ui.Interactive ? _s.Ui.Choose("¿Qué hacemos?", options.Select(o => o.Text).ToList(), -1) : -1;
+            var choice = i < 0 ? (r == StartupResult.Cancelled ? "dejar" : "cerrar") : options[i].Key;
+            switch (choice)
             {
                 case "esperar": continue;
-                case "frio": Detener(forzar: true); return Iniciar(nombre, frio: true);
-                case "otro": Detener(forzar: true); return Iniciar(elegir: true);
+                case "frio": Stop(force: true); return Start(name, cold: true);
+                case "otro": Stop(force: true); return Start(choose: true);
                 case "dejar": return false;
-                default: Detener(forzar: true); return false;
+                default: Stop(force: true); return false;
             }
         }
     }
@@ -352,86 +352,86 @@ public sealed class EmulatorService
     /// <summary>
     /// Cierre normal: restablece las condiciones, guarda el estado (<c>snapshot save default_boot</c>), <c>emu kill</c> y
     /// espera hasta 60 s a que el proceso termine solo (matarlo mientras escribe a disco obligaba a arrancar siempre desde cero).
-    /// Solo si no termina, o con <paramref name="forzar"/>, se mata a la fuerza, se borran los .lock y se reinicia adb si hay un fantasma.
+    /// Solo si no termina, o con <paramref name="force"/>, se mata a la fuerza, se borran los .lock y se reinicia adb si hay un fantasma.
     /// </summary>
-    public void Detener(bool forzar = false)
+    public void Stop(bool force = false)
     {
-        var estado = Estado();
-        if (estado.Codigo == CodigoEmu.Ninguno && !forzar)
+        var state = State();
+        if (state.Code == EmuCode.None && !force)
         {
-            _s.Ui.Escribir("No hay emulador corriendo.", Nivel.Tenue);
+            _s.Ui.Write("No hay emulador corriendo.", Level.Muted);
             return;
         }
 
-        if (!forzar && estado.Codigo == CodigoEmu.Ok && _s.Adb is not null)
+        if (!force && state.Code == EmuCode.Ok && _s.Adb is not null)
         {
-            var serial = estado.Serial!;
-            if (_s.Condiciones.Activas().Count > 0)
+            var serial = state.Serial!;
+            if (_s.Conditions.Active().Count > 0)
             {
                 // para que el estado guardado no quede en modo avión, batería baja, etc.
-                _s.Ui.Escribir("Restableciendo condiciones del dispositivo...", Nivel.Tenue);
-                _s.Condiciones.Restablecer(serial);
+                _s.Ui.Write("Restableciendo condiciones del dispositivo...", Level.Muted);
+                _s.Conditions.Reset(serial);
             }
-            _s.Ui.Escribir("Guardando el estado del emulador para el próximo arranque...", Nivel.Info);
+            _s.Ui.Write("Guardando el estado del emulador para el próximo arranque...", Level.Info);
             var r = _s.Adb.Run(new[] { "-s", serial, "emu", "avd", "snapshot", "save", "default_boot" }, 120, _s.Ct);
-            if (r is not null && r.Contains("OK")) _s.Ui.Escribir("Estado guardado.", Nivel.Ok);
-            else _s.Ui.Escribir("No se pudo guardar el estado; el próximo arranque usará el último guardado.", Nivel.Aviso);
+            if (r is not null && r.Contains("OK")) _s.Ui.Write("Estado guardado.", Level.Ok);
+            else _s.Ui.Write("No se pudo guardar el estado; el próximo arranque usará el último guardado.", Level.Warning);
 
-            _s.Ui.EscribirInline($"Cerrando emulador {serial}");
+            _s.Ui.WriteInline($"Cerrando emulador {serial}");
             _s.Adb.Run(new[] { "-s", serial, "emu", "kill" }, 10, _s.Ct);
-            var limite = Environment.TickCount64 + 60_000;
-            while (HayProceso() && Environment.TickCount64 < limite)
+            var limit = Environment.TickCount64 + 60_000;
+            while (HasProcess() && Environment.TickCount64 < limit)
             {
-                _s.Ui.EscribirInline(".");
+                _s.Ui.WriteInline(".");
                 Thread.Sleep(1000);
             }
-            _s.Ui.Escribir("");
+            _s.Ui.Write("");
         }
-        else if (estado.Codigo != CodigoEmu.Ninguno)
+        else if (state.Code != EmuCode.None)
         {
-            _s.Ui.Escribir("Forzando el cierre del emulador (no se guarda el estado)...", Nivel.Aviso);
+            _s.Ui.Write("Forzando el cierre del emulador (no se guarda el estado)...", Level.Warning);
         }
 
-        var quedan = Procesos();
-        foreach (var p in quedan) ProcessRunner.KillTree(p);
-        if (quedan.Length > 0) Thread.Sleep(2000);
+        var remain = Processes();
+        foreach (var p in remain) ProcessRunner.KillTree(p);
+        if (remain.Length > 0) Thread.Sleep(2000);
 
-        if (quedan.Length > 0 || forzar)
+        if (remain.Length > 0 || force)
         {
-            LimpiarLocks();
+            CleanLocks();
             // si adb sigue mostrando un emulador fantasma, reiniciar el servidor
-            if (_s.Adb is not null && _s.Adb.Emuladores().Count > 0) _s.Adb.ReiniciarServidor();
+            if (_s.Adb is not null && _s.Adb.Emulators().Count > 0) _s.Adb.RestartServer();
         }
-        if (estado.Codigo != CodigoEmu.Ninguno) _s.Ui.Escribir("Emulador detenido.", Nivel.Ok);
+        if (state.Code != EmuCode.None) _s.Ui.Write("Emulador detenido.", Level.Ok);
     }
 
     /// <summary>Elige primero; si cancelas, el actual sigue abierto.</summary>
-    public bool Cambiar()
+    public bool Change()
     {
-        if (!_s.AfirmarComp(Componente.Movil) || !HayAndroid()) return false;
-        var estado = Estado();
-        if (estado.Codigo == CodigoEmu.Ok) _s.Ui.Escribir($"Emulador actual: {NombreAvd(estado.Serial!)} ({estado.Serial})", Nivel.Tenue);
-        else if (estado.Codigo == CodigoEmu.NoResponde) _s.Ui.Escribir($"Emulador actual: {estado.Texto}", Nivel.Error);
+        if (!_s.AssertComp(ProjectComponent.Mobile) || !HasAndroid()) return false;
+        var state = State();
+        if (state.Code == EmuCode.Ok) _s.Ui.Write($"Emulador actual: {AvdName(state.Serial!)} ({state.Serial})", Level.Muted);
+        else if (state.Code == EmuCode.NotResponding) _s.Ui.Write($"Emulador actual: {state.Text}", Level.Error);
 
-        var nuevo = ElegirAvd();
-        if (nuevo is null) { _s.Ui.Escribir("Cancelado.", Nivel.Tenue); return false; }
-        if (estado.Codigo != CodigoEmu.Ninguno) Detener();   // si no responde, se fuerza solo
-        return Iniciar(nuevo);
+        var fresh = ChooseAvd();
+        if (fresh is null) { _s.Ui.Write("Cancelado.", Level.Muted); return false; }
+        if (state.Code != EmuCode.None) Stop();   // si no responde, se fuerza solo
+        return Start(fresh);
     }
 
     /// <summary>Arranque desde cero (cuando el estado guardado da problemas).</summary>
-    public bool IniciarFrio(string? nombre = null)
+    public bool StartCold(string? name = null)
     {
-        if (!_s.AfirmarComp(Componente.Movil) || !HayAndroid()) return false;
-        var estado = Estado();
-        if (estado.Codigo == CodigoEmu.Ok)
+        if (!_s.AssertComp(ProjectComponent.Mobile) || !HasAndroid()) return false;
+        var state = State();
+        if (state.Code == EmuCode.Ok)
         {
-            if (!_s.Ui.Confirmar("Hay un emulador corriendo. ¿Cerrarlo y arrancar desde cero?", true)) return false;
-            Detener();
+            if (!_s.Ui.Confirm("Hay un emulador corriendo. ¿Cerrarlo y arrancar desde cero?", true)) return false;
+            Stop();
         }
-        else if (estado.Codigo == CodigoEmu.NoResponde) Detener(forzar: true);
-        nombre ??= ElegirAvd();
-        if (nombre is null) { _s.Ui.Escribir("Cancelado.", Nivel.Tenue); return false; }
-        return Iniciar(nombre, frio: true);
+        else if (state.Code == EmuCode.NotResponding) Stop(force: true);
+        name ??= ChooseAvd();
+        if (name is null) { _s.Ui.Write("Cancelado.", Level.Muted); return false; }
+        return Start(name, cold: true);
     }
 }

@@ -14,36 +14,36 @@ public static class AndroidSdkLocator
     public static string AdbExe(string sdk) =>
         Path.Combine(sdk, "platform-tools", OperatingSystem.IsWindows() ? "adb.exe" : "adb");
 
-    public static bool EsValido(string? sdk) =>
+    public static bool IsValid(string? sdk) =>
         !string.IsNullOrWhiteSpace(sdk) && File.Exists(EmulatorExe(sdk));
 
     /// <summary>El valor de "android-sdk" en el archivo %APPDATA%\.flutter_settings (con \\ convertido a \).</summary>
-    public static string? DesdeFlutterSettings(string textoJson)
+    public static string? FromFlutterSettings(string textJson)
     {
-        var m = Regex.Match(textoJson, "\"android-sdk\"\\s*:\\s*\"([^\"]+)\"");
+        var m = Regex.Match(textJson, "\"android-sdk\"\\s*:\\s*\"([^\"]+)\"");
         return m.Success ? m.Groups[1].Value.Replace("\\\\", "\\") : null;
     }
 
     /// <summary>
-    /// Orden: <c>movil.androidSdk</c> → ANDROID_SDK_ROOT → ANDROID_HOME → .flutter_settings → %LOCALAPPDATA%\Android\Sdk.
+    /// Orden: <c>mobile.androidSdk</c> → ANDROID_SDK_ROOT → ANDROID_HOME → .flutter_settings → %LOCALAPPDATA%\Android\Sdk.
     /// Devuelve null si ninguno es válido (entonces se pregunta).
     /// </summary>
-    public static string? Buscar(string? configurado, Func<string, string?> variable, string? flutterSettings,
-        string? localAppData, Func<string, bool>? esValido = null)
+    public static string? Search(string? configured, Func<string, string?> variable, string? flutterSettings,
+        string? localAppData, Func<string, bool>? isValid = null)
     {
-        esValido ??= EsValido;
-        var candidatos = new List<string?>
+        isValid ??= IsValid;
+        var candidates = new List<string?>
         {
-            configurado,
+            configured,
             variable("ANDROID_SDK_ROOT"),
             variable("ANDROID_HOME"),
-            flutterSettings is null ? null : DesdeFlutterSettings(flutterSettings),
+            flutterSettings is null ? null : FromFlutterSettings(flutterSettings),
             string.IsNullOrEmpty(localAppData) ? null : Path.Combine(localAppData, "Android", "Sdk"),
         };
-        return candidatos.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c) && esValido(c!));
+        return candidates.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c) && isValid(c!));
     }
 
     /// <summary>Variables que se ponen solo en el entorno de los procesos que lanza la herramienta.</summary>
-    public static IReadOnlyDictionary<string, string> VariablesDeProceso(string sdk) =>
+    public static IReadOnlyDictionary<string, string> ProcessVariables(string sdk) =>
         new Dictionary<string, string> { ["ANDROID_SDK_ROOT"] = sdk, ["ANDROID_HOME"] = sdk };
 }

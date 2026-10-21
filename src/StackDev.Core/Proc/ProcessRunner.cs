@@ -3,10 +3,10 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Proc;
 
-public sealed record ProcResult(int Codigo, string Salida, string Error, bool TiempoAgotado = false, bool Cancelado = false, string? ErrorInicio = null)
+public sealed record ProcResult(int Code, string Output, string Error, bool TimeExpired = false, bool Cancelled = false, string? ErrorHome = null)
 {
-    public bool Ok => Codigo == 0 && !TiempoAgotado && !Cancelado && ErrorInicio is null;
-    public string Texto => string.IsNullOrWhiteSpace(Error) ? Salida : Error;
+    public bool Ok => Code == 0 && !TimeExpired && !Cancelled && ErrorHome is null;
+    public string Text => string.IsNullOrWhiteSpace(Error) ? Output : Error;
 }
 
 /// <summary>
@@ -35,8 +35,8 @@ public static class ProcessRunner
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { }
     }
 
-    /// <summary>Ejecuta y captura la salida. Nunca queda esperando más de <paramref name="timeoutSeg"/>.</summary>
-    public static ProcResult Run(string exe, IEnumerable<string> args, int timeoutSeg = 10, string? cwd = null,
+    /// <summary>Ejecuta y captura la salida. Nunca queda esperando más de <paramref name="timeoutSec"/>.</summary>
+    public static ProcResult Run(string exe, IEnumerable<string> args, int timeoutSec = 10, string? cwd = null,
         IReadOnlyDictionary<string, string>? env = null, CancellationToken ct = default)
     {
         var psi = Psi(exe, args, cwd, env);
@@ -46,38 +46,38 @@ public static class ProcessRunner
         Process p;
         try { p = Process.Start(psi)!; }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
-        { return new ProcResult(-1, "", "", ErrorInicio: ex.Message); }
+        { return new ProcResult(-1, "", "", ErrorHome: ex.Message); }
 
         using (p)
         {
             try { p.StandardInput.Close(); } catch (IOException) { }
-            var so = p.StandardOutput.ReadToEndAsync();
-            var se = p.StandardError.ReadToEndAsync();
-            var limite = Environment.TickCount64 + timeoutSeg * 1000L;
+            var os = p.StandardOutput.ReadToEndAsync();
+            var self = p.StandardError.ReadToEndAsync();
+            var limit = Environment.TickCount64 + timeoutSec * 1000L;
             while (!p.WaitForExit(150))
             {
-                if (ct.IsCancellationRequested) { KillTree(p); return new ProcResult(-1, "", "", Cancelado: true); }
-                if (Environment.TickCount64 > limite) { KillTree(p); return new ProcResult(-1, "", "", TiempoAgotado: true); }
+                if (ct.IsCancellationRequested) { KillTree(p); return new ProcResult(-1, "", "", Cancelled: true); }
+                if (Environment.TickCount64 > limit) { KillTree(p); return new ProcResult(-1, "", "", TimeExpired: true); }
             }
             p.WaitForExit();
-            var salida = so.Wait(2000) ? so.Result : "";
-            var error = se.Wait(2000) ? se.Result : "";
-            return new ProcResult(p.ExitCode, salida, error);
+            var output = os.Wait(2000) ? os.Result : "";
+            var error = self.Wait(2000) ? self.Result : "";
+            return new ProcResult(p.ExitCode, output, error);
         }
     }
 
     /// <summary>Como <see cref="Run"/> pero con stdin y stdout conectados a archivos, sin tocar un solo byte.</summary>
-    public static ProcResult RunConArchivos(string exe, IEnumerable<string> args, string? entrada, string? salida,
-        int timeoutSeg = 900, CancellationToken ct = default, IReadOnlyDictionary<string, string>? env = null)
+    public static ProcResult RunWithFiles(string exe, IEnumerable<string> args, string? input, string? output,
+        int timeoutSec = 900, CancellationToken ct = default, IReadOnlyDictionary<string, string>? env = null)
     {
         var psi = Psi(exe, args, null, env);
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
-        psi.RedirectStandardInput = entrada is not null;
+        psi.RedirectStandardInput = input is not null;
         Process p;
         try { p = Process.Start(psi)!; }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
-        { return new ProcResult(-1, "", "", ErrorInicio: ex.Message); }
+        { return new ProcResult(-1, "", "", ErrorHome: ex.Message); }
 
         FileStream? fs = null;
         try
@@ -85,37 +85,37 @@ public static class ProcessRunner
             using (p)
             {
                 var errT = p.StandardError.ReadToEndAsync();
-                Task? copia = null;
+                Task? copy = null;
                 Task<string>? outT = null;
-                if (salida is not null)
+                if (output is not null)
                 {
-                    fs = File.Create(salida);
-                    copia = p.StandardOutput.BaseStream.CopyToAsync(fs);
+                    fs = File.Create(output);
+                    copy = p.StandardOutput.BaseStream.CopyToAsync(fs);
                 }
                 else outT = p.StandardOutput.ReadToEndAsync();
 
-                if (entrada is not null)
+                if (input is not null)
                 {
                     try
                     {
-                        using var inp = File.OpenRead(entrada);
+                        using var inp = File.OpenRead(input);
                         inp.CopyTo(p.StandardInput.BaseStream);
                         p.StandardInput.Close();
                     }
                     catch (IOException) { /* el proceso cerró stdin antes de tiempo: se verá en el código de salida */ }
                 }
 
-                var limite = Environment.TickCount64 + timeoutSeg * 1000L;
+                var limit = Environment.TickCount64 + timeoutSec * 1000L;
                 while (!p.WaitForExit(200))
                 {
-                    if (ct.IsCancellationRequested) { KillTree(p); return new ProcResult(-1, "", "Cancelado", Cancelado: true); }
-                    if (Environment.TickCount64 > limite) { KillTree(p); return new ProcResult(-1, "", "Tiempo agotado", TiempoAgotado: true); }
+                    if (ct.IsCancellationRequested) { KillTree(p); return new ProcResult(-1, "", "Cancelado", Cancelled: true); }
+                    if (Environment.TickCount64 > limit) { KillTree(p); return new ProcResult(-1, "", "Tiempo agotado", TimeExpired: true); }
                 }
                 p.WaitForExit();
-                copia?.Wait(5000);
-                var texto = outT is not null && outT.Wait(2000) ? outT.Result : "";
+                copy?.Wait(5000);
+                var text = outT is not null && outT.Wait(2000) ? outT.Result : "";
                 var error = errT.Wait(5000) ? errT.Result : "";
-                return new ProcResult(p.ExitCode, texto, error);
+                return new ProcResult(p.ExitCode, text, error);
             }
         }
         finally { fs?.Dispose(); }
@@ -125,7 +125,7 @@ public static class ProcessRunner
     /// Corre mostrando la salida en esta misma consola (tests, builds, flutter analyze...).
     /// Ctrl+C (el <paramref name="ct"/>) cancela solo este comando y devuelve 130.
     /// </summary>
-    public static int RunHeredando(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env, CancellationToken ct)
+    public static int RunInheriting(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env, CancellationToken ct)
     {
         var psi = Psi(exe, args, cwd, env);
         psi.CreateNoWindow = false;
@@ -147,11 +147,11 @@ public static class ProcessRunner
     }
 
     /// <summary>
-    /// Como <see cref="RunHeredando"/> pero entrega cada línea de salida a <paramref name="linea"/> (para la interfaz gráfica,
+    /// Como <see cref="RunInheriting"/> pero entrega cada línea de salida a <paramref name="line"/> (para la interfaz gráfica,
     /// que no tiene consola). Devuelve 130 si se cancela.
     /// </summary>
-    public static int RunCapturando(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env,
-        CancellationToken ct, Action<string> linea)
+    public static int RunCapturing(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env,
+        CancellationToken ct, Action<string> line)
     {
         var psi = Psi(exe, args, cwd, env);
         psi.RedirectStandardOutput = true;
@@ -162,13 +162,13 @@ public static class ProcessRunner
         try { p = Process.Start(psi)!; }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
         {
-            linea($"No se pudo iniciar {exe}: {ex.Message}");
+            line($"No se pudo iniciar {exe}: {ex.Message}");
             return 127;
         }
         using (p)
         {
-            p.OutputDataReceived += (_, e) => { if (e.Data is not null) linea(e.Data); };
-            p.ErrorDataReceived += (_, e) => { if (e.Data is not null) linea(e.Data); };
+            p.OutputDataReceived += (_, e) => { if (e.Data is not null) line(e.Data); };
+            p.ErrorDataReceived += (_, e) => { if (e.Data is not null) line(e.Data); };
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
             while (!p.WaitForExit(150))
@@ -181,9 +181,9 @@ public static class ProcessRunner
     }
 
     /// <summary>Abre el programa en una ventana de consola nueva (para lo interactivo: flutter run, psql...).</summary>
-    public static Process? IniciarEnVentana(string exe, string argumentos, string? cwd)
+    public static Process? StartInWindow(string exe, string arguments, string? cwd)
     {
-        var psi = new ProcessStartInfo(exe, argumentos) { UseShellExecute = true };
+        var psi = new ProcessStartInfo(exe, arguments) { UseShellExecute = true };
         if (!string.IsNullOrEmpty(cwd)) psi.WorkingDirectory = cwd;
         try { return Process.Start(psi); }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return null; }
