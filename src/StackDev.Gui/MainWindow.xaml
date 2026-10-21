@@ -83,6 +83,7 @@
           <RadioButton x:Name="NavPanel" Style="{StaticResource NavButton}" GroupName="nav" Content="Panel" Checked="Nav_Checked" />
           <RadioButton x:Name="NavTerminales" Style="{StaticResource NavButton}" GroupName="nav" Content="Terminales" Checked="Nav_Checked" />
           <RadioButton x:Name="NavDiag" Style="{StaticResource NavButton}" GroupName="nav" Content="Diagnóstico" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavServidor" Style="{StaticResource NavButton}" GroupName="nav" Content="Servidor" Checked="Nav_Checked" />
           <RadioButton x:Name="NavCond" Style="{StaticResource NavButton}" GroupName="nav" Content="Condiciones del dispositivo" Checked="Nav_Checked" />
           <RadioButton x:Name="NavConsola" Style="{StaticResource NavButton}" GroupName="nav" Content="Consola de comandos" Checked="Nav_Checked" />
           <RadioButton x:Name="NavConfig" Style="{StaticResource NavButton}" GroupName="nav" Content="Configuración" Checked="Nav_Checked" />
@@ -157,6 +158,7 @@
         </ScrollViewer>
 
         <Grid x:Name="VistaDiag" Visibility="Collapsed" />
+        <Grid x:Name="VistaServidor" Visibility="Collapsed" />
 
         <Grid x:Name="VistaCond" Visibility="Collapsed">
           <Grid.RowDefinitions>
