@@ -196,9 +196,13 @@ public sealed class TerminalesView : Grid
         else Nueva(TipoShell.Predeterminado, carpeta, etiqueta);
     }
 
-    public void Nueva(TipoShell tipo = TipoShell.Predeterminado, string? carpeta = null, string? etiqueta = null)
+    /// <summary>Abre una pestaña que ejecuta una línea de comando propia (por ejemplo ssh) en lugar de la shell.</summary>
+    public void AbrirComando(string etiqueta, string linea) => Nueva(TipoShell.Predeterminado, null, etiqueta, linea);
+
+    public void Nueva(TipoShell tipo = TipoShell.Predeterminado, string? carpeta = null, string? etiqueta = null, string? lineaPropia = null)
     {
         var (nombreShell, linea) = ShellDe(tipo);
+        if (lineaPropia is not null) linea = lineaPropia;
         carpeta ??= Carpetas()[0].Carpeta;
         var baseTitulo = etiqueta ?? nombreShell;
         var repetidas = _pestanas.Count(x => x.Base == baseTitulo);
