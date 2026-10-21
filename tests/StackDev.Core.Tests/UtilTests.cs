@@ -14,18 +14,18 @@ public class ArgsTests
     [InlineData(@"C:\dir", @"C:\dir")]
     [InlineData(@"C:\mi carpeta\", "\"C:\\mi carpeta\\\\\"")]      // barra final antes de la comilla de cierre: se duplica
     [InlineData("a\\\"b c", "\"a\\\\\\\"b c\"")]                    // barra + comilla dentro del texto
-    public void Quote_escapa_como_CommandLineToArgvW(string entrada, string esperado) =>
-        Assert.Equal(esperado, Args.Quote(entrada));
+    public void QuoteEscapesAsCommandLineToArgvW(string input, string expected) =>
+        Assert.Equal(expected, Args.Quote(input));
 
     [Fact]
-    public void Join_une_con_espacios_y_escapa_cada_argumento()
+    public void JoinJoinsWithSpacesYEscapesEachArgument()
     {
         Assert.Equal("exec -it pulperia-pg psql -U \"mi usuario\"",
             Args.Join(new[] { "exec", "-it", "pulperia-pg", "psql", "-U", "mi usuario" }));
     }
 
     [Fact]
-    public void PsLiteral_duplica_las_comillas_simples()
+    public void PsLiteralDuplicatesTheQuotesSimple()
     {
         Assert.Equal("'abc'", Args.PsLiteral("abc"));
         Assert.Equal("'it''s'", Args.PsLiteral("it's"));
@@ -37,170 +37,170 @@ public class ArgsTests
     [InlineData("a  \"b c\"   d", new[] { "a", "b c", "d" })]
     [InlineData("x \"\" y", new[] { "x", "", "y" })]
     [InlineData("say \\\"hi\\\"", new[] { "say", "\"hi\"" })]
-    public void Dividir_respeta_las_comillas(string linea, string[] esperado) =>
-        Assert.Equal(esperado, Args.Dividir(linea).ToArray());
+    public void SplitRespectsTheQuotes(string line, string[] expected) =>
+        Assert.Equal(expected, Args.Split(line).ToArray());
 
     [Fact]
-    public void Quote_y_Dividir_son_inversos()
+    public void QuoteYSplitAreInverse()
     {
-        var originales = new[] { "a b", "", "x\"y", @"C:\mi carpeta\", "plano", "dos  espacios" };
-        Assert.Equal(originales, Args.Dividir(Args.Join(originales)).ToArray());
+        var original = new[] { "a b", "", "x\"y", @"C:\mi carpeta\", "plano", "dos  espacios" };
+        Assert.Equal(original, Args.Split(Args.Join(original)).ToArray());
     }
 }
 
-public class PreguntasTests
+public class PromptsTests
 {
     [Fact]
-    public void Expande_cada_pregunta_con_la_respuesta()
+    public void ExpandsEachQuestionWithTheResponse()
     {
-        var hechas = new List<string>();
-        var r = Preguntas.Expandir("dotnet ef migrations add {?Nombre de la migracion} --project x", t => { hechas.Add(t); return "AgregaClientes"; });
+        var done = new List<string>();
+        var r = Prompts.Expand("dotnet ef migrations add {?Nombre de la migracion} --project x", t => { done.Add(t); return "AgregaClientes"; });
 
         Assert.Equal("dotnet ef migrations add AgregaClientes --project x", r);
-        Assert.Equal(new[] { "Nombre de la migracion" }, hechas);
+        Assert.Equal(new[] { "Nombre de la migracion" }, done);
     }
 
     [Fact]
-    public void Una_respuesta_vacia_cancela_la_tarea()
+    public void AResponseEmptyCancelsTheTask()
     {
-        Assert.Null(Preguntas.Expandir("echo {?Algo}", _ => "   "));
-        Assert.Null(Preguntas.Expandir("echo {?Algo}", _ => null));
+        Assert.Null(Prompts.Expand("echo {?Algo}", _ => "   "));
+        Assert.Null(Prompts.Expand("echo {?Algo}", _ => null));
     }
 
     [Fact]
-    public void Varias_preguntas_en_orden_y_la_repetida_se_pregunta_una_sola_vez()
+    public void SeveralQuestionsInOrderYTheRepeatedSelfQuestionASingleTime()
     {
-        var hechas = new List<string>();
-        var r = Preguntas.Expandir("a {?Uno} b {?Dos} c {?Uno}", t => { hechas.Add(t); return t == "Uno" ? "1" : "2"; });
+        var done = new List<string>();
+        var r = Prompts.Expand("a {?Uno} b {?Dos} c {?Uno}", t => { done.Add(t); return t == "Uno" ? "1" : "2"; });
 
         Assert.Equal("a 1 b 2 c 1", r);
-        Assert.Equal(new[] { "Uno", "Dos" }, hechas);
+        Assert.Equal(new[] { "Uno", "Dos" }, done);
     }
 
     [Fact]
-    public void Un_comando_sin_preguntas_queda_igual_y_no_pregunta_nada()
+    public void ACommandWithoutQuestionsRemainsSameYNoQuestionNothing()
     {
-        Assert.Equal("flutter test", Preguntas.Expandir("flutter test", _ => throw new InvalidOperationException()));
-        Assert.False(Preguntas.TienePreguntas("flutter test"));
-        Assert.True(Preguntas.TienePreguntas("x {?y}"));
+        Assert.Equal("flutter test", Prompts.Expand("flutter test", _ => throw new InvalidOperationException()));
+        Assert.False(Prompts.HasPrompts("flutter test"));
+        Assert.True(Prompts.HasPrompts("x {?y}"));
     }
 }
 
-public class RutasTests
+public class PathsTests
 {
-    private static readonly string Raiz = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "proyecto"));
-    private static string P(params string[] partes) => Path.Combine(new[] { Raiz }.Concat(partes).ToArray());
+    private static readonly string Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "proyecto"));
+    private static string P(params string[] parts) => Path.Combine(new[] { Root }.Concat(parts).ToArray());
 
     [Fact]
-    public void Relativa_usa_barras_normales_y_punto_para_la_misma_carpeta()
+    public void RelativeUsesBarsNormalYPointForTheSameFolder()
     {
-        Assert.Equal(".", Rutas.Relativa(Raiz, Raiz));
-        Assert.Equal(".", Rutas.Relativa(Raiz, Raiz + Path.DirectorySeparatorChar));
-        Assert.Equal("api", Rutas.Relativa(Raiz, P("api")));
-        Assert.Equal("api/src/Pulperia.Api", Rutas.Relativa(Raiz, P("api", "src", "Pulperia.Api")));
+        Assert.Equal(".", Paths.Relative(Root, Root));
+        Assert.Equal(".", Paths.Relative(Root, Root + Path.DirectorySeparatorChar));
+        Assert.Equal("api", Paths.Relative(Root, P("api")));
+        Assert.Equal("api/src/Pulperia.Api", Paths.Relative(Root, P("api", "src", "Pulperia.Api")));
     }
 
     [Fact]
-    public void Relativa_devuelve_la_ruta_completa_si_esta_fuera_de_la_raiz()
+    public void RelativeReturnsThePathCompleteYesThisOutsideOfTheRoot()
     {
-        var fuera = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "otro"));
-        Assert.Equal(fuera, Rutas.Relativa(Raiz, fuera));
+        var outside = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "otro"));
+        Assert.Equal(outside, Paths.Relative(Root, outside));
         // "proyecto2" no está dentro de "proyecto" aunque empiece igual
-        var parecida = Raiz + "2";
-        Assert.Equal(parecida, Rutas.Relativa(Raiz, parecida));
+        var similar = Root + "2";
+        Assert.Equal(similar, Paths.Relative(Root, similar));
     }
 
     [Fact]
-    public void Resolver_une_con_la_raiz_y_acepta_rutas_absolutas()
+    public void ResolveJoinsWithTheRootYAcceptsPathsAbsolute()
     {
-        Assert.Equal(Raiz, Rutas.Resolver(Raiz, null));
-        Assert.Equal(Raiz, Rutas.Resolver(Raiz, ""));
-        Assert.Equal(Raiz, Rutas.Resolver(Raiz, "."));
-        Assert.Equal(P("api"), Rutas.Resolver(Raiz, "api"));
-        Assert.Equal(P("api", "src"), Rutas.Resolver(Raiz, "api/src"));
-        Assert.Equal(P("api", "src"), Rutas.Resolver(Raiz, @"api\src"));
-        var absoluta = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "x"));
-        Assert.Equal(absoluta, Rutas.Resolver(Raiz, absoluta));
+        Assert.Equal(Root, Paths.Resolve(Root, null));
+        Assert.Equal(Root, Paths.Resolve(Root, ""));
+        Assert.Equal(Root, Paths.Resolve(Root, "."));
+        Assert.Equal(P("api"), Paths.Resolve(Root, "api"));
+        Assert.Equal(P("api", "src"), Paths.Resolve(Root, "api/src"));
+        Assert.Equal(P("api", "src"), Paths.Resolve(Root, @"api\src"));
+        var absolute = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "x"));
+        Assert.Equal(absolute, Paths.Resolve(Root, absolute));
     }
 
     [Fact]
-    public void EsIgualOSubcarpeta_respeta_el_limite_de_la_carpeta()
+    public void IsSameOSubfolderRespectsTheLimitOfTheFolder()
     {
-        Assert.True(Rutas.EsIgualOSubcarpeta(P("api"), P("api")));
-        Assert.True(Rutas.EsIgualOSubcarpeta(P("api"), P("api", "src", "x")));
-        Assert.False(Rutas.EsIgualOSubcarpeta(P("api"), P("api2")));      // el script viejo decía que sí
-        Assert.False(Rutas.EsIgualOSubcarpeta(P("api"), P("web")));
-        Assert.False(Rutas.EsIgualOSubcarpeta(P("api"), Raiz));
+        Assert.True(Paths.IsSameOrSubfolder(P("api"), P("api")));
+        Assert.True(Paths.IsSameOrSubfolder(P("api"), P("api", "src", "x")));
+        Assert.False(Paths.IsSameOrSubfolder(P("api"), P("api2")));      // el script viejo decía que sí
+        Assert.False(Paths.IsSameOrSubfolder(P("api"), P("web")));
+        Assert.False(Paths.IsSameOrSubfolder(P("api"), Root));
     }
 
     [Fact]
-    public void Slug_deja_letras_numeros_y_guiones()
+    public void SlugLeavesLettersNumbersYHyphens()
     {
-        Assert.Equal("mi-proyecto", Rutas.Slug("Mi Proyecto"));
-        Assert.Equal("pulperia", Rutas.Slug("Pulperia"));
-        Assert.Equal("app_v2-x", Rutas.Slug("app_v2.x"));
+        Assert.Equal("mi-proyecto", Paths.Slug("Mi Proyecto"));
+        Assert.Equal("pulperia", Paths.Slug("Pulperia"));
+        Assert.Equal("app_v2-x", Paths.Slug("app_v2.x"));
     }
 }
 
-public class EnvPorCarpetaTests
+public class EnvPerFolderTests
 {
-    private static ProyectoContexto Ctx(string raiz) => new(raiz, ConfigJson.Leer(ArbolPulperia.ConfigActual));
+    private static ProjectContext Ctx(string root) => new(root, ConfigJson.Read(ShopTree.CurrentConfig));
 
     [Fact]
-    public void La_cadena_de_conexion_aplica_en_la_carpeta_de_la_api_y_en_sus_subcarpetas()
+    public void TheStringOfConnectionAppliesInTheFolderOfTheApiYInItsSubfolders()
     {
-        var raiz = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
-        var ctx = Ctx(raiz);
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
+        var ctx = Ctx(root);
 
-        var enApi = ctx.EnvParaCarpeta(Path.Combine(raiz, "api"));
-        Assert.NotNull(enApi);
-        Assert.True(enApi!.ContainsKey("ConnectionStrings__Pulperia"));
-        Assert.NotNull(ctx.EnvParaCarpeta(Path.Combine(raiz, "api", "src", "Pulperia.Api")));
+        var inApi = ctx.EnvForFolder(Path.Combine(root, "api"));
+        Assert.NotNull(inApi);
+        Assert.True(inApi!.ContainsKey("ConnectionStrings__Pulperia"));
+        Assert.NotNull(ctx.EnvForFolder(Path.Combine(root, "api", "src", "Pulperia.Api")));
     }
 
     [Fact]
-    public void No_aplica_en_otras_carpetas_ni_en_una_que_solo_empieza_igual()
+    public void NoAppliesInOtherFoldersNorInAThatOnlyStartsSame()
     {
-        var raiz = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
-        var ctx = Ctx(raiz);
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
+        var ctx = Ctx(root);
 
-        Assert.Null(ctx.EnvParaCarpeta(raiz));
-        Assert.Null(ctx.EnvParaCarpeta(Path.Combine(raiz, "web")));
-        Assert.Null(ctx.EnvParaCarpeta(Path.Combine(raiz, "api2")));
+        Assert.Null(ctx.EnvForFolder(root));
+        Assert.Null(ctx.EnvForFolder(Path.Combine(root, "web")));
+        Assert.Null(ctx.EnvForFolder(Path.Combine(root, "api2")));
     }
 
     [Fact]
-    public void Sin_seccion_api_no_hay_variables()
+    public void WithoutSectionApiNoHasVariables()
     {
-        var ctx = new ProyectoContexto(Path.GetTempPath(), new ProyectoConfig());
-        Assert.Null(ctx.EnvParaCarpeta(Path.GetTempPath()));
+        var ctx = new ProjectContext(Path.GetTempPath(), new ProjectConfig());
+        Assert.Null(ctx.EnvForFolder(Path.GetTempPath()));
     }
 
     [Fact]
-    public void Carpetas_puertos_y_url_para_abrir_salen_de_la_configuracion()
+    public void FoldersPortsYUrlForOpenExitOfTheSettings()
     {
-        var raiz = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
-        var ctx = Ctx(raiz);
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
+        var ctx = Ctx(root);
 
-        Assert.Equal(Path.Combine(raiz, "api"), ctx.Carpeta(Componente.Api));
-        Assert.Equal(Path.Combine(raiz, "mobile"), ctx.Carpeta(Componente.Movil));
-        Assert.Equal(raiz, ctx.Carpeta(Componente.Postgres));
-        Assert.Equal(5109, ctx.Puerto(Componente.Api));
-        Assert.Equal(4200, ctx.Puerto(Componente.Web));
-        Assert.Equal("http://localhost:5109/scalar", ctx.UrlParaAbrir(Componente.Api));
-        Assert.Equal("http://localhost:4200", ctx.UrlParaAbrir(Componente.Web));
-        Assert.Equal(0, ProyectoContexto.PuertoDeUrl(""));
-        Assert.Equal(0, ProyectoContexto.PuertoDeUrl("esto no es una url"));
+        Assert.Equal(Path.Combine(root, "api"), ctx.Folder(ProjectComponent.Api));
+        Assert.Equal(Path.Combine(root, "mobile"), ctx.Folder(ProjectComponent.Mobile));
+        Assert.Equal(root, ctx.Folder(ProjectComponent.Postgres));
+        Assert.Equal(5109, ctx.Port(ProjectComponent.Api));
+        Assert.Equal(4200, ctx.Port(ProjectComponent.Web));
+        Assert.Equal("http://localhost:5109/scalar", ctx.UrlToOpen(ProjectComponent.Api));
+        Assert.Equal("http://localhost:4200", ctx.UrlToOpen(ProjectComponent.Web));
+        Assert.Equal(0, ProjectContext.PortFromUrl(""));
+        Assert.Equal(0, ProjectContext.PortFromUrl("esto no es una url"));
     }
 
     [Fact]
-    public void Una_seccion_ausente_significa_que_esa_parte_no_existe()
+    public void ASectionMissingMeansThatThatPartNoExists()
     {
-        var ctx = new ProyectoContexto(Path.GetTempPath(), ConfigJson.Leer("{ \"api\": { \"carpeta\": \"api\" } }"));
-        Assert.True(ctx.Tiene(Componente.Api));
-        Assert.False(ctx.Tiene(Componente.Web));
-        Assert.False(ctx.Tiene(Componente.Postgres));
-        Assert.False(ctx.Tiene(Componente.Movil));
-        Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, ctx.LevantarTodo);
+        var ctx = new ProjectContext(Path.GetTempPath(), ConfigJson.Read("{ \"api\": { \"folder\": \"api\" } }"));
+        Assert.True(ctx.Has(ProjectComponent.Api));
+        Assert.False(ctx.Has(ProjectComponent.Web));
+        Assert.False(ctx.Has(ProjectComponent.Postgres));
+        Assert.False(ctx.Has(ProjectComponent.Mobile));
+        Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, ctx.StartAll);
     }
 }

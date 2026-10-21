@@ -12,73 +12,73 @@ namespace StackDev.Gui;
 /// La "consola" de la ventana: los mensajes de la lógica van al panel de salida y las preguntas son diálogos.
 /// Se puede llamar desde cualquier hilo (las acciones corren en segundo plano).
 /// </summary>
-public sealed class GuiUi : IConsolaUi
+public sealed class GuiUi : IConsoleUi
 {
-    private const int MaxBloques = 4000;
-    private readonly Window _ventana;
-    private readonly RichTextBox _salida;
+    private const int MaxBlocks = 4000;
+    private readonly Window _window;
+    private readonly RichTextBox _output;
 
-    public GuiUi(Window ventana, RichTextBox salida)
+    public GuiUi(Window window, RichTextBox output)
     {
-        _ventana = ventana;
-        _salida = salida;
+        _window = window;
+        _output = output;
     }
 
-    private Dispatcher D => _ventana.Dispatcher;
+    private Dispatcher D => _window.Dispatcher;
 
-    public bool Interactiva => true;
+    public bool Interactive => true;
 
-    private static Brush ColorDe(Nivel n) => n switch
+    private static Brush ColorOf(Level n) => n switch
     {
-        Nivel.Titulo => Pincel("#A5B4FC"),
-        Nivel.Info => Pincel("#7DD3FC"),
-        Nivel.Ok => Pincel("#4ADE80"),
-        Nivel.Aviso => Pincel("#FBBF24"),
-        Nivel.Error => Pincel("#F87171"),
-        Nivel.Tenue => Pincel("#8B93A5"),
-        _ => Pincel("#E6E8EE"),
+        Level.Title => MakeBrush("#A5B4FC"),
+        Level.Info => MakeBrush("#7DD3FC"),
+        Level.Ok => MakeBrush("#4ADE80"),
+        Level.Warning => MakeBrush("#FBBF24"),
+        Level.Error => MakeBrush("#F87171"),
+        Level.Muted => MakeBrush("#8B93A5"),
+        _ => MakeBrush("#E6E8EE"),
     };
 
-    private static Brush Pincel(string hex)
+    private static Brush MakeBrush(string hex)
     {
         var b = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!;
         b.Freeze();
         return b;
     }
 
-    public void Escribir(string texto, Nivel nivel = Nivel.Normal)
+    public void Write(string text, Level level = Level.Normal)
     {
         D.InvokeAsync(() =>
         {
-            foreach (var linea in texto.Split('\n'))
+            foreach (var line in text.Split('\n'))
             {
-                var p = new Paragraph(new Run(linea.TrimEnd('\r')) { Foreground = ColorDe(nivel) });
-                _salida.Document.Blocks.Add(p);
+                var p = new Paragraph(new Run(line.TrimEnd('\r')) { Foreground = ColorOf(level) });
+                _output.Document.Blocks.Add(p);
             }
-            while (_salida.Document.Blocks.Count > MaxBloques && _salida.Document.Blocks.FirstBlock is { } primero)
-                _salida.Document.Blocks.Remove(primero);
-            _salida.ScrollToEnd();
+            while (_output.Document.Blocks.Count > MaxBlocks && _output.Document.Blocks.FirstBlock is { } first)
+                _output.Document.Blocks.Remove(first);
+            _output.ScrollToEnd();
         });
     }
 
-    public void EscribirInline(string texto)
+    public void WriteInline(string text)
     {
         D.InvokeAsync(() =>
         {
-            if (_salida.Document.Blocks.LastBlock is Paragraph ultimo) ultimo.Inlines.Add(new Run(texto) { Foreground = ColorDe(Nivel.Tenue) });
-            else _salida.Document.Blocks.Add(new Paragraph(new Run(texto)));
-            _salida.ScrollToEnd();
+            if (_output.Document.Blocks.LastBlock is Paragraph last) last.Inlines.Add(new Run(text) { Foreground = ColorOf(Level.Muted) });
+            else _output.Document.Blocks.Add(new Paragraph(new Run(text)));
+            _output.ScrollToEnd();
         });
     }
 
-    public bool Confirmar(string pregunta, bool porDefecto = true) =>
-        D.Invoke(() => Dialogos.Confirmar(_ventana, pregunta, porDefecto));
+    public bool Confirm(string question, bool byDefault = true) =>
+        D.Invoke(() => Dialogs.Confirm(_window, question, byDefault));
 
-    public string? Preguntar(string pregunta, string? porDefecto = null) =>
-        D.Invoke(() => Dialogos.Preguntar(_ventana, pregunta, porDefecto));
+    public string? Ask(string question, string? byDefault = null) =>
+        D.Invoke(() => Dialogs.Ask(_window, question, byDefault));
 
-    public int Elegir(string titulo, IReadOnlyList<string> opciones, int porDefecto = -1) =>
-        D.Invoke(() => Dialogos.Elegir(_ventana, titulo, opciones, porDefecto));
+    public int Choose(string title, IReadOnlyList<string> options, int byDefault = -1) =>
+        D.Invoke(() => Dialogs.Choose(_window, title, options, byDefault));
 
-    public void Limpiar() => D.InvokeAsync(() => _salida.Document.Blocks.Clear());
+    public void Clean() => D.InvokeAsync(() => _output.Document.Blocks.Clear());
 }

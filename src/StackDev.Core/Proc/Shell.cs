@@ -8,17 +8,17 @@ public static class Shell
 {
     private static string? _ps;
     private static string? _wt;
-    private static bool _psBuscado, _wtBuscado;
+    private static bool _psSearched, _wtSearched;
 
     /// <summary>pwsh (PowerShell 7) si está en el PATH; si no, Windows PowerShell 5.1.</summary>
     public static string PowerShellExe
     {
         get
         {
-            if (!_psBuscado)
+            if (!_psSearched)
             {
-                _psBuscado = true;
-                _ps = BuscarEnPath("pwsh");
+                _psSearched = true;
+                _ps = SearchInPath("pwsh");
                 if (_ps is null && OperatingSystem.IsWindows())
                 {
                     var sys = Environment.GetFolderPath(Environment.SpecialFolder.System);
@@ -35,12 +35,12 @@ public static class Shell
     {
         get
         {
-            if (!_wtBuscado) { _wtBuscado = true; _wt = BuscarEnPath("wt"); }
+            if (!_wtSearched) { _wtSearched = true; _wt = SearchInPath("wt"); }
             return _wt;
         }
     }
 
-    public static string? BuscarEnPath(string nombre)
+    public static string? SearchInPath(string name)
     {
         var path = Environment.GetEnvironmentVariable("PATH") ?? "";
         var exts = OperatingSystem.IsWindows()
@@ -52,7 +52,7 @@ public static class Shell
             {
                 try
                 {
-                    var f = Path.Combine(dir.Trim('"'), nombre + ext);
+                    var f = Path.Combine(dir.Trim('"'), name + ext);
                     if (File.Exists(f)) return f;
                 }
                 catch (ArgumentException) { }
@@ -62,10 +62,10 @@ public static class Shell
     }
 
     /// <summary>Script de PowerShell en Base64 UTF-16 para <c>-EncodedCommand</c>.</summary>
-    public static string Codificar(IEnumerable<string> lineas) =>
-        Convert.ToBase64String(Encoding.Unicode.GetBytes(string.Join("\n", lineas)));
+    public static string Encode(IEnumerable<string> lines) =>
+        Convert.ToBase64String(Encoding.Unicode.GetBytes(string.Join("\n", lines)));
 
-    public static IEnumerable<string> LineasEnv(IReadOnlyDictionary<string, string>? env)
+    public static IEnumerable<string> EnvLines(IReadOnlyDictionary<string, string>? env)
     {
         if (env is null) yield break;
         foreach (var (k, v) in env)
@@ -73,13 +73,13 @@ public static class Shell
     }
 
     /// <summary>Argumentos de PowerShell para correr un script sin perfil.</summary>
-    public static List<string> ArgsScript(IEnumerable<string> lineas, bool noSalir = false, bool textoPlano = false)
+    public static List<string> ArgsScript(IEnumerable<string> lines, bool noExit = false, bool textFlat = false)
     {
         var a = new List<string> { "-NoLogo", "-NoProfile" };
-        if (noSalir) a.Add("-NoExit");
-        if (textoPlano) { a.Add("-OutputFormat"); a.Add("Text"); }
+        if (noExit) a.Add("-NoExit");
+        if (textFlat) { a.Add("-OutputFormat"); a.Add("Text"); }
         a.Add("-EncodedCommand");
-        a.Add(Codificar(lineas));
+        a.Add(Encode(lines));
         return a;
     }
 }
