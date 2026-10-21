@@ -20,6 +20,19 @@ public sealed class ProyectoConfig : ConfigSeccion
     [JsonPropertyName("terminal")] public string? Terminal { get; set; }
     [JsonPropertyName("levantarTodo")] public List<string>? LevantarTodo { get; set; }
     [JsonPropertyName("tareas")] public List<TareaConfig>? Tareas { get; set; }
+    /// <summary>A qué servidor y servicio se sube este proyecto.</summary>
+    [JsonPropertyName("despliegue")] public DespliegueConfig? Despliegue { get; set; }
+}
+
+/// <summary>Dónde vive la API de este proyecto en un servidor (el servidor se elige de la lista global).</summary>
+public sealed class DespliegueConfig : ConfigSeccion
+{
+    /// <summary>Id del servidor en la lista global.</summary>
+    [JsonPropertyName("servidor")] public string? Servidor { get; set; }
+    /// <summary>Nombre del servicio systemd (y de la carpeta en /var/www).</summary>
+    [JsonPropertyName("servicio")] public string? Servicio { get; set; }
+    [JsonPropertyName("dll")] public string? Dll { get; set; }
+    [JsonPropertyName("dominio")] public string? Dominio { get; set; }
 }
 
 /// <summary>Base de todas las secciones: guarda los campos que esta versión no conoce.</summary>
