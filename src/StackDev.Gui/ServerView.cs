@@ -613,41 +613,84 @@ public sealed class ServerView : ScrollViewer
     private async Task FixMissingSettingsAsync(Server sv, DeploymentConfig depl, IReadOnlyList<string> missing, DeployOutcome outcome)
     {
         var service = depl.Service!;
-        var list = string.Join("\n", missing.Select(m => "  • " + m));
         var undone = outcome is DeployOutcome.RolledBack or DeployOutcome.RollbackFailed;
-        var ask = $"La API «{service}» no arranca porque le faltan estas variables:\n\n{list}\n\n¿Las genero con valores seguros, las agrego al .env del servidor y " + (undone ? "vuelvo a subir?" : "la reinicio?");
+        var s = _session();
+        var pgProject = s is not null && !string.IsNullOrEmpty(depl.Project)
+            && ProjectHints.DetectDatabase(Paths.Resolve(s.Root, depl.Project)).Kind == DatabaseKind.Postgres;
+
+        string Label(string n) => MissingSettings.CanGenerate(n) ? n + "  (la genero)"
+            : MissingSettings.CanCreateDatabase(n, pgProject) ? n + "  (creo una base PostgreSQL propia)" : n + "  (tú me das el valor)";
+        var ask = $"La API «{service}» no arranca porque le faltan estas variables:\n\n{string.Join("\n", missing.Select(m => "  • " + Label(m)))}\n\n"
+            + "Las que puedo resolver las creo y las guardo en «Credenciales»; " + (undone ? "después vuelvo a subir." : "después reinicio la API.") + " ¿Sigo?";
         if (!Dialogs.Confirm(_owner, ask, true)) return;
 
-        var read = await Task.Run(() => EnvService.Read(sv, service));
-        if (!read.Ok || read.File is null)
+        var made = new List<GeneratedCredential>();
+        var manual = new List<string>();
+        var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<string> queue = missing;
+        var started = false;
+        for (var round = 0; round < 6; round++)
         {
-            _log("✘ " + read.Message, Level.Error);
-            Dialogs.Confirm(_owner, "No pude leer el .env del servidor:\n" + read.Message, true);
-            return;
-        }
-        var (generated, manual) = MissingSettings.Fill(read.File, missing);
-        if (generated.Count > 0)
-        {
+            var fresh = queue.Where(tried.Add).ToList();
+            if (fresh.Count == 0) break;
+            var read = await Task.Run(() => EnvService.Read(sv, service));
+            if (!read.Ok || read.File is null)
+            {
+                _log("✘ " + read.Message, Level.Error);
+                Dialogs.Confirm(_owner, "No pude leer el .env del servidor:\n" + read.Message, true);
+                return;
+            }
             var env = read.File;
+            var changed = false;
+            foreach (var n in fresh)
+            {
+                if (!string.IsNullOrEmpty(env.Get(n))) continue;
+                if (MissingSettings.CanGenerate(n))
+                {
+                    env.Set(n, MissingSettings.RandomSecret());
+                    made.Add(new($"{service} @ {sv.Name} · {n}", "", env.Get(n)!, $"Variable {n}, creada automáticamente porque la API no arrancaba sin ella."));
+                    changed = true;
+                }
+                else if (MissingSettings.CanCreateDatabase(n, pgProject))
+                {
+                    var db = OperationWindow.Run(_owner, $"Crear la base de datos de {service}", canCancel: false,
+                        (win, report, ct) => DatabaseService.Create(sv, service, report, ct), r => (r.Ok, r.Message));
+                    if (db is not { Ok: true }) { manual.Add(n); continue; }
+                    env.Set(n, db.Connection!);
+                    made.Add(new($"{service} @ {sv.Name} · base de datos", db.User!, db.Password!, $"PostgreSQL en el servidor, base «{db.Database}» (variable {n})."));
+                    changed = true;
+                }
+                else manual.Add(n);
+            }
+            if (!changed) break;
+            var restart = !undone && manual.Count == 0;
             var write = OperationWindow.Run(_owner, $"Agregar variables a {service}", canCancel: false,
-                (win, report, ct) => EnvService.Write(sv, service, env, restart: !undone, report, ct),
-                r => (r.Ok, r.Message));
+                (win, report, ct) => EnvService.Write(sv, service, env, restart, report, ct), r => (r.Ok, r.Message));
             if (write is null) return;
-            _log(Describe(write), write.Ok ? Level.Ok : Level.Error);
-            if (!write.Ok) return;
+            _log(Describe(write), write.Ok ? Level.Ok : Level.Warning);
+            if (write.Ok) { started = restart; break; }
+            if (write.Outcome != DeployOutcome.StartFailed)
+            {
+                if (made.Count > 0) SaveCredentials(made);
+                Dialogs.Confirm(_owner, write.Message, true);
+                return;
+            }
+            queue = write.Missing ?? Array.Empty<string>();
         }
+
         var notes = new List<string>();
-        if (generated.Count > 0)
+        if (made.Count > 0)
         {
-            var saved = SaveCredentials(generated.Select(g => new GeneratedCredential($"{service} @ {sv.Name} · {g}", "", read.File.Get(g) ?? "", $"Variable {g}, creada automáticamente porque la API no arrancaba sin ella.")));
-            notes.Add("Creé: " + string.Join(", ", generated) + (saved ? ". Quedaron guardadas en «Credenciales»." : "."));
+            var saved = SaveCredentials(made);
+            notes.Add("Creé: " + string.Join(", ", made.Select(m => m.Name.Split('·').Last().Trim())) + (saved ? ". Quedaron guardadas en «Credenciales»." : "."));
         }
-        if (generated.Any(g => g.Contains("Webhook", StringComparison.OrdinalIgnoreCase)))
+        if (made.Any(g => g.Name.Contains("Webhook", StringComparison.OrdinalIgnoreCase)))
             notes.Add("Ojo: el secreto del webhook de pagos es inventado. Cuando conectes el proveedor de pagos, pon el valor real en «Variables (.env)».");
         if (manual.Count > 0) notes.Add(MissingSettings.Guide(service, manual));
         _log(string.Join(" ", notes), manual.Count > 0 ? Level.Warning : Level.Info);
-        if (manual.Count > 0 || generated.Count == 0)
+        if (manual.Count > 0 || (!started && !undone))
         {
+            if (manual.Count == 0) notes.Add("La API todavía no arranca. Revisa el registro de la operación (las líneas con «|») o abre «Variables (.env)».");
             Dialogs.Confirm(_owner, string.Join("\n\n", notes), true);
             return;
         }
@@ -656,7 +699,7 @@ public sealed class ServerView : ScrollViewer
         {
             _state = null;
             await QueryStatusAsync(force: true);
-            Dialogs.Confirm(_owner, $"Listo: «{service}» arrancó con las variables nuevas.\n\n" + string.Join("\n\n", notes.Skip(1)), true);
+            Dialogs.Confirm(_owner, $"Listo: «{service}» arrancó con las variables nuevas.\n\n" + string.Join("\n\n", notes), true);
         }
     }
 
