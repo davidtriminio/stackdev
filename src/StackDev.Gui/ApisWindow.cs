@@ -65,7 +65,7 @@ public static class ApisWindow
 
         if (e.Scope == ApiScope.Server)
         {
-            var go = new Button { Content = "Elegir servidor y API (asistente)", Padding = new Thickness(14, 6, 14, 6), HorizontalAlignment = HorizontalAlignment.Left };
+            var go = new Button { Content = "Elegir servidor y API (asistente)", HorizontalAlignment = HorizontalAlignment.Left };
             go.Style = ServerDialogs.GetStyle("BtnPrimary");
             go.Click += (_, _) => { w.Close(); setupServer(); };
             stack.Children.Add(go);
@@ -81,7 +81,7 @@ public static class ApisWindow
             }
             var error = ServerDialogs.Error();
             stack.Children.Add(error);
-            var ok = new Button { Content = "Guardar", Padding = new Thickness(14, 6, 14, 6), HorizontalAlignment = HorizontalAlignment.Left };
+            var ok = new Button { Content = "Guardar", HorizontalAlignment = HorizontalAlignment.Left };
             ok.Style = ServerDialogs.GetStyle("BtnPrimary");
             ok.Click += (_, _) =>
             {
@@ -128,10 +128,10 @@ public static class ApisWindow
             var url = e.Url!;
             stack.Children.Add(new TextBox { Text = url, IsReadOnly = true, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12.5 });
             var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-            var open = new Button { Content = "Abrir ▾", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 8) };
+            var open = new Button { Content = "Abrir ▾", Style = ServerDialogs.GetStyle("BtnChip") };
             open.Click += async (sender, _) => await BrowserMenu.ShowAsync((FrameworkElement)sender, url);
-            var test = new Button { Content = "Probar", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 8) };
-            test.Style = ServerDialogs.GetStyle("BtnPrimary");
+            var test = new Button { Content = "Probar", Style = ServerDialogs.GetStyle("BtnPrimarySm") };
+
             test.Click += async (_, _) =>
             {
                 test.IsEnabled = false;
@@ -154,7 +154,7 @@ public static class ApisWindow
                                 fixes.Children.Add(new TextBlock { Text = "⚠ " + issue.Title, FontWeight = FontWeights.SemiBold, FontSize = 12.5, Margin = new Thickness(0, 10, 0, 2), Foreground = ServerDialogs.P("WarnBrush") });
                                 fixes.Children.Add(new TextBlock { Text = issue.Detail, FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = ServerDialogs.P("MutedBrush"), Margin = new Thickness(0, 0, 0, 6) });
                                 if (!issue.Fixable || repair is null) continue;
-                                var fix = new Button { Content = issue.FixLabel, Padding = new Thickness(14, 6, 14, 6), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+                                var fix = new Button { Content = issue.FixLabel, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
                                 fix.Style = ServerDialogs.GetStyle("BtnPrimary");
                                 var captured = issue;
                                 fix.Click += (_, _) =>
@@ -176,7 +176,7 @@ public static class ApisWindow
                 }
                 finally { test.IsEnabled = true; }
             };
-            var copy = new Button { Content = "Copiar dirección", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 0, 8) };
+            var copy = new Button { Content = "Copiar dirección", Style = ServerDialogs.GetStyle("BtnChip") };
             copy.Click += (_, _) => { try { Clipboard.SetText(url); } catch (System.Runtime.InteropServices.COMException) { } };
             row.Children.Add(open);
             row.Children.Add(test);

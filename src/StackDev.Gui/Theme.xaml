@@ -73,7 +73,7 @@
     <Setter Property="Background" Value="{StaticResource ButtonGradient}" />
     <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Padding" Value="16,8" />
     <Setter Property="Cursor" Value="Hand" />
     <Setter Property="Template">
       <Setter.Value>
@@ -110,14 +110,14 @@
     <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource AccentOnBrush}" />
     <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Padding" Value="16,9" />
+    <Setter Property="Padding" Value="16,8" />
   </Style>
 
   <Style x:Key="BtnDanger" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
     <Setter Property="Background" Value="#3A1D22" />
     <Setter Property="BorderBrush" Value="#6B2A33" />
     <Setter Property="Foreground" Value="#FCA5A5" />
-    <Setter Property="Padding" Value="16,9" />
+    <Setter Property="Padding" Value="16,8" />
   </Style>
 
   <Style x:Key="BtnChip" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -126,6 +126,12 @@
     <Setter Property="Margin" Value="0,0,6,6" />
   </Style>
 
+  <!-- Principal compacto: la acción de una fila de botones pequeños (misma altura que BtnChip) -->
+  <Style x:Key="BtnPrimarySm" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="FontSize" Value="12.5" />
+    <Setter Property="Margin" Value="0,0,6,6" />
+  </Style>
 
   <!-- Ficha con un glifo (cabecera de grupo) -->
   <Style x:Key="GlyphTile" TargetType="Border">

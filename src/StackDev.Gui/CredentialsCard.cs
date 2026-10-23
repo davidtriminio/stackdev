@@ -223,8 +223,8 @@ public sealed class CredentialsCard : Border
         var key = Field("Contraseña", current.Key);
         var note = Field("Nota (opcional)", current.Note, several: true);
 
-        var ok = new Button { Content = "Guardar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), Style = (Style)Application.Current.FindResource("BtnPrimary"), IsDefault = true };
-        var cancel = new Button { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
+        var ok = new Button { Content = "Guardar", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0), Style = (Style)Application.Current.FindResource("BtnPrimary"), IsDefault = true };
+        var cancel = new Button { Content = "Cancelar", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0), IsCancel = true };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
         buttons.Children.Add(cancel);
         buttons.Children.Add(ok);
