@@ -198,10 +198,11 @@ public sealed class ServerView : ScrollViewer
         if (depl is null || sv is null)
         {
             body.Children.Add(Text(depl is null
-                ? "Este proyecto aún no tiene un servidor. Elige a cuál se sube su API y cómo se llama el servicio."
+                ? "Este proyecto aún no sube a ningún servidor. El asistente busca tu API, revisa qué APIs ya hay en el servidor y, si no hay ninguna, te ayuda a crear una."
                 : "El servidor que usaba este proyecto ya no está en la lista. Elige otro.", 12.5, P("MutedBrush")));
             var row = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-            row.Children.Add(Button("Configurar despliegue", () => ConfigureDeployment(servers, depl), primary: true));
+            row.Children.Add(Button("Subir al servidor (asistente)", () => _ = GuidedSetupAsync(servers, depl), primary: true));
+            row.Children.Add(Button("Configurar a mano", () => ConfigureDeployment(servers, depl)));
             body.Children.Add(row);
             return Card("\uE8B7", "#6EE787", $"Este proyecto · {name}", null, body);
         }
@@ -224,7 +225,8 @@ public sealed class ServerView : ScrollViewer
         buttons.Children.Add(Button("Reiniciar", () => _ = ActionAsync(sv, svc, "restart", "reiniciar")));
         buttons.Children.Add(Button("Detener", () => _ = ActionAsync(sv, svc, "stop", "detener")));
         buttons.Children.Add(Button("Iniciar", () => _ = ActionAsync(sv, svc, "start", "iniciar")));
-        buttons.Children.Add(Button("Cambiar", () => ConfigureDeployment(servers, depl)));
+        buttons.Children.Add(Button("Cambiar de API o servidor", () => _ = GuidedSetupAsync(servers, depl)));
+        buttons.Children.Add(Button("Editar a mano", () => ConfigureDeployment(servers, depl)));
         body.Children.Add(buttons);
 
         return Card("\uE8B7", "#6EE787", $"Este proyecto · {name}", $"{sv.Destination}  ·  {sv.WebName}", body);
@@ -296,7 +298,8 @@ public sealed class ServerView : ScrollViewer
         Draw();
     }
 
-    private async Task TestAsync(Server sv)
+    /// <summary>Probes the server (asking to confirm its fingerprint the first time). Null when the user declines the fingerprint.</summary>
+    private async Task<SshResult?> TestAsync(Server sv)
     {
         _probes[sv.Id] = "Conectando…";
         Draw();
@@ -316,12 +319,15 @@ public sealed class ServerView : ScrollViewer
             {
                 _probes[sv.Id] = "Sin verificar: no se conectó.";
                 Draw();
-                return;
+                return null;
             }
         }
         _probes[sv.Id] = (r.Ok ? "✔ " : "✘ ") + r.Message;
         Draw();
+        return r;
     }
+
+    private bool IsTrusted(Server sv) => _trusted.TryGetValue(sv.Id, out var t) && t;
 
     private void ForgetHostKey(Server sv)
     {
@@ -392,6 +398,103 @@ public sealed class ServerView : ScrollViewer
         Update();
     }
 
+    // ------------------------------------------------------------ guided: pick the server, find the API, link or create
+
+    private static bool LooksLikeApi(RemoteApi remote, ApiCandidate local) =>
+        string.Equals(remote.Dll, local.Dll, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(remote.Service, local.SuggestedService, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// «Subir al servidor»: choose the server, confirm its fingerprint, find this project's API, look at what is already installed
+    /// on the server and either link to one of those or help create a new one.
+    /// </summary>
+    private async Task GuidedSetupAsync(List<Server> servers, DeploymentConfig? current)
+    {
+        var s = _session();
+        if (s is null) return;
+        if (servers.Count == 0)
+        {
+            if (Dialogs.Confirm(_owner, "Primero necesitas un servidor. ¿Lo agrego ahora?", true)) AddServer();
+            return;
+        }
+
+        var index = Math.Max(0, servers.FindIndex(x => x.Id == current?.Server));
+        if (servers.Count > 1)
+        {
+            index = Dialogs.Choose(_owner, "¿A qué servidor quieres subir este proyecto?",
+                servers.Select(x => $"{x.Name}   ·   {x.Destination}").ToList(), index);
+            if (index < 0) return;
+        }
+        var sv = servers[index];
+
+        if (!IsTrusted(sv))
+        {
+            _log($"Verificando {sv.Name}…", Level.Info);
+            var test = await TestAsync(sv);
+            if (test is null || !IsTrusted(sv)) return;
+            if (!test.Ok)
+            {
+                Dialogs.Confirm(_owner, $"No pude conectar con «{sv.Name}»:\n{test.Message}\n\nCorrige los datos del servidor (botón «Editar») y vuelve a intentarlo.", true);
+                return;
+            }
+        }
+
+        var api = PickApi(s, current?.Project);
+        if (api is null)
+        {
+            Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta, así que no hay una API que subir. Revisa la sección «api» de dev-menu.json.", true);
+            return;
+        }
+
+        _log($"Buscando APIs ya instaladas en {sv.Name}…", Level.Info);
+        string? err = null;
+        var found = await Task.Run(() => DeployService.DiscoverApis(sv, out err));
+        if (err is not null)
+        {
+            _log("✘ " + err, Level.Error);
+            Dialogs.Confirm(_owner, "No pude consultar el servidor:\n" + err, true);
+            return;
+        }
+
+        if (found.Count == 0)
+        {
+            if (!Dialogs.Confirm(_owner,
+                    $"En «{sv.Name}» no hay ninguna API .NET instalada todavía.\n\nTe ayudo a crear una para «{api.ProjectName}»: se preparan el usuario, la carpeta, el servicio, el proxy {sv.WebName} y el HTTPS. Después la subimos. ¿Continúo?", true))
+                return;
+            await ProvisionApiAsync(sv);
+            return;
+        }
+
+        var ordered = found.OrderByDescending(a => LooksLikeApi(a, api)).ThenBy(a => a.Service).ToList();
+        var labels = ordered.Select(a => $"{(LooksLikeApi(a, api) ? "★ " : "")}{a.Service}   ·   {(a.Dll.Length > 0 ? a.Dll : "?")}   ·   {a.State}").ToList();
+        labels.Add("➕  Crear una API nueva en este servidor");
+        var pick = Dialogs.Choose(_owner, $"APIs instaladas en {sv.Name}. ¿A cuál se sube «{api.ProjectName}»?  (★ = parece ser esta)", labels, 0);
+        if (pick < 0) return;
+        if (pick == ordered.Count) { await ProvisionApiAsync(sv); return; }
+
+        var chosen = ordered[pick];
+        if (!LooksLikeApi(chosen, api) && !Dialogs.Confirm(_owner,
+                $"«{chosen.Service}» ejecuta {(chosen.Dll.Length > 0 ? chosen.Dll : "otra aplicación")}, y tu proyecto genera {api.Dll}.\n\nSi subes, el contenido de ese servicio se reemplaza por esta API (queda una copia para volver atrás). ¿Es la misma API?", false))
+            return;
+
+        var cfg = new DeploymentConfig
+        {
+            Server = sv.Id,
+            Service = chosen.Service,
+            Dll = chosen.Dll.Length > 0 ? chosen.Dll : api.Dll,
+            Domain = current?.Domain,
+            Project = Paths.Relative(s.Root, api.ProjectPath),
+            Extra = current?.Extra,
+        };
+        _saveDeployment(cfg);
+        _state = null;
+        _stateOf = "";
+        Update();
+        _log($"Este proyecto sube ahora a «{chosen.Service}» en {sv.Name}.", Level.Ok);
+        if (Dialogs.Confirm(_owner, $"Listo: este proyecto sube a «{chosen.Service}» en {sv.Name}. ¿Subo la API ahora?", true))
+            await DeployApiAsync(sv, cfg);
+    }
+
     // ------------------------------------------------------------ finding the API of this project
 
     /// <summary>The web project to deploy: the one saved in the config, or found by looking (asking when there are several).</summary>
@@ -428,11 +531,7 @@ public sealed class ServerView : ScrollViewer
     {
         var s = _session();
         if (s is null || string.IsNullOrEmpty(depl.Service)) return;
-        if (!(_trusted.TryGetValue(sv.Id, out var trusted) && trusted))
-        {
-            Dialogs.Confirm(_owner, "Primero verifica el servidor: en su tarjeta, «Verificar y probar».", true);
-            return;
-        }
+        if (!IsTrusted(sv) && (await TestAsync(sv) is null || !IsTrusted(sv))) return;
         var api = PickApi(s, depl.Project);
         if (api is null)
         {
@@ -467,11 +566,7 @@ public sealed class ServerView : ScrollViewer
     private async Task ProvisionApiAsync(Server sv)
     {
         var s = _session();
-        if (!(_trusted.TryGetValue(sv.Id, out var trusted) && trusted))
-        {
-            Dialogs.Confirm(_owner, "Primero verifica el servidor: «Verificar y probar».", true);
-            return;
-        }
+        if (!IsTrusted(sv) && (await TestAsync(sv) is null || !IsTrusted(sv))) return;
         var depl = s?.Ctx.Config.Deployment;
         var api = s is null ? null : PickApi(s, depl?.Project);
         var service = depl?.Service ?? api?.SuggestedService ?? "api";
