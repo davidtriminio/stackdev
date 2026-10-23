@@ -23,17 +23,32 @@ internal static class BrowserMenu
         }
         if (found.Count == 1) { Open(baseUrl + found[0].Path); return; }
 
-        var menu = new ContextMenu { PlacementTarget = anchor, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        // A menu of our own (the Windows one ignores the theme): a popup with one flat row per page that answers.
+        var rows = new StackPanel { MinWidth = 280 };
+        var popup = new System.Windows.Controls.Primitives.Popup
+        {
+            PlacementTarget = anchor, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom, StaysOpen = false,
+            AllowsTransparency = true, VerticalOffset = 4,
+            Child = new Border
+            {
+                Background = ServerDialogs.P("Surface2Brush"), BorderBrush = ServerDialogs.P("LineBrush"), BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10), Padding = new Thickness(6), Margin = new Thickness(0, 0, 12, 12), Child = rows,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = 0.45 },
+            },
+        };
         foreach (var e in found)
         {
-            var item = new MenuItem { Header = $"{e.Label}     {e.Path}" + (e.Protected ? "   (pide acceso)" : "") };
             var url = baseUrl + e.Path;
-            item.Click += (_, _) => Open(url);
-            menu.Items.Add(item);
+            var row = new Button
+            {
+                Content = $"{e.Label}     {e.Path}" + (e.Protected ? "   (pide acceso)" : ""), Style = ServerDialogs.GetStyle("BtnMenuItem"),
+            };
+            row.Click += (_, _) => { popup.IsOpen = false; Open(url); };
+            rows.Children.Add(row);
         }
         if (!found.Any(e => e.Kind == EndpointKind.Docs))
-            menu.Items.Add(new MenuItem { Header = "Documentación: esta API no la publica en el servidor", IsEnabled = false });
-        menu.IsOpen = true;
+            rows.Children.Add(new Button { Content = "Documentación: esta API no la publica en el servidor", Style = ServerDialogs.GetStyle("BtnMenuItem"), IsEnabled = false });
+        popup.IsOpen = true;
     }
 
     private static void Open(string url)
