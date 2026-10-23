@@ -130,7 +130,7 @@ public static class Dialogs
         };
         search.Click += (_, _) => Fill(path.Text.Trim().Trim('"'), 3);
         list.SelectionChanged += (_, _) => { if (list.SelectedItem is string s) path.Text = s; };
-        list.MouseDoubleClick += (_, _) => ok.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        list.MouseDoubleClick += (_, _) => ok.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
         ok.Click += (_, _) =>
         {
             var r = path.Text.Trim().Trim('"');
