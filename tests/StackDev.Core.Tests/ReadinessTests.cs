@@ -142,3 +142,62 @@ public class RemoteTextTests
         Assert.Empty(missing);
     }
 }
+
+public class AutomaticSetupTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "sd-hints-" + Guid.NewGuid().ToString("N")[..8]);
+    public AutomaticSetupTests() => Directory.CreateDirectory(_dir);
+    public void Dispose() { try { Directory.Delete(_dir, true); } catch (IOException) { } }
+
+    private string Project(string csprojBody, string? settings = null)
+    {
+        var path = Path.Combine(_dir, "Api.csproj");
+        File.WriteAllText(path, $"<Project Sdk=\"Microsoft.NET.Sdk.Web\"><ItemGroup>{csprojBody}</ItemGroup></Project>");
+        if (settings is not null) File.WriteAllText(Path.Combine(_dir, "appsettings.json"), settings);
+        return path;
+    }
+
+    [Fact]
+    public void Auto_domain_points_at_the_server_ip()
+    {
+        Assert.Equal("shop-api.203-0-113-10.sslip.io", ProvisionService.AutoDomain("shop-api", "203.0.113.10"));
+        Assert.Null(ProvisionService.AutoDomain("api", "servidor.midominio.com"));
+        Assert.Null(ProvisionService.AutoDomain("Bad_Name", "1.2.3.4"));
+        Assert.Matches(Sh.Domain.ToString(), ProvisionService.AutoDomain("shop", "10.0.0.5")!);
+    }
+
+    [Fact]
+    public void Postgres_package_selects_postgres() =>
+        Assert.Equal(DatabaseKind.Postgres, ProjectHints.DetectDatabase(Project("<PackageReference Include=\"Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"9.0.0\" />")).Kind);
+
+    [Fact]
+    public void Sqlite_package_selects_sqlite() =>
+        Assert.Equal(DatabaseKind.Sqlite, ProjectHints.DetectDatabase(Project("<PackageReference Include=\"Microsoft.EntityFrameworkCore.Sqlite\" Version=\"9.0.0\" />")).Kind);
+
+    [Fact]
+    public void Other_engines_are_reported_as_none_with_the_reason()
+    {
+        var hint = ProjectHints.DetectDatabase(Project("<PackageReference Include=\"Microsoft.EntityFrameworkCore.SqlServer\" Version=\"9.0.0\" />"));
+        Assert.Equal(DatabaseKind.None, hint.Kind);
+        Assert.Contains("Variables", hint.Reason);
+    }
+
+    [Fact]
+    public void Connection_string_is_used_when_packages_say_nothing()
+    {
+        Assert.Equal(DatabaseKind.Postgres, ProjectHints.DetectDatabase(Project("", "{\"ConnectionStrings\":{\"Default\":\"Host=localhost;Database=x;Username=u\"}}")).Kind);
+        Assert.Equal(DatabaseKind.Sqlite, ProjectHints.DetectDatabase(Project("", "{\"ConnectionStrings\":{\"Default\":\"Data Source=app.db\"}}")).Kind);
+        Assert.Equal(DatabaseKind.Sqlite, ProjectHints.DetectDatabase(Project("")).Kind);
+    }
+
+    [Fact]
+    public void Port_problem_is_a_warning_only_when_https_is_wanted()
+    {
+        var facts = new Dictionary<string, string> { ["web"] = "apache", ["runtimes"] = "10", ["certbot"] = "yes", ["rsync"] = "yes", ["free_mb"] = "5000" };
+        var withHttps = ServerReadiness.Evaluate(new(facts, "apache", 10, "a.b.com", null, true, "puertos cerrados"));
+        Assert.Equal(CheckLevel.Warn, withHttps.Single(c => c.Id == "ports").Level);
+        Assert.True(ServerReadiness.CanContinue(withHttps));
+        Assert.DoesNotContain(ServerReadiness.Evaluate(new(facts, "apache", 10, "a.b.com", null, false, "puertos cerrados")), c => c.Id == "ports");
+        Assert.DoesNotContain(ServerReadiness.Evaluate(new(facts, "apache", 10, "a.b.com", null, true, null)), c => c.Id == "ports");
+    }
+}

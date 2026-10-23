@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using StackDev.Core.Servers;
@@ -90,6 +91,58 @@ public static class ProvisionService
         {
             return $"{domain} aún no existe en el DNS. Crea el registro A hacia {serverHost} (sin proxy si usas Cloudflare); sin eso el certificado HTTPS no se podrá emitir.";
         }
+    }
+
+
+    /// <summary>
+    /// A free address that already points at the server, so no DNS record has to be created: service.1-2-3-4.sslip.io.
+    /// Null when the server is a name instead of an IPv4 address (then the user types their own domain).
+    /// </summary>
+    public static string? AutoDomain(string service, string serverHost)
+    {
+        if (!Sh.Service.IsMatch(service) || !ServerValidation.ValidIpv4(serverHost)) return null;
+        return $"{service}.{serverHost.Replace('.', '-')}.sslip.io";
+    }
+
+    /// <summary>
+    /// Whether ports 80 and 443 answer from outside. A refused connection is fine (the network lets it through and nothing listens yet);
+    /// a timeout means something drops it: the server firewall (creating the API opens it) or the cloud network rules.
+    /// </summary>
+    public static string? CheckPorts(string host, int timeoutMs = 3000)
+    {
+        var blocked = new List<int>();
+        foreach (var port in new[] { 80, 443 })
+        {
+            try
+            {
+                using var client = new TcpClient();
+                var connect = client.ConnectAsync(host, port);
+                if (!connect.Wait(timeoutMs)) blocked.Add(port);
+            }
+            catch (AggregateException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionRefused }) { }
+            catch (AggregateException) { }
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionRefused) { }
+            catch (SocketException) { }
+        }
+        return blocked.Count == 0 ? null
+            : $"El puerto {string.Join(" y ", blocked)} no responde desde internet. Puede ser el firewall del servidor (al crear la API se abre) o las reglas de red de tu nube. "
+              + "En Oracle Cloud: Redes › tu VCN › Lista de seguridad › Reglas de entrada: añade TCP 80 y TCP 443 desde 0.0.0.0/0. Sin eso el certificado HTTPS no se puede emitir.";
+    }
+
+    /// <summary>Asks for the certificate again for a site that already exists (after fixing DNS or the network).</summary>
+    public static ProvisionResult RetryHttps(Server server, string domain, string? email, string web, Action<ProgressEvent> progress, CancellationToken ct)
+    {
+        if (!Sh.Domain.IsMatch(domain)) return new(false, "El dominio no es válido.");
+        if (!HostKeys.IsTrusted(server)) return new(false, "El servidor aún no está verificado: prueba la conexión y confirma su huella.");
+        progress(new ProgressEvent("HTTPS", "Conectando con el servidor…", Level.Title, 5));
+        using var session = new RemoteSession(server);
+        if (session.Open(ct) is { } openError) return new(false, openError);
+        var args = new List<string> { "--domain", domain, "--web", string.Equals(web, "nginx", StringComparison.OrdinalIgnoreCase) ? "nginx" : "apache" };
+        if (!string.IsNullOrWhiteSpace(email)) { args.Add("--email"); args.Add(email!.Trim()); }
+        var result = session.Execute("https", args, e => DeployService.Relay(e, 10, 85, progress), CancellationToken.None);
+        if (!result.Ok) return new(false, result.LaunchError ?? result.FailMessage ?? $"El servidor terminó con el código {result.ExitCode}.");
+        var pending = result.Value("https") != "ok";
+        return new(true, pending ? "El certificado sigue pendiente." : "Certificado HTTPS emitido.", null, pending);
     }
 
     public static ProvisionResult Provision(ProvisionRequest req, Action<ProgressEvent> progress, CancellationToken ct)
