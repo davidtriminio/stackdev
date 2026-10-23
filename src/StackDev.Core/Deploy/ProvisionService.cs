@@ -158,6 +158,25 @@ public static class ProvisionService
         return new(true, pending ? "El certificado sigue pendiente." : "Certificado HTTPS emitido.", null, pending);
     }
 
+    /// <summary>
+    /// Creates (or rewrites) the web server site of an API that already runs, pointing <paramref name="domain"/> at it, and asks for its certificate.
+    /// The previous site file, if any, is kept next to it as a .bak.
+    /// </summary>
+    public static ProvisionResult RepairSite(Server server, string service, string domain, string web, Action<ProgressEvent> progress, CancellationToken ct)
+    {
+        if (!Sh.Domain.IsMatch(domain)) return new(false, "El dominio no es válido.");
+        if (!Sh.Service.IsMatch(service)) return new(false, "Nombre de servicio no válido.");
+        if (!HostKeys.IsTrusted(server)) return new(false, "El servidor aún no está verificado: prueba la conexión y confirma su huella.");
+        progress(new ProgressEvent("Sitio", "Conectando con el servidor…", Level.Title, 5));
+        using var session = new RemoteSession(server);
+        if (session.Open(ct) is { } openError) return new(false, openError);
+        var args = new List<string> { "--svc", service, "--domain", domain, "--https", "yes", "--web", string.Equals(web, "nginx", StringComparison.OrdinalIgnoreCase) ? "nginx" : "apache" };
+        var result = session.Execute("site", args, e => DeployService.Relay(e, 10, 85, progress), CancellationToken.None);
+        if (!result.Ok) return new(false, result.LaunchError ?? result.FailMessage ?? $"El servidor terminó con el código {result.ExitCode}.");
+        var pending = result.Value("https") != "ok";
+        return new(true, pending ? "El sitio quedó creado, pero el certificado sigue pendiente." : "Sitio y certificado HTTPS listos.", null, pending);
+    }
+
     public static ProvisionResult Provision(ProvisionRequest req, Action<ProgressEvent> progress, CancellationToken ct)
     {
         void P(string message, Level level = Level.Normal, int percent = -1) => progress(new ProgressEvent("Aprovisionar", message, level, percent));
