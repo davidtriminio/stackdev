@@ -45,9 +45,9 @@ public static class ServerService
         if (!string.IsNullOrWhiteSpace(s.Key) && !File.Exists(s.Key)) return new(false, "No existe la clave: " + s.Key);
         if (!HostKeys.IsTrusted(s))
         {
-            var key = HostKeys.Scan(s);
+            var key = HostKeys.Scan(s, out var why);
             return key is null
-                ? new(false, "El servidor no respondió para leer su huella: revisa la IP, el puerto y que esté encendido.")
+                ? new(false, "No pude leer la huella del servidor: revisa la IP, el puerto y que esté encendido." + (string.IsNullOrWhiteSpace(why) ? "" : "\nDetalle: " + why))
                 : new(false, "Servidor sin verificar: confirma su huella para poder conectar.", key);
         }
         var r = Ssh.Run(s, "echo stackdev-ok; uname -sr; if command -v httpd >/dev/null 2>&1; then echo web=apache; elif command -v nginx >/dev/null 2>&1; then echo web=nginx; else echo web=ninguno; fi; sudo -n true 2>/dev/null && echo sudo=ok || echo sudo=password", 25);
