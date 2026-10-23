@@ -32,24 +32,74 @@ public static class HostKeys
     }
 
     /// <summary>Asks the server for its public keys without logging in. Null when it does not answer.</summary>
-    public static HostKeyInfo? Scan(Server s, CancellationToken ct = default)
-    {
-        var args = new List<string> { "-T", "8", "-t", "ed25519,ecdsa,rsa" };
-        if (s.Port is > 0 and not 22) { args.Add("-p"); args.Add(s.Port.ToString()); }
-        args.Add(s.Host);
-        var scan = ProcessRunner.Run("ssh-keyscan", args, 20, ct: ct);
-        if (!scan.Ok) return null;
+    public static HostKeyInfo? Scan(Server s, CancellationToken ct = default) => Scan(s, out _, ct);
 
-        var lines = scan.Output.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Where(l => !l.StartsWith('#')).ToList();
+    /// <summary>
+    /// Like <see cref="Scan(Server, CancellationToken)"/> and also says why it failed. It tries ssh-keyscan first and, when that gives nothing
+    /// (some servers and networks answer ssh but not the scanner), connects with ssh itself into a throwaway known_hosts file,
+    /// which records the key before authentication. Nothing is trusted here: the caller shows the fingerprint to the user.
+    /// </summary>
+    public static HostKeyInfo? Scan(Server s, out string? detail, CancellationToken ct = default)
+    {
+        var viaScanner = ScanWithKeyscan(s, out var scanDetail, ct);
+        if (viaScanner is not null) { detail = null; return viaScanner; }
+        var viaSsh = ScanWithSsh(s, out var sshDetail, ct);
+        detail = viaSsh is not null ? null : (sshDetail ?? scanDetail);
+        return viaSsh;
+    }
+
+    private static string FirstLine(string text) =>
+        text.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(l => !l.StartsWith('#')) ?? "";
+
+    private static HostKeyInfo? Pick(IEnumerable<string> lines)
+    {
+        var list = lines.Where(l => l.Length > 0 && !l.StartsWith('#')).ToList();
         foreach (var type in Preference)
         {
-            var line = lines.FirstOrDefault(l => l.Split(' ', 3) is { Length: 3 } p && p[1] == type);
+            var line = list.FirstOrDefault(l => l.Split(' ', 3) is { Length: 3 } p && p[1] == type);
             if (line is null) continue;
             var fp = Fingerprint(line);
             if (fp is not null) return new HostKeyInfo(fp, type, line);
         }
         return null;
+    }
+
+    private static HostKeyInfo? ScanWithKeyscan(Server s, out string? detail, CancellationToken ct)
+    {
+        detail = null;
+        var args = new List<string> { "-T", "8", "-t", "ed25519,ecdsa,rsa" };
+        if (s.Port is > 0 and not 22) { args.Add("-p"); args.Add(s.Port.ToString()); }
+        args.Add(s.Host);
+        var scan = ProcessRunner.Run("ssh-keyscan", args, 20, ct: ct);
+        if (scan.ErrorHome is not null) { detail = "No encuentro ssh-keyscan (instala «Cliente OpenSSH» en las características de Windows)."; return null; }
+        var key = Pick(scan.Output.Replace("\r", "").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        if (key is null) detail = scan.TimeExpired ? "ssh-keyscan no respondió a tiempo." : FirstLine(scan.Error);
+        return key;
+    }
+
+    private static HostKeyInfo? ScanWithSsh(Server s, out string? detail, CancellationToken ct)
+    {
+        detail = null;
+        var tmp = Path.Combine(Path.GetTempPath(), "stackdev-hk-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            var args = new List<string>
+            {
+                "-o", "ConnectTimeout=8", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "UserKnownHostsFile=" + tmp.Replace('\\', '/'), "-o", "HashKnownHosts=no",
+                "-o", "PreferredAuthentications=none", "-o", "IdentitiesOnly=yes",
+            };
+            if (s.Port is > 0 and not 22) { args.Add("-p"); args.Add(s.Port.ToString()); }
+            args.Add($"{s.User}@{s.Host}");
+            args.Add("exit");
+            var r = ProcessRunner.Run("ssh", args, 25, ct: ct);
+            if (r.ErrorHome is not null) { detail = "No encuentro ssh (instala «Cliente OpenSSH» en las características de Windows)."; return null; }
+            var key = File.Exists(tmp) ? Pick(File.ReadAllLines(tmp)) : null;
+            if (key is null) detail = r.TimeExpired ? "El servidor no respondió a tiempo." : FirstLine(r.Error);
+            return key;
+        }
+        finally { try { File.Delete(tmp); } catch (IOException) { } }
     }
 
     private static string? Fingerprint(string knownHostsLine)
