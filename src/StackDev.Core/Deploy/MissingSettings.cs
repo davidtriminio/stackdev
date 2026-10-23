@@ -18,6 +18,11 @@ public static class MissingSettings
     public static bool CanGenerate(string name) => SecretMask.IsSecretName(name) || name.Contains("Secret", StringComparison.OrdinalIgnoreCase)
         || name.Contains("SigningKey", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>A connection string the app can satisfy by creating a PostgreSQL database for this API.</summary>
+    public static bool CanCreateDatabase(string name, bool projectUsesPostgres) =>
+        name.StartsWith("ConnectionStrings__", StringComparison.OrdinalIgnoreCase)
+        && (projectUsesPostgres || name.Contains("postgres", StringComparison.OrdinalIgnoreCase) || name.Contains("npgsql", StringComparison.OrdinalIgnoreCase));
+
     public static string RandomSecret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
     /// <summary>Sets every name that is missing or empty in <paramref name="env"/> and can be generated. Returns what was set, and what still needs a human value.</summary>

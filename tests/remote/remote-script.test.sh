@@ -169,6 +169,17 @@ o="$(R env-write --svc $svc --run-dir "$RUN" --env-file "$RUN/break.env" --resta
 [ -n "${DEBUG:-}" ] && echo "$o"; eq "$(code "$o")" 20 "env that breaks the service rolls back"; hasnt "$(cat "$SD_ROOT/etc/$svc/$svc.env")" "BREAK=1" "previous env restored"
 eq "$(cat "$SD_ROOT/.state/$svc.state")" active "service active after env rollback"
 
+echo "== env write when the service was already down keeps the file and names what is missing"
+echo inactive > "$SD_ROOT/.state/$svc.state"
+echo "Unhandled exception. System.InvalidOperationException: Connection string 'Postgres' is not configured." > "$SD_ROOT/.journal"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5001\nBREAK=1\nKept__Value=yes\n' > "$RUN/down.env"
+o="$(R env-write --svc $svc --run-dir "$RUN" --env-file "$RUN/down.env" --restart --wait 8)"
+eq "$(code "$o")" 23 "already-down env write exit"; has "$o" "##KV missing=ConnectionStrings__Postgres" "connection string named"
+has "$(cat "$SD_ROOT/etc/$svc/$svc.env")" "Kept__Value=yes" "new file kept"
+eq "$(cat "$SD_ROOT/.state/$svc.state")" inactive "service stopped"
+rm -f "$SD_ROOT/.journal"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5001\n' > "$SD_ROOT/etc/$svc/$svc.env"; echo active > "$SD_ROOT/.state/$svc.state"
+
 echo "== provision (apache and nginx)"; DEBUGP=1
 mkdir -p "$SD_ROOT/etc/httpd/conf.d" "$SD_ROOT/etc/nginx/conf.d"
 printf 'ASPNETCORE_ENVIRONMENT=Production\nASPNETCORE_URLS=http://127.0.0.1:5050\nJwt__Key=abc\n' > "$RUN/p.env"

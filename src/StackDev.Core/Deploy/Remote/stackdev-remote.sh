@@ -214,8 +214,8 @@ show_journal() { journalctl -u "$1" -n 25 --no-pager 2>/dev/null | sed 's/^/    
 # Settings the app complained about ("'Section:Key' is not set"), as environment variable names, comma separated.
 missing_settings() {
     journalctl -u "$1" -n 60 --no-pager 2>/dev/null \
-        | grep -oE "'[A-Za-z][A-Za-z0-9_]*(:[A-Za-z0-9_]+)*' (is|are) (not set|missing|required)" \
-        | sed -E "s/^'([^']+)'.*/\1/; s/:/__/g" | sort -u | paste -sd, - || true
+        | grep -oE "('[A-Za-z][A-Za-z0-9_]*(:[A-Za-z0-9_]+)*' (is|are) (not set|not configured|missing|required)|[Cc]onnection string '[A-Za-z0-9_.-]+' (is|was) (not configured|not found|missing))" \
+        | sed -E "s/^[Cc]onnection string '([^']+)'.*/ConnectionStrings:\1/; s/^'([^']+)'.*/\1/; s/:/__/g" | sort -u | paste -sd, - || true
 }
 
 # Backup ids (YYYYMMDD-HHMMSS) of a service, newest first.
@@ -558,11 +558,20 @@ cmd_env_write() {
 
     if [ "$RESTART" = "yes" ]; then
         STEP_TOTAL=4
+        local was_up="no"
+        systemctl is-active --quiet "$SVC" && was_up="yes"
         step "Restarting $SVC to apply it"
         systemctl restart "$SVC" || true
         if ! wait_healthy "$SVC" "$WAIT"; then
             warn "The service is not healthy with the new values"
             show_journal "$SVC"
+            local missing; missing="$(missing_settings "$SVC")"
+            [ -z "$missing" ] || kv missing "$missing"
+            if [ "$was_up" = "no" ]; then
+                # it was already down before this change: the new file is not what broke it, keep it
+                systemctl stop "$SVC" >/dev/null 2>&1 || true
+                fail 23 "The values were saved, but the service still does not start."
+            fi
             cp -p "$BACKUP_DIR/env-$ts" "$ENV_FILE" && systemctl restart "$SVC" || true
             if wait_healthy "$SVC" "$WAIT"; then fail 20 "The new values broke the service; the previous file is back and the service runs again."; fi
             fail 21 "The new values broke the service and it is still down with the previous file. Backup: $BACKUP_DIR/env-$ts"
