@@ -1,167 +1,94 @@
 # stackdev
 
-Herramienta de desarrollo local para proyectos con **API .NET + web Angular + app Flutter + Postgres en Docker**.
-Reemplaza a `the previous script` (que sigue funcionando, no se borra) con una herramienta en C# que se instala como *dotnet global tool*.
+[Español](README.es.md) · **English**
 
-> **Estado: las 7 fases escritas.** Falta la prueba real en Windows (el código se compiló y probó en Linux; el panel, Docker, emulador y ventanas no se han podido ejecutar fuera de tu máquina).
+One tool to run and ship a local full-stack project: start the database, the API, the web app and the emulator with one click, then put the API on your own server (VPS) without opening a terminal.
 
-## Requisitos
+It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + Postgres in Docker** stack, and is growing into a toolbox for projects in any language.
 
-- Windows 10/11 · .NET SDK 10 (`dotnet --list-sdks` debe mostrar `10.x`)
-- Para el resto: Docker Desktop, Android SDK, Flutter, pnpm/npm
+> **Status:** used every day on Windows. The core is cross-platform in design but the window is WPF, so macOS and Linux are not supported yet. See the [roadmap](#roadmap).
 
-## Compilar y probar
+## What it does
+
+**Local development**
+- Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it.
+- One panel with live status and buttons for every service: *Start all*, *Check*, *Stop all*, logs, device conditions, a command console.
+- A command-line version (`stackdev up`, `stackdev api start`, …) for scripts, with proper exit codes.
+
+**Deploy to your own server** (SSH, nothing to install on the server)
+- **Upload API**: publishes the project, refuses development files and secrets, uploads a checksummed package, keeps a backup, swaps it in, waits until the service is healthy and rolls back by itself if it is not. A build the server already runs is not uploaded again.
+- **Create an API**: user, folders, `.env` with generated secrets, systemd service, Apache or Nginx site, firewall and HTTPS certificate. Installs what is missing (runtime, web server, PostgreSQL) and creates one database and user per API.
+- **Try before replacing**: the new version is started on a spare port with the real settings; missing settings are found and fixed before anything changes.
+- **Diagnose and repair**: looks at the public address from the outside (service, ports, DNS, certificate, answer) and offers a one-click repair, such as recreating a missing web site.
+- **Edit the server's `.env`** with hidden secrets and automatic restore if the service stops starting.
+
+Everything is guided with forms in one window. Every remote command has a time limit and a Cancel button, so nothing waits forever.
+
+## Safety
+
+- The server's SSH fingerprint is pinned in a private `known_hosts`; connections go ahead only if it matches (`StrictHostKeyChecking=yes`).
+- Secrets are masked in every log. The server list and the generated credentials are encrypted at rest (Windows DPAPI today).
+- The publish guard blocks `.env`, `appsettings.Development.json`, keys and local databases from being uploaded.
+- The server needs a user with passwordless `sudo`; nothing else is installed there beyond what you approve.
+
+## Requirements
+
+- Windows 10/11 and the .NET SDK 10 (`dotnet --list-sdks` shows `10.x`).
+- For the parts you use: Docker Desktop, the Android SDK, Flutter, pnpm/npm, an OpenSSH client.
+
+## Build and run
 
 ```powershell
+git clone https://github.com/davidtriminio/stackdev
 cd stackdev
-dotnet test                                   # tests del núcleo
-dotnet run --project src/StackDev.Cli -- config C:\ruta\a\shop
+dotnet test                                   # core tests
+dotnet run --project src/StackDev.Gui         # the window
+dotnet run --project src/StackDev.Cli -- status   # the command line
 ```
 
-## Instalar como herramienta (`stackdev`)
+Single-file build of the window:
 
 ```powershell
-dotnet pack src/StackDev.Cli -c Release                        # genera .\nupkg\stackdev.0.1.0.nupkg
-dotnet tool install  -g stackdev --add-source .\nupkg          # primera vez
-dotnet tool update   -g stackdev --add-source .\nupkg          # después de cambios
-dotnet tool uninstall -g stackdev                              # quitarla
+dotnet publish src/StackDev.Gui -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o publish\portable
 ```
 
-## Uso
-
-`stackdev` (sin argumentos) abre el **panel en vivo**: estado de Postgres, API, web, emulador y app, que se actualiza solo.
-Ahí puedes:
-
-- escribir un **código** y Enter (`a1`, `w1`, `d5`, `1` = levantar todo…; varios separados por espacio: `d1 a1 w1`),
-- pulsar **Enter o ↓** para el **menú con flechas** (agrupado por sección),
-- `?` lista de códigos · `c` condiciones del dispositivo (selección múltiple) · `k` consola de comandos · `g` configuración · `p` cambiar de proyecto · `q` salir (pregunta si detener todo).
-
-**Ctrl+C** cancela solo lo que esté corriendo y vuelve al panel.
-
-Opciones comunes: `-p <ruta>` (proyecto), `--avd <nombre>`, `--modo debug|profile|release`, `--args-extra "..."`, `--misma-ventana`, `--no-centrar`, `-y` (contesta sí a todo).
-
-### Comandos sin interfaz (scripts)
-
-| Comando | Qué hace |
-|---|---|
-| `stackdev up` / `down` / `check` | Levantar todo / detener todo / tests y análisis (código de salida ≠ 0 si algo falla) |
-| `stackdev api start\|stop\|restart\|test\|build\|open\|logs\|logs-tab` | API |
-| `stackdev web start\|stop\|test\|build\|open\|install\|logs\|logs-tab` | Web |
-| `stackdev db start\|stop\|psql\|logs\|backup\|restore [--archivo X]\|recreate` | Postgres |
-| `stackdev emu start [--avd X] [--cold]\|stop\|switch\|kill\|cold` | Emulador |
-| `stackdev app run\|stop\|analyze\|test\|format\|gen\|pub-get\|clean\|mode` | Flutter |
-| `stackdev run "<comando>" --in api\|web\|movil\|raiz\|<carpeta>` | Cualquier comando en una carpeta (con las variables de la API si corresponde) |
-| `stackdev tarea ["nombre"]` | Tarea de `dev-menu.json` (sin nombre: lista) |
-| `stackdev cond [3 13 17]` | Condiciones del dispositivo (`0` restablece; sin números lista) |
-| `stackdev status` | Estado una vez, sin panel |
-| `stackdev logs api\|web\|db [-n 40] [-f]` | Últimas líneas del log |
-| `stackdev detectar [ruta] [--guardar]` | Detecta y (opcional) crea `dev-menu.json` |
-| `stackdev config [ruta]` | Muestra cómo se lee `dev-menu.json` |
-| `stackdev estado [--sincronizar]` | Estado personal y migración desde `previous-state` |
-
-Códigos de salida: 0 bien · 1 falló · 2 uso incorrecto · 130 cancelado.
-
-### Logs
-
-API y web corren ocultas y escriben en `%APPDATA%\stackdev\logs\<proyecto>\api.log` / `web.log`. Se ven en el panel (última línea), con la acción «Ver logs aquí» (`a7`/`w7`, Ctrl+C para volver) o en una pestaña de Windows Terminal que sigue el log (`a8`/`w8`). `flutter run` conserva su propia pestaña.
-Dónde se abren las pestañas lo decide `"terminal"` en `dev-menu.json`: `"auto"` (Windows Terminal si existe), `"wt"` o `"ventana"`.
-
-Sin `[ruta]`: la carpeta actual si parece un proyecto (`.git`, `dev-menu.json`, `*.sln`, `pubspec.yaml`…), si no el último proyecto usado (pregunta), si no pide la ruta.
-
-## Versión con ventana (`stackdev-gui`)
-
-La misma lógica con interfaz gráfica (WPF, tema oscuro): tarjetas por servicio con su estado en vivo y sus botones, **Levantar todo / Verificar / Detener todo**, salida en un panel con colores, condiciones del dispositivo como opciones marcables, consola de comandos y configuración. «Cancelar acción» detiene lo que esté corriendo.
+Install the command line as a .NET tool:
 
 ```powershell
-dotnet run --project src/StackDev.Gui                     # probar
-dotnet publish src/StackDev.Gui -c Release -r win-x64 --self-contained false -o publish\gui
-publish\gui\stackdev-gui.exe C:\ruta\al\proyecto        # la ruta es opcional
+dotnet pack src/StackDev.Cli -c Release
+dotnet tool install -g stackdev --add-source .\nupkg
 ```
 
-Sin ruta abre la carpeta actual si parece un proyecto, o el último usado, o muestra el selector. Comparte con la versión de consola el estado (`%APPDATA%\stackdev`) y `dev-menu.json`.
+The remote script has its own tests (they run on Linux, WSL or Git Bash): `bash tests/remote/remote-script.test.sh`.
 
-## Estado personal
+## Project layout
 
-Va en `%APPDATA%\stackdev\` (no en el repo). La primera vez se **copia** lo que haya en `%APPDATA%\previous-state\` (último proyecto, último AVD, historial, condiciones, respaldos); el origen no se toca, así `the previous script` sigue funcionando. Mientras uses los dos, `stackdev estado --sincronizar` trae lo más nuevo.
+```
+src/StackDev.Core   logic without UI: config, detection, processes, Docker, SSH, deploy engine
+src/StackDev.Cli    commands and the console screen
+src/StackDev.Gui    the window (WPF, dark "Forja" theme)
+src/StackDev.Core/Deploy/Remote/stackdev-remote.sh   the script that runs on the server
+tests/              xUnit tests for the core and a shell suite for the remote script
+```
+
+The remote script talks to the app with a line protocol (`##STEP`, `##INFO`, `##WARN`, `##FAIL code msg`, `##KV key=value`, `##DONE`) and uses documented exit codes.
 
 ## `dev-menu.json`
 
-Está en la raíz del repo. Es el mismo formato de siempre; se pueden agregar campos nuevos (se conservan al guardar). Cada sección es opcional: si falta, esa parte no aparece.
+A project describes itself in one optional-everything file at its root: `postgres`, `api`, `web`, `mobile`, `startAll`, `tasks` and `deployment`. Missing sections simply do not appear in the UI, and unknown fields are kept when the file is saved. The Spanish [README](README.es.md) has the full field table.
 
-| Sección | Campos |
-|---|---|
-| `name` | Nombre del proyecto |
-| `postgres` | `container`, `image`, `port`, `user`, `password`, `database`, `volume` (vacío = sin volumen con nombre) |
-| `api` | `folder`, `url`, `open` (ruta que se abre en el navegador, p. ej. `/scalar`), `env`, `start`, `test`, `build` |
-| `web` | `folder`, `url`, `start`, `test`, `build`, `install` |
-| `mobile` | `folder`, `androidSdk`, `avd`, `argsRun`, `parse`, `test`, `format`, `generate` |
-| `startAll` | Orden de "levantar todo": `postgres`, `api`, `web`, `emulador` |
-| `tasks` | Lista de `{ name, folder, command }` |
+## Roadmap
 
-- Las rutas son relativas a la raíz del repo; los comandos corren en la `folder` de su componente.
-- `api.env` aplica a la API **y a cualquier comando dentro de la carpeta de la API** (así `dotnet ef` funciona sin preparar nada).
-- `{?Texto}` dentro de un comando pide un valor al ejecutar la tarea; si se deja vacío, se cancela.
-- Si editas el archivo, la herramienta lo recarga sola.
+Planned, in this order:
 
-## Estructura
+1. **Cross-platform**: put the Windows-only pieces (encryption, key permissions, window control) behind interfaces and add a second UI on Avalonia, reusing the core as it is. The command line first.
+2. **Language support as data**: describe how to detect, start, test and publish a project type in JSON/YAML files, so adding Python, Node, Go or Java needs no C#.
+3. **More targets**: web (Vercel or your server), Android APK, database backup and restore.
 
-```
-src/StackDev.Core   lógica (sin interfaz): configuración, detección, procesos, Docker, emulador, orquestación
-src/StackDev.Cli    comandos y pantalla de consola (Spectre.Console)
-src/StackDev.Gui    ventana (WPF)
-tests/StackDev.Core.Tests   xUnit
-```
+## Contributing
 
-## Servidores y despliegue de la API
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; it is short. Security problems: see [SECURITY.md](SECURITY.md).
 
-Sección **Servidor** de la ventana. Todo corre por SSH desde tu PC y no depende de scripts instalados en el servidor.
+## License
 
-| Acción | Qué hace |
-|---|---|
-| **Verificar y probar** | La primera vez muestra la huella SSH del servidor para que la compares; desde ahí solo se conecta si coincide (`known_hosts` propio, `StrictHostKeyChecking=yes`). |
-| **Subir API** | Publica el proyecto web que detecta en la solución, revisa que no lleve archivos sensibles (`.env`, `appsettings.Development.json`, `.pdb`, claves, bases locales), pide confirmación escribiendo el nombre del servicio, sube un paquete con SHA-256, guarda una copia de la versión actual, reemplaza, espera a que el servicio esté sano y, si no lo está, vuelve solo a la versión anterior. |
-| **Aprovisionar API nueva** | Crea usuario, carpetas, `.env` con secretos generados, servicio systemd, sitio de Apache o Nginx, firewall, SELinux y certificado HTTPS. |
-| **Variables (.env)** | Edita el `.env` del servidor con los secretos ocultos; guarda copia y, si el servicio no arranca con los valores nuevos, restaura el anterior. |
-| **Versiones anteriores** | Vuelve a cualquiera de las últimas versiones guardadas (se conservan 5). |
-
-Requisitos en el servidor: el usuario SSH con `sudo` sin contraseña, `rsync` (recomendado) y el runtime de ASP.NET Core de la versión del proyecto.
-
-En `dev-menu.json` el proyecto se enlaza con una sección `deployment`:
-
-```json
-"deployment": { "server": "a1b2c3d4", "service": "mi-api", "dll": "Mi.Api.dll", "domain": "mi-api.midominio.com", "project": "src/Mi.Api/Mi.Api.csproj" }
-```
-
-La lista de servidores se guarda cifrada (DPAPI) en `%APPDATA%\stackdev`, nunca en el repositorio. Los secretos no se escriben en ningún registro.
-
-Prueba del script remoto (Linux, WSL o Git Bash): `bash tests/remote/remote-script.test.sh`.
-
-### Archivos de versiones anteriores
-
-Los servidores, las credenciales de prueba y los `dev-menu.json` guardados con claves en español (`nombre`, `usuario`, `clave`, `despliegue`…) se leen igual; al guardar se reescriben con las claves actuales en inglés.
-
-### Asistente «Subir al servidor»
-
-Elige el servidor, confirma su huella la primera vez, detecta la API del proyecto y revisa qué APIs ya hay instaladas en el servidor. Si hay alguna, la eliges (★ marca la que parece ser esta); si no hay ninguna, te guía para crear una nueva (proxy Apache/Nginx, HTTPS y servicio) y luego la sube.
-
-### Crear una API nueva sin saber qué falta
-
-Antes de crear nada, el asistente revisa el servidor y muestra una lista: servidor web (Apache/Nginx), runtime de ASP.NET Core que necesita tu proyecto, certbot, DNS del dominio, espacio en disco y si el nombre ya existe. Lo que se puede instalar con el gestor de paquetes del servidor (dnf, yum o apt) se instala con un botón; lo demás se explica con el comando para hacerlo a mano. El formulario de creación pide solo servicio, dominio, base de datos y HTTPS; el resto está en «Opciones avanzadas».
-
-Si el servicio de tu proyecto aún no existe, «Subir API» lo detecta antes de compilar y ofrece crearlo y seguir con la subida. Los archivos de desarrollo del publish (`appsettings.Development.json`, `.pdb`) se dejan fuera sin preguntar; llaves, `.env` y bases de datos sí piden confirmación.
-
-Para no depender de la consola: la dirección pública viene resuelta con una dirección gratuita (`servicio.IP.sslip.io`) que ya apunta al servidor, el correo del certificado es opcional, la base de datos se elige según los paquetes y la cadena de conexión de tu proyecto, y se comprueba que los puertos 80 y 443 respondan desde internet. Si el certificado queda pendiente, la app explica el motivo (DNS, proxy o reglas de red de la nube) y ofrece «reintentar» cuando lo resuelvas.
-
-### Claves y base de datos de cada API
-
-- Con PostgreSQL en el mismo servidor, deja vacía la cadena de conexión: StackDev instala PostgreSQL si falta y crea un usuario (`<api>_app`) y una base de datos propios de esa API, con una clave aleatoria.
-- Todas las claves que genera (base de datos, administrador, clave JWT, variables que faltaban) se guardan cifradas en la sección «Credenciales» del proyecto, con el nombre «`<api> @ <servidor>` · …». En el servidor solo viven en el `.env` de la API.
-- Si la API no arranca por variables que faltan, StackDev las detecta en el registro del servicio, crea las que son claves, y para el resto (correo, pagos…) te da los pasos para ponerlas en «Variables (.env)».
-
-### Comprobar y poner en marcha
-
-El botón principal de la tarjeta del servidor abre **una sola ventana** (la pantalla de atrás se desenfoca) con los pasos: servidor, configuración de la API, arranque y comprobación final. Si falta algo, las preguntas salen dentro de la misma ventana: las claves y la base de datos se crean solas, y los valores que solo tú sabes se escriben ahí mismo. Al terminar muestra dónde corre la API (dirección y servidor) y la tarjeta lo deja visible. «Subir API» usa la misma ventana. El resto de acciones (variables, versiones anteriores, detener…) están en «Más acciones».
-
-### Direcciones y pruebas
-
-El botón «Direcciones y pruebas» muestra en una sola ventana todas las direcciones del proyecto: la API y la web locales (las de `dev-menu.json`, con su estado) y la API del servidor (`https://…`). Cada una tiene **Abrir** (elige entre las páginas que existen: documentación, salud, principal), **Probar** (qué responde, con código y tiempo) y **Copiar dirección**.
+[MIT](LICENSE) © David Triminio
