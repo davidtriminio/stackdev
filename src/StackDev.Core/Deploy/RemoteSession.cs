@@ -94,12 +94,12 @@ public sealed class RemoteSession : IDisposable
                     case RemoteEventKind.EnvEnd: inEnv = false; result.EnvText = env.ToString(); return;
                     case RemoteEventKind.Log when inEnv: env.AppendLine(raw.TrimEnd('\r')); return;
                     case RemoteEventKind.Done: result.Done = true; break;
-                    case RemoteEventKind.Fail: fail = e.Text; break;
+                    case RemoteEventKind.Fail: fail = RemoteText.Translate(e.Text); break;
                     case RemoteEventKind.Kv: result.Values[e.Key!] = e.Text; break;
                     case RemoteEventKind.Api: if (RemoteApi.Parse(e.Text) is { } api) result.Apis.Add(api); return;
                     case RemoteEventKind.Backup: if (RemoteBackup.Parse(e.Text) is { } b) result.Backups.Add(b); return;
                 }
-                onEvent?.Invoke(e with { Text = SecretMask.Mask(e.Text, known) });
+                onEvent?.Invoke(e with { Text = SecretMask.Mask(e.Kind is RemoteEventKind.Step or RemoteEventKind.Info or RemoteEventKind.Warn or RemoteEventKind.Fail ? RemoteText.Translate(e.Text) : e.Text, known) });
             }
         }
 
