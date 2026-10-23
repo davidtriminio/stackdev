@@ -150,3 +150,5 @@ Antes de crear nada, el asistente revisa el servidor y muestra una lista: servid
 
 Si el servicio de tu proyecto aún no existe, «Subir API» lo detecta antes de compilar y ofrece crearlo y seguir con la subida. Los archivos de desarrollo del publish (`appsettings.Development.json`, `.pdb`) se dejan fuera sin preguntar; llaves, `.env` y bases de datos sí piden confirmación.
 
+Para no depender de la consola: la dirección pública viene resuelta con una dirección gratuita (`servicio.IP.sslip.io`) que ya apunta al servidor, el correo del certificado es opcional, la base de datos se elige según los paquetes y la cadena de conexión de tu proyecto, y se comprueba que los puertos 80 y 443 respondan desde internet. Si el certificado queda pendiente, la app explica el motivo (DNS, proxy o reglas de red de la nube) y ofrece «reintentar» cuando lo resuelvas.
+
