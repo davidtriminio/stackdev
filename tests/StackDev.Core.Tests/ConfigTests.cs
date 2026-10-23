@@ -7,84 +7,84 @@ namespace StackDev.Core.Tests;
 public class ConfigTests
 {
     [Fact]
-    public void Lee_el_dev_menu_json_actual_de_pulperia()
+    public void ReadsTheDevMenuJsonCurrentOfShop()
     {
-        var c = ConfigJson.Leer(ArbolPulperia.ConfigActual);
+        var c = ConfigJson.Read(ShopTree.CurrentConfig);
 
-        Assert.Equal("pulperia", c.Nombre);
-        Assert.Equal(5440, c.Postgres!.Puerto);
-        Assert.Equal("pulperia-pg", c.Postgres.Contenedor);
-        Assert.Equal("", c.Postgres.Volumen);
-        Assert.Equal("/scalar", c.Api!.Abrir);
+        Assert.Equal("pulperia", c.Name);
+        Assert.Equal(5440, c.Postgres!.Port);
+        Assert.Equal("pulperia-pg", c.Postgres.Container);
+        Assert.Equal("", c.Postgres.Volume);
+        Assert.Equal("/scalar", c.Api!.Open);
         Assert.Equal("Host=127.0.0.1;Port=5440;Database=pulperia;Username=pulperia;Password=dev", c.Api.Env!["ConnectionStrings__Pulperia"]);
-        Assert.Equal("pnpm install", c.Web!.Instalar);
-        Assert.Equal(@"V:\Programas\Android\Sdk", c.Movil!.AndroidSdk);
-        Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, c.LevantarTodo);
-        Assert.Equal(3, c.Tareas!.Count);
+        Assert.Equal("pnpm install", c.Web!.Install);
+        Assert.Equal(@"V:\Programas\Android\Sdk", c.Mobile!.AndroidSdk);
+        Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, c.StartAll);
+        Assert.Equal(3, c.Tasks!.Count);
     }
 
     [Fact]
-    public void Escribir_y_volver_a_leer_da_el_mismo_contenido_JSON()
+    public void WriteYReturnAReadGivesTheSameContentJson()
     {
-        var original = ConfigJson.Leer(ArbolPulperia.ConfigActual);
-        var texto = ConfigJson.Escribir(original);
+        var original = ConfigJson.Read(ShopTree.CurrentConfig);
+        var text = ConfigJson.Write(original);
 
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(ArbolPulperia.ConfigActual), JsonNode.Parse(texto)),
-            "El archivo reescrito no es equivalente al original:\n" + texto);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(ShopTree.CurrentConfig), JsonNode.Parse(text)),
+            "El archivo reescrito no es equivalente al original:\n" + text);
     }
 
     [Fact]
-    public void Salida_legible_sin_escapar_comillas_simples_ni_tildes_y_con_saltos_de_linea_LF()
+    public void OutputReadableWithoutEscapeQuotesSimpleNorAccentsYWithJumpsOfLineLf()
     {
-        var c = new ProyectoConfig
+        var c = new ProjectConfig
         {
-            Nombre = "pulperia",
-            Tareas = new() { new TareaConfig { Nombre = "Migración 'nueva'", Carpeta = "api", Comando = "echo \"hola\" && dir" } },
+            Name = "pulperia",
+            Tasks = new() { new TaskConfig { Name = "Migración 'nueva'", Folder = "api", Command = "echo \"hola\" && dir" } },
         };
-        var texto = ConfigJson.Escribir(c);
+        var text = ConfigJson.Write(c);
 
-        Assert.Contains("\"nombre\": \"pulperia\"", texto);
-        Assert.Contains("Migración 'nueva'", texto);            // sin \u0027 ni \u00F3
-        Assert.Contains("\\\"hola\\\"", texto);                  // las comillas dobles sí se escapan
-        Assert.DoesNotContain("\r", texto);
-        Assert.StartsWith("{\n  \"nombre\"", texto);              // sangría de 2 espacios
-        Assert.EndsWith("}\n", texto);
-        Assert.DoesNotContain("\"postgres\"", texto);             // sección ausente: no se escribe
+        Assert.Contains("\"name\": \"pulperia\"", text);
+        Assert.Contains("Migración 'nueva'", text);            // sin \u0027 ni \u00F3
+        Assert.Contains("\\\"hola\\\"", text);                  // las comillas dobles sí se escapan
+        Assert.DoesNotContain("\r", text);
+        Assert.StartsWith("{\n  \"name\"", text);              // sangría de 2 espacios
+        Assert.EndsWith("}\n", text);
+        Assert.DoesNotContain("\"postgres\"", text);             // sección ausente: no se escribe
     }
 
     [Fact]
-    public void Conserva_los_campos_nuevos_que_esta_version_no_conoce()
+    public void KeepsTheFieldsNewThatThisVersionNoKnows()
     {
         const string json = """
-            { "nombre": "x", "campoFuturo": { "a": 1 }, "api": { "carpeta": "api", "timeoutSeg": 30 } }
+            { "name": "x", "campoFuturo": { "a": 1 }, "api": { "folder": "api", "timeoutSeg": 30 } }
             """;
-        var c = ConfigJson.Leer(json);
-        var otra = JsonNode.Parse(ConfigJson.Escribir(c))!;
+        var c = ConfigJson.Read(json);
+        var other = JsonNode.Parse(ConfigJson.Write(c))!;
 
-        Assert.Equal(1, (int)otra["campoFuturo"]!["a"]!);
-        Assert.Equal(30, (int)otra["api"]!["timeoutSeg"]!);
+        Assert.Equal(1, (int)other["campoFuturo"]!["a"]!);
+        Assert.Equal(30, (int)other["api"]!["timeoutSeg"]!);
     }
 
     [Fact]
-    public void Tolera_comentarios_comas_finales_y_el_puerto_escrito_como_texto()
+    public void ToleratesCommentsCommasFinalYThePortWrittenAsText()
     {
         const string json = """
             {
               // el puerto del contenedor
-              "postgres": { "puerto": "5440", },
+              "postgres": { "port": "5440", },
             }
             """;
-        Assert.Equal(5440, ConfigJson.Leer(json).Postgres!.Puerto);
+        Assert.Equal(5440, ConfigJson.Read(json).Postgres!.Port);
     }
 
     [Fact]
-    public void Valores_efectivos_de_postgres_usan_los_mismos_defectos_que_el_script()
+    public void ValuesEffectiveOfPostgresUseTheSameDefaultsThatTheScript()
     {
-        var pg = new PostgresConfig { Usuario = "pulperia" };
-        Assert.Equal(5432, pg.PuertoEf);
-        Assert.Equal("pulperia", pg.BaseDatosEf);          // sin baseDatos: el usuario
-        Assert.Equal("postgres:17-alpine", pg.ImagenEf);
-        Assert.Equal("postgres", new PostgresConfig().UsuarioEf);
+        var pg = new PostgresConfig { User = "pulperia" };
+        Assert.Equal(5432, pg.EfPort);
+        Assert.Equal("pulperia", pg.EfDatabase);          // sin baseDatos: el usuario
+        Assert.Equal("postgres:17-alpine", pg.EfImage);
+        Assert.Equal("postgres", new PostgresConfig().EfUser);
     }
 
     [Theory]
@@ -94,45 +94,45 @@ public class ConfigTests
     [InlineData("postgres:18-alpine", "/var/lib/postgresql")]
     [InlineData("postgres", "/var/lib/postgresql/data")]
     [InlineData("postgis/postgis:19-3.6", "/var/lib/postgresql")]
-    public void Ruta_de_datos_segun_la_version_de_postgres(string imagen, string esperado) =>
-        Assert.Equal(esperado, PostgresConfig.RutaDatos(imagen));
+    public void PathOfDataPerTheVersionOfPostgres(string image, string expected) =>
+        Assert.Equal(expected, PostgresConfig.DataPath(image));
 
     [Fact]
-    public void ConfigStore_crea_guarda_recarga_y_deja_copia_bak()
+    public void ConfigStoreCreatesSavesReloadYLeavesCopyBak()
     {
-        using var t = new ArbolPulperia();
-        var store = new ConfigStore(t.Raiz);
-        Assert.False(store.Existe);
+        using var t = new ShopTree();
+        var store = new ConfigStore(t.Root);
+        Assert.False(store.Exists);
 
-        store.Guardar(ConfigJson.Leer(ArbolPulperia.ConfigActual));
-        Assert.True(store.Existe);
-        Assert.False(store.RecargarSiCambio());                 // nada cambió
+        store.Save(ConfigJson.Read(ShopTree.CurrentConfig));
+        Assert.True(store.Exists);
+        Assert.False(store.ReloadIfChanged());                 // nada cambió
 
         // el usuario edita el archivo
-        File.WriteAllText(store.Ruta, ArbolPulperia.ConfigActual.Replace("5440", "5441"));
-        File.SetLastWriteTimeUtc(store.Ruta, DateTime.UtcNow.AddMinutes(1));
-        Assert.True(store.RecargarSiCambio());
-        Assert.Equal(5441, store.Config.Postgres!.Puerto);
-        Assert.False(store.RecargarSiCambio());
+        File.WriteAllText(store.FilePath, ShopTree.CurrentConfig.Replace("5440", "5441"));
+        File.SetLastWriteTimeUtc(store.FilePath, DateTime.UtcNow.AddMinutes(1));
+        Assert.True(store.ReloadIfChanged());
+        Assert.Equal(5441, store.Config.Postgres!.Port);
+        Assert.False(store.ReloadIfChanged());
 
-        store.Reemplazar(new ProyectoConfig { Nombre = "nuevo" });
-        Assert.True(File.Exists(store.Ruta + ".bak"));
-        Assert.Contains("5441", File.ReadAllText(store.Ruta + ".bak"));
-        Assert.Equal("nuevo", ConfigJson.Leer(File.ReadAllText(store.Ruta)).Nombre);
+        store.Replace(new ProjectConfig { Name = "nuevo" });
+        Assert.True(File.Exists(store.FilePath + ".bak"));
+        Assert.Contains("5441", File.ReadAllText(store.FilePath + ".bak"));
+        Assert.Equal("nuevo", ConfigJson.Read(File.ReadAllText(store.FilePath)).Name);
     }
 
     [Fact]
-    public void ConfigStore_con_json_roto_deja_el_menu_vacio_y_avisa_sin_perder_el_archivo()
+    public void ConfigStoreWithJsonBrokenLeavesTheMenuEmptyYWarnsWithoutLoseTheFile()
     {
-        using var t = new ArbolPulperia();
-        var store = new ConfigStore(t.Raiz);
-        File.WriteAllText(store.Ruta, "{ esto no es json");
+        using var t = new ShopTree();
+        var store = new ConfigStore(t.Root);
+        File.WriteAllText(store.FilePath, "{ esto no es json");
 
-        store.Cargar();
+        store.Load();
 
         Assert.NotNull(store.Error);
         Assert.Null(store.Config.Api);
-        Assert.Equal("{ esto no es json", File.ReadAllText(store.Ruta));
-        Assert.False(store.RecargarSiCambio());                 // no repite el error en cada vuelta
+        Assert.Equal("{ esto no es json", File.ReadAllText(store.FilePath));
+        Assert.False(store.ReloadIfChanged());                 // no repite el error en cada vuelta
     }
 }

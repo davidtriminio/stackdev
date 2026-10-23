@@ -1,5 +1,5 @@
 {
-  "nombre": "stackdev",
-  "levantarTodo": [],
-  "tareas": []
+  "name": "stackdev",
+  "startAll": [],
+  "tasks": []
 }
