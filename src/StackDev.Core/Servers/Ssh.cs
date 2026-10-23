@@ -8,10 +8,16 @@ public static class Ssh
 {
     public static List<string> Options(Server s, bool interactive)
     {
-        var a = new List<string> { "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=accept-new" };
+        var a = new List<string>
+        {
+            "-o", "ConnectTimeout=8",
+            "-o", "StrictHostKeyChecking=yes",                       // only servers whose fingerprint the user has confirmed
+            "-o", HostKeys.KnownHostsOption,   // StackDev's own list, not the user's ~/.ssh
+            "-o", "HashKnownHosts=no",
+        };
         if (!interactive) { a.Add("-o"); a.Add("BatchMode=yes"); }
         if (s.Port is > 0 and not 22) { a.Add("-p"); a.Add(s.Port.ToString()); }
-        if (!string.IsNullOrWhiteSpace(s.Key)) { a.Add("-i"); a.Add(s.Key); }
+        if (!string.IsNullOrWhiteSpace(s.Key)) { a.Add("-i"); a.Add(s.Key); a.Add("-o"); a.Add("IdentitiesOnly=yes"); }
         a.Add($"{s.User}@{s.Host}");
         return a;
     }
@@ -22,6 +28,34 @@ public static class Ssh
         var a = Options(s, interactive: false);
         a.Add(command);
         return ProcessRunner.Run("ssh", a, timeoutSec, ct: ct);
+    }
+
+    /// <summary>Options for scp (same safety settings; scp takes the port as -P and the destination as user@host:path).</summary>
+    public static List<string> ScpOptions(Server s)
+    {
+        var a = new List<string>
+        {
+            "-q",
+            "-o", "ConnectTimeout=8",
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=yes",
+            "-o", HostKeys.KnownHostsOption,
+            "-o", "HashKnownHosts=no",
+        };
+        if (s.Port is > 0 and not 22) { a.Add("-P"); a.Add(s.Port.ToString()); }
+        if (!string.IsNullOrWhiteSpace(s.Key)) { a.Add("-i"); a.Add(s.Key); a.Add("-o"); a.Add("IdentitiesOnly=yes"); }
+        return a;
+    }
+
+    /// <summary>Copies one local file to a path on the server.</summary>
+    public static ProcResult Upload(Server s, string localFile, string remotePath, int timeoutSec = 900, CancellationToken ct = default)
+    {
+        // The file is passed by name from its own folder: scp reads "C:\dir\file" as host "C".
+        var full = Path.GetFullPath(localFile);
+        var a = ScpOptions(s);
+        a.Add(Path.GetFileName(full));
+        a.Add($"{s.User}@{s.Host}:{remotePath}");
+        return ProcessRunner.Run("scp", a, timeoutSec, Path.GetDirectoryName(full), ct: ct);
     }
 
     private static string Q(string x) => "'" + x.Replace("'", "''") + "'";
