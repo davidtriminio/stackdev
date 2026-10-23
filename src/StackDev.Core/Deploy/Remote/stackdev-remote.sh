@@ -695,6 +695,64 @@ apache_vhost_path() {
     if [ -d "$ROOT/etc/apache2/sites-available" ]; then echo "$ROOT/etc/apache2/sites-available/$SVC.conf"; else echo "$ROOT/etc/httpd/conf.d/$SVC.conf"; fi
 }
 
+# Writes the web server site that proxies $DOMAIN to 127.0.0.1:$PORT and reloads the web server (shared by provision and site).
+write_site() {
+    local vhost
+    if [ "$WEB" = "apache" ]; then vhost="$(apache_vhost_path)"; else vhost="$ROOT/etc/nginx/conf.d/$SVC.conf"; fi
+    if [ -f "$vhost" ]; then cp -p "$vhost" "$vhost.stackdev-$(date +%Y%m%d-%H%M%S).bak"; fi
+    if [ "$WEB" = "apache" ]; then
+        render > "$vhost" <<'APACHE_EOF' || fail 30 "Could not write the Apache site"
+<VirtualHost *:80>
+    ServerName __DOMAIN__
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass /.well-known/acme-challenge !
+    ProxyPass / http://127.0.0.1:__PORT__/
+    ProxyPassReverse / http://127.0.0.1:__PORT__/
+    RequestHeader set X-Forwarded-Proto "http"
+
+    ErrorLog  logs/__SVC__-error.log
+    CustomLog logs/__SVC__-access.log combined
+</VirtualHost>
+APACHE_EOF
+        if command -v a2enmod >/dev/null 2>&1; then
+            a2enmod proxy proxy_http headers >/dev/null 2>&1 || true
+            a2ensite "$SVC" >/dev/null 2>&1 || true
+        fi
+        if command -v apachectl >/dev/null 2>&1; then apachectl -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Apache rejected the configuration; the new site was removed"; }
+        elif command -v httpd >/dev/null 2>&1; then httpd -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Apache rejected the configuration; the new site was removed"; }; fi
+        systemctl reload httpd >/dev/null 2>&1 || systemctl reload apache2 >/dev/null 2>&1 || fail 30 "Could not reload Apache"
+    else
+        render > "$vhost" <<'NGINX_EOF' || fail 30 "Could not write the Nginx site"
+map $http_upgrade $__CONN__ {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 80;
+    server_name __DOMAIN__;
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://127.0.0.1:__PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $__CONN__;
+    }
+}
+NGINX_EOF
+        nginx -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Nginx rejected the configuration; the new site was removed"; }
+        systemctl reload nginx >/dev/null 2>&1 || fail 30 "Could not reload Nginx"
+    fi
+    info "Site for $DOMAIN written to ${vhost#"$ROOT"}"
+}
+
 cmd_provision() {
     STEP_TOTAL=8
     [ -n "$SVC" ] && [ -n "$DLL" ] && [ -n "$DOMAIN" ] && [ -n "$PORT" ] && [ -n "$RUN_DIR" ] && [ -n "$ENV_FILE_IN" ] || fail 10 "Missing arguments"
@@ -780,58 +838,7 @@ UNIT_EOF
     warn "In your cloud (Oracle, AWS...) the network rules must also allow ports 80 and 443."
 
     step "Configuring the web server ($WEB)"
-    if [ -f "$vhost" ]; then cp -p "$vhost" "$vhost.stackdev-$(date +%Y%m%d-%H%M%S).bak"; fi
-    if [ "$WEB" = "apache" ]; then
-        render > "$vhost" <<'APACHE_EOF' || fail 30 "Could not write the Apache site"
-<VirtualHost *:80>
-    ServerName __DOMAIN__
-
-    ProxyRequests Off
-    ProxyPreserveHost On
-    ProxyPass /.well-known/acme-challenge !
-    ProxyPass / http://127.0.0.1:__PORT__/
-    ProxyPassReverse / http://127.0.0.1:__PORT__/
-    RequestHeader set X-Forwarded-Proto "http"
-
-    ErrorLog  logs/__SVC__-error.log
-    CustomLog logs/__SVC__-access.log combined
-</VirtualHost>
-APACHE_EOF
-        if command -v a2enmod >/dev/null 2>&1; then
-            a2enmod proxy proxy_http headers >/dev/null 2>&1 || true
-            a2ensite "$SVC" >/dev/null 2>&1 || true
-        fi
-        if command -v apachectl >/dev/null 2>&1; then apachectl -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Apache rejected the configuration; the new site was removed"; }
-        elif command -v httpd >/dev/null 2>&1; then httpd -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Apache rejected the configuration; the new site was removed"; }; fi
-        systemctl reload httpd >/dev/null 2>&1 || systemctl reload apache2 >/dev/null 2>&1 || fail 30 "Could not reload Apache"
-    else
-        render > "$vhost" <<'NGINX_EOF' || fail 30 "Could not write the Nginx site"
-map $http_upgrade $__CONN__ {
-    default upgrade;
-    ''      close;
-}
-
-server {
-    listen 80;
-    server_name __DOMAIN__;
-    client_max_body_size 25m;
-
-    location / {
-        proxy_pass http://127.0.0.1:__PORT__;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $__CONN__;
-    }
-}
-NGINX_EOF
-        nginx -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Nginx rejected the configuration; the new site was removed"; }
-        systemctl reload nginx >/dev/null 2>&1 || fail 30 "Could not reload Nginx"
-    fi
-    info "Site for $DOMAIN written to ${vhost#"$ROOT"}"
+    write_site
 
     step "HTTPS certificate"
     if [ "$HTTPS" != "yes" ]; then
@@ -847,6 +854,25 @@ NGINX_EOF
     echo "##DONE"
 }
 
+# ---------------------------------------------------------------- site: (re)create the web server site and certificate of an API that already exists
+# For when the API runs but its domain does not reach it (no site for that name, or a site for another name).
+cmd_site() {
+    STEP_TOTAL=3
+    [ -n "$SVC" ] && [ -n "$DOMAIN" ] || fail 10 "Missing arguments"
+    service_exists "$SVC" || fail 11 "The service '$SVC' does not exist on this server. Provision it first."
+    [ -n "$PORT" ] || PORT="$(env_port)"
+    [ -n "$PORT" ] || fail 11 "The port of the API is not known (ASPNETCORE_URLS is not in its settings)."
+    if [ "$WEB" = "apache" ] && ! command -v httpd >/dev/null 2>&1 && ! command -v apache2 >/dev/null 2>&1; then fail 11 "Apache is not installed"; fi
+    if [ "$WEB" = "nginx" ] && ! command -v nginx >/dev/null 2>&1; then fail 11 "Nginx is not installed"; fi
+    step "Configuring the web server ($WEB)"
+    write_site
+    step "HTTPS certificate"
+    if [ "$HTTPS" != "yes" ]; then info "HTTPS skipped"; elif issue_certificate; then kv https ok; else kv https pending; fi
+    step "Done"
+    kv site "$DOMAIN"
+    echo "##DONE"
+}
+
 case "$CMD" in
     preflight)  cmd_preflight ;;
     discover)   cmd_discover ;;
@@ -858,6 +884,7 @@ case "$CMD" in
     env-read)   cmd_env_read ;;
     env-write)  cmd_env_write ;;
     provision)  cmd_provision ;;
+    site)       cmd_site ;;
     db-create)  cmd_db_create ;;
     check)      cmd_check ;;
     *) fail 10 "Unknown command: ${CMD:-<none>}" ;;

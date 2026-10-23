@@ -36,10 +36,10 @@ public sealed class LaunchWindow : Window
     private readonly StackPanel _questionBody = new();
     private readonly TextBlock _result = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
     private readonly Border _banner = new() { BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 14, 0, 0), Visibility = Visibility.Collapsed };
-    private readonly Button _copy = new() { Content = "Copiar registro", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0) };
-    private readonly Button _open = new() { Content = "Abrir en el navegador ▾", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0), Visibility = Visibility.Collapsed };
-    private readonly Button _cancel = new() { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8) };
-    private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Visibility = Visibility.Collapsed };
+    private readonly Button _copy = new() { Content = "Copiar registro", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button _open = new() { Content = "Abrir en el navegador ▾", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
+    private readonly Button _cancel = new() { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
     private readonly StringBuilder _text = new();
     private readonly CancellationTokenSource _cts = new();
     private bool _running = true;
