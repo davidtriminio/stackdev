@@ -499,7 +499,10 @@ public sealed class ServerView : ScrollViewer
             return;
 
         // Linking an API that already exists: without its address the project would show as "sin configurar", so ask for it here.
-        var domain = current is not null && current.Server == sv.Id && current.Service == chosen.Service ? current.Domain : null;
+        var domain = current is not null && current.Server == sv.Id && current.Service == chosen.Service && !string.IsNullOrWhiteSpace(current.Domain)
+            ? current.Domain
+            : string.IsNullOrWhiteSpace(chosen.Domain) ? null : chosen.Domain;   // the server's own web configuration says it: nothing to type
+        if (domain is not null && chosen.Domain.Length > 0) _log($"Dirección de la API tomada del servidor: https://{domain}", Level.Ok);
         while (string.IsNullOrWhiteSpace(domain))
         {
             var suggested = ProvisionService.AutoDomain(chosen.Service, sv.Host) ?? "";
@@ -640,6 +643,13 @@ public sealed class ServerView : ScrollViewer
         var title = mode switch { LaunchMode.Deploy => $"Subir {depl.Service} a {sv.Name}", LaunchMode.Restart => $"Comprobar y reiniciar {depl.Service}", _ => $"Comprobar y poner en marcha {depl.Service}" };
         _log(title + "…", Level.Info);
         var outcome = LaunchWindow.Run(_owner, title, $"{sv.Name}  ·  {sv.Destination}", LaunchFlow.StepNames, (win, ct) => flow.Run(win, ct));
+        if (string.IsNullOrWhiteSpace(depl.Domain) && !string.IsNullOrWhiteSpace(flow.FoundDomain))
+        {
+            // The project did not know its address but the server does: remember it, no typing.
+            depl.Domain = flow.FoundDomain;
+            _saveDeployment(depl);
+            _log($"Dirección de la API tomada del servidor: https://{depl.Domain}", Level.Ok);
+        }
         _log(outcome.Text, outcome.Ok ? Level.Ok : Level.Warning);
         _state = null;
         await QueryStatusAsync(force: true);

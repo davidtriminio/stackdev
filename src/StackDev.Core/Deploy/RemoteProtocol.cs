@@ -52,12 +52,12 @@ public static class RemoteProtocol
 }
 
 /// <summary>An API service already installed on the server.</summary>
-public sealed record RemoteApi(string Service, string Dll, string Directory, string User, string State)
+public sealed record RemoteApi(string Service, string Dll, string Directory, string User, string State, string Domain = "")
 {
     public static RemoteApi? Parse(string text)
     {
         var p = text.Split('|');
-        return p.Length >= 5 ? new RemoteApi(p[0], p[1], p[2], p[3], p[4]) : null;
+        return p.Length >= 5 ? new RemoteApi(p[0], p[1], p[2], p[3], p[4], p.Length > 5 ? p[5].Trim() : "") : null;
     }
 }
 

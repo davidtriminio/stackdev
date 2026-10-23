@@ -88,6 +88,20 @@ mkapp
 echo "== preflight / discover"
 o="$(R preflight --svc $svc)"; has "$o" "##KV service_exists=yes" "preflight service"; has "$o" "##KV runtimes=9" "preflight runtimes"; has "$o" "##KV port=5001" "preflight port"; eq "$(code "$o")" 0 "preflight exit"
 o="$(R discover)"; eq "$(code "$o")" 0 "discover exit"
+mkdir -p "$SD_ROOT/etc/nginx/conf.d"; printf "server {
+    server_name _ api.midominio.com www.midominio.com;
+    location / { proxy_pass http://127.0.0.1:5001; }
+}
+" > "$SD_ROOT/etc/nginx/conf.d/other-name.conf"
+o="$(R preflight --svc $svc)"; has "$o" "##KV domain=api.midominio.com" "domain found by the port it proxies"
+printf "[Service]
+ExecStart=/usr/bin/dotnet /var/www/$svc/Demo.Api.dll
+User=x
+WorkingDirectory=/var/www/$svc
+" > "$SD_ROOT/etc/systemd/system/$svc.service"
+o="$(R discover)"; has "$o" "|api.midominio.com" "discover lists the domain"
+rm -f "$SD_ROOT/etc/nginx/conf.d/other-name.conf"
+o="$(R preflight --svc $svc)"; has "$o" "##KV domain=" "no site, empty domain"
 
 echo "== deploy ok"
 mkdir -p "$T/b1" && echo v2 > "$T/b1/Demo.Api.dll" && echo n > "$T/b1/new.txt" && tar -czf "$RUN/bundle.tgz" -C "$T/b1" .
