@@ -135,3 +135,11 @@ En `dev-menu.json` el proyecto se enlaza con una sección `deployment`:
 La lista de servidores se guarda cifrada (DPAPI) en `%APPDATA%\stackdev`, nunca en el repositorio. Los secretos no se escriben en ningún registro.
 
 Prueba del script remoto (Linux, WSL o Git Bash): `bash tests/remote/remote-script.test.sh`.
+
+### Archivos de versiones anteriores
+
+Los servidores, las credenciales de prueba y los `dev-menu.json` guardados con claves en español (`nombre`, `usuario`, `clave`, `despliegue`…) se leen igual; al guardar se reescriben con las claves actuales en inglés.
+
+### Asistente «Subir al servidor»
+
+Elige el servidor, confirma su huella la primera vez, detecta la API del proyecto y revisa qué APIs ya hay instaladas en el servidor. Si hay alguna, la eliges (★ marca la que parece ser esta); si no hay ninguna, te guía para crear una nueva (proxy Apache/Nginx, HTTPS y servicio) y luego la sube.
