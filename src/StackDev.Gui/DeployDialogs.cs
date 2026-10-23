@@ -243,12 +243,12 @@ public static class DeployDialogs
         }
 
         var kinds = new[] { DatabaseKind.Sqlite, DatabaseKind.Postgres, DatabaseKind.None };
-        var names = new[] { "SQLite (archivo en el servidor)", "PostgreSQL (cadena de conexión)", "Ninguna / la configuro después" };
+        var names = new[] { "SQLite (archivo en el servidor)", "PostgreSQL en este servidor", "Ninguna / la configuro después" };
         var kind = dbHint is null ? 0 : Math.Max(0, Array.IndexOf(kinds, dbHint.Kind));
         root.Children.Add(new TextBlock { Text = "Base de datos (clic para cambiar)", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
         var dbButton = Toggle("");
         var pgPanel = new StackPanel { Visibility = Visibility.Collapsed };
-        var pg = ServerDialogs.Field(pgPanel, "Cadena de conexión de PostgreSQL", "Host=localhost;Database=" + service + ";Username=postgres;Password=", null, 500);
+        var pg = ServerDialogs.Field(pgPanel, "Cadena de conexión (opcional)", "", "Vacía = creo un usuario y una base de datos solo para esta API, con una clave aleatoria, y guardo los datos en «Credenciales». Si usas una base externa, pega aquí su cadena (Host=…;Database=…;Username=…;Password=…).", 500);
         void SetDb()
         {
             dbButton.Content = names[kind] + "   ▾";
@@ -347,6 +347,41 @@ public static class DeployDialogs
         w.Loaded += (_, _) => svc.Focus();
         w.ShowDialog();
         return result;
+    }
+
+    /// <summary>Every key the app created for the API, with a copy button. They are already saved in Credentials when <paramref name="saved"/>.</summary>
+    public static void ShowGenerated(Window? owner, IReadOnlyList<GeneratedCredential> items, string service, bool saved)
+    {
+        var w = ServerDialogs.Base(owner, "Claves de " + service, 640);
+        var root = new StackPanel { Margin = new Thickness(22) };
+        root.Children.Add(Body("Estas claves se crearon para la API", 14));
+        root.Children.Add(Muted(saved
+            ? "Ya las guardé, cifradas y solo en este equipo, en la sección «Credenciales» de este proyecto. En el servidor viven en /etc/" + service + "/" + service + ".env, legible solo por root y el servicio."
+            : "No pude guardarlas en «Credenciales»: cópialas ahora a tu gestor de contraseñas. En el servidor viven en /etc/" + service + "/" + service + ".env."));
+        foreach (var c in items)
+        {
+            root.Children.Add(new TextBlock { Text = c.Name + (c.User.Length > 0 ? "   ·   usuario: " + c.User : ""), FontSize = 12, Margin = new Thickness(0, 12, 0, 3), Foreground = P("TextBrush") });
+            var row = new Grid();
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var box = new TextBox { Text = c.Key, IsReadOnly = true, FontFamily = new FontFamily("Cascadia Mono, Consolas") };
+            var copy = ServerDialogs.Button("Copiar", false);
+            copy.IsCancel = false;
+            copy.Margin = new Thickness(8, 0, 0, 0);
+            var value = c.Key;
+            copy.Click += (_, _) => { try { Clipboard.SetText(value); } catch (System.Runtime.InteropServices.COMException) { } };
+            Grid.SetColumn(copy, 1);
+            row.Children.Add(box);
+            row.Children.Add(copy);
+            root.Children.Add(row);
+        }
+        var done = ServerDialogs.Button("Entendido", true);
+        done.Click += (_, _) => w.Close();
+        root.Children.Add(ServerDialogs.ButtonRow(done));
+        w.Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        w.SizeToContent = SizeToContent.Height;
+        w.MaxHeight = SystemParameters.WorkArea.Height - 60;
+        w.ShowDialog();
     }
 
     /// <summary>The generated admin password, shown once.</summary>

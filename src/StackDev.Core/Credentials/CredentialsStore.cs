@@ -48,6 +48,18 @@ public sealed class CredentialsStore
         }
     }
 
+    /// <summary>Adds credentials, replacing the ones that already have the same name (a renewed password, for example).</summary>
+    public void Upsert(IEnumerable<Credential> items)
+    {
+        var list = Read();
+        foreach (var c in items)
+        {
+            var i = list.FindIndex(x => string.Equals(x.Name, c.Name, StringComparison.OrdinalIgnoreCase));
+            if (i >= 0) list[i] = c; else list.Add(c);
+        }
+        Save(list);
+    }
+
     public void Save(IEnumerable<Credential> list)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);

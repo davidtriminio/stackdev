@@ -47,7 +47,7 @@ valid_dir()    { [[ "$1" =~ ^/[A-Za-z0-9._/-]+$ ]] && [[ "$1" != *..* ]]; }
 inside_run_dir() { case "$1" in "$RUN_DIR"/*) [[ "$1" != *..* ]] ;; *) return 1 ;; esac; }
 
 SVC="" DLL="" RUN_DIR="" BUNDLE="" SHA="" KEEP=5 WAIT=30 RUNTIME="" TO="last"
-DOMAIN="" PORT="" WEB="apache" EMAIL="" HTTPS="no" FORCE="no" ENV_FILE_IN="" RESTART="no" DB="" INSTALL=""
+DOMAIN="" PORT="" WEB="apache" EMAIL="" HTTPS="no" FORCE="no" ENV_FILE_IN="" RESTART="no" DB="" INSTALL="" PW_FILE=""
 
 CMD="${1:-}"; shift || true
 while [ $# -gt 0 ]; do
@@ -68,6 +68,7 @@ while [ $# -gt 0 ]; do
         --https)    HTTPS="${2:-}"; shift 2 ;;
         --force)    FORCE="yes"; shift ;;
         --env-file) ENV_FILE_IN="${2:-}"; shift 2 ;;
+        --pw-file)  PW_FILE="${2:-}"; shift 2 ;;
         --restart)  RESTART="yes"; shift ;;
         --db)       DB="${2:-}"; shift 2 ;;
         --install)  INSTALL="${2:-}"; shift 2 ;;
@@ -261,6 +262,7 @@ cmd_preflight() {
     kv active "$(systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
     kv env_file "$([ -f "$ENV_FILE" ] && echo yes || echo no)"
     kv port "$(env_port)"
+    kv postgres "$(command -v psql >/dev/null 2>&1 && echo yes || echo no)"
     kv rsync "$(command -v rsync >/dev/null 2>&1 && echo yes || echo no)"
     kv dotnet "$(dotnet_bin | head -n1)"
     kv runtimes "$( ( "$(dotnet_bin)" --list-runtimes 2>/dev/null | awk '$1=="Microsoft.AspNetCore.App"{print $2}' | cut -d. -f1 | sort -un | paste -sd, - ) 2>/dev/null || true)"
@@ -299,6 +301,18 @@ cmd_https() {
 # ---------------------------------------------------------------- prepare: install what a new API needs
 # --install is a comma list of: web-apache, web-nginx, certbot, rsync, runtime (uses --runtime N and --web).
 # Every item is tried even if an earlier one fails, and what failed is reported at the end. Only distro packages are used.
+# PostgreSQL server on the machine, started and enabled.
+install_postgres() {
+    if [ "$(pkg_manager)" = apt ]; then
+        pkg_install postgresql postgresql-contrib || return 1
+    else
+        pkg_install postgresql-server postgresql-contrib || return 1
+        if [ ! -f "$ROOT/var/lib/pgsql/data/PG_VERSION" ] && command -v postgresql-setup >/dev/null 2>&1; then postgresql-setup --initdb >/dev/null 2>&1 || true; fi
+    fi
+    systemctl enable --now postgresql >/dev/null 2>&1 || true
+    command -v psql >/dev/null 2>&1
+}
+
 install_item() {
     case "$1" in
         web-apache)
@@ -307,6 +321,7 @@ install_item() {
         web-nginx) pkg_install nginx || return 1; systemctl enable --now nginx >/dev/null 2>&1 || true ;;
         certbot) pkg_install certbot "python3-certbot-$WEB" || return 1 ;;
         rsync) pkg_install rsync || return 1 ;;
+        postgres) install_postgres || return 1 ;;
         runtime)
             [ -n "$RUNTIME" ] || return 1
             pkg_install "aspnetcore-runtime-$RUNTIME.0" || return 1
@@ -330,6 +345,49 @@ cmd_prepare() {
         kv failed "$(IFS=,; echo "${failed[*]}")"
         fail 31 "Could not install: $(IFS=,; echo "${failed[*]}")"
     fi
+    echo "##DONE"
+}
+
+# ---------------------------------------------------------------- db-create: own PostgreSQL user and database for one API
+pg() { runuser -u postgres -- psql -v ON_ERROR_STOP=1 -qtA "$@"; }
+
+cmd_db_create() {
+    STEP_TOTAL=3
+    [ -n "$SVC" ] && [ -n "$RUN_DIR" ] && [ -n "$PW_FILE" ] || fail 10 "Missing arguments"
+    inside_run_dir "$PW_FILE" || fail 10 "File outside the run directory"
+    [ -f "$PW_FILE" ] || fail 12 "The uploaded file is not there"
+    local pw name user
+    pw="$(head -n1 "$PW_FILE" | tr -d '\r\n')"
+    shred -u "$PW_FILE" 2>/dev/null || rm -f "$PW_FILE"
+    [[ "$pw" =~ ^[A-Za-z0-9]{16,64}$ ]] || fail 10 "Invalid database password"
+    name="${SVC//-/_}"; user="${name}_app"
+
+    step "Checking PostgreSQL"
+    if ! command -v psql >/dev/null 2>&1; then
+        info "PostgreSQL is not installed; installing it"
+        [ "$(pkg_manager)" != none ] || fail 31 "No supported package manager (dnf, yum or apt-get) was found"
+        if [ "$(pkg_manager)" = apt ]; then apt-get update 2>&1 | tail -n 1 || true; fi
+        install_postgres || fail 31 "Could not install PostgreSQL"
+    fi
+    systemctl is-active --quiet postgresql 2>/dev/null || systemctl start postgresql >/dev/null 2>&1 || true
+
+    step "Creating the user $user"
+    local exists
+    exists="$(pg -c "SELECT 1 FROM pg_roles WHERE rolname='$user'" 2>/dev/null || true)"
+    if [ "$exists" = 1 ]; then
+        printf "ALTER ROLE %s WITH LOGIN PASSWORD '%s';\n" "$user" "$pw" | pg >/dev/null || fail 30 "Could not set the database password"
+        info "The user $user already existed; its password was renewed"
+    else
+        printf "CREATE ROLE %s WITH LOGIN PASSWORD '%s';\n" "$user" "$pw" | pg >/dev/null || fail 30 "Could not create the database user"
+    fi
+
+    step "Creating the database $name"
+    exists="$(pg -c "SELECT 1 FROM pg_database WHERE datname='$name'" 2>/dev/null || true)"
+    if [ "$exists" != 1 ]; then
+        pg -c "CREATE DATABASE $name OWNER $user" >/dev/null || fail 30 "Could not create the database"
+    fi
+    pg -c "REVOKE ALL ON DATABASE $name FROM PUBLIC" >/dev/null 2>&1 || true
+    kv db_name "$name"; kv db_user "$user"; kv db_host 127.0.0.1; kv db_port 5432
     echo "##DONE"
 }
 
@@ -692,5 +750,6 @@ case "$CMD" in
     env-read)   cmd_env_read ;;
     env-write)  cmd_env_write ;;
     provision)  cmd_provision ;;
+    db-create)  cmd_db_create ;;
     *) fail 10 "Unknown command: ${CMD:-<none>}" ;;
 esac
