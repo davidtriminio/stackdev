@@ -8,20 +8,20 @@ namespace StackDev.Core.Docker;
 /// <summary>docker.exe con tiempo límite, y abrir Docker Desktop si el motor no responde.</summary>
 public sealed class DockerService
 {
-    private readonly Sesion _s;
+    private readonly Session _s;
 
-    public DockerService(Sesion s)
+    public DockerService(Session s)
     {
         _s = s;
-        Exe = Buscar();
+        Exe = Search();
     }
 
     public string? Exe { get; }
-    public bool Instalado => Exe is not null;
+    public bool Installed => Exe is not null;
 
-    private static string? Buscar()
+    private static string? Search()
     {
-        var p = Shell.BuscarEnPath("docker");
+        var p = Shell.SearchInPath("docker");
         if (p is not null) return p;
         var pf = Environment.GetEnvironmentVariable("ProgramFiles");
         if (!string.IsNullOrEmpty(pf))
@@ -33,57 +33,57 @@ public sealed class DockerService
     }
 
     /// <summary>Cómo se escribe docker dentro de un script de PowerShell.</summary>
-    public string ComandoPs => Shell.BuscarEnPath("docker") is not null ? "docker" : $"& {Args.PsLiteral(Exe ?? "docker")}";
+    public string PsCommand => Shell.SearchInPath("docker") is not null ? "docker" : $"& {Args.PsLiteral(Exe ?? "docker")}";
 
-    public ProcResult Run(IEnumerable<string> args, int timeoutSeg = 15) =>
-        Exe is null ? new ProcResult(-1, "", "", ErrorInicio: "Docker no está instalado") : ProcessRunner.Run(Exe, args, timeoutSeg, ct: _s.Ct);
+    public ProcResult Run(IEnumerable<string> args, int timeoutSec = 15) =>
+        Exe is null ? new ProcResult(-1, "", "", ErrorHome: "Docker no está instalado") : ProcessRunner.Run(Exe, args, timeoutSec, ct: _s.Ct);
 
     /// <summary>Corre mostrando su salida en esta consola (el progreso de la descarga de una imagen).</summary>
     public int RunVisible(IEnumerable<string> args) =>
-        Exe is null ? 127 : _s.CorrerVisible(Exe, args, null, null);
+        Exe is null ? 127 : _s.RunVisible(Exe, args, null, null);
 
-    public ProcResult RunConArchivos(IEnumerable<string> args, string? entrada, string? salida, int timeoutSeg = 900) =>
-        Exe is null ? new ProcResult(-1, "", "", ErrorInicio: "Docker no está instalado")
-                    : ProcessRunner.RunConArchivos(Exe, args, entrada, salida, timeoutSeg, _s.Ct);
+    public ProcResult RunWithFiles(IEnumerable<string> args, string? input, string? output, int timeoutSec = 900) =>
+        Exe is null ? new ProcResult(-1, "", "", ErrorHome: "Docker no está instalado")
+                    : ProcessRunner.RunWithFiles(Exe, args, input, output, timeoutSec, _s.Ct);
 
     /// <summary>¿El motor de Docker responde? (<c>docker info</c> con 8 segundos de plazo)</summary>
-    public bool Vivo() => Instalado && Run(new[] { "info", "--format", "{{.ServerVersion}}" }, 8).Ok;
+    public bool Live() => Installed && Run(new[] { "info", "--format", "{{.ServerVersion}}" }, 8).Ok;
 
     /// <summary>Si el motor no responde, abre Docker Desktop y espera hasta 150 s (se cancela con C o Ctrl+C).</summary>
-    public bool IniciarDesktop()
+    public bool StartDesktop()
     {
-        if (!Instalado)
+        if (!Installed)
         {
-            _s.Ui.Escribir("Docker no está instalado o no está en el PATH.", Nivel.Error);
+            _s.Ui.Write("Docker no está instalado o no está en el PATH.", Level.Error);
             return false;
         }
-        if (Vivo()) return true;
+        if (Live()) return true;
 
-        var candidatos = new[]
+        var candidates = new[]
         {
             Path.Combine(Environment.GetEnvironmentVariable("ProgramFiles") ?? "", "Docker", "Docker", "Docker Desktop.exe"),
             Path.Combine(Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? "", "Docker", "Docker Desktop.exe"),
         };
-        var exe = candidatos.FirstOrDefault(File.Exists);
+        var exe = candidates.FirstOrDefault(File.Exists);
         if (exe is not null)
         {
-            _s.Ui.Escribir("Abriendo Docker Desktop...", Nivel.Info);
+            _s.Ui.Write("Abriendo Docker Desktop...", Level.Info);
             try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true }); }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { }
         }
-        else _s.Ui.Escribir("Abre Docker Desktop manualmente.", Nivel.Aviso);
+        else _s.Ui.Write("Abre Docker Desktop manualmente.", Level.Warning);
 
-        _s.Ui.EscribirInline("Esperando a Docker (C o Ctrl+C para cancelar)");
-        var limite = Environment.TickCount64 + 150_000;
-        while (Environment.TickCount64 < limite)
+        _s.Ui.WriteInline("Esperando a Docker (C o Ctrl+C para cancelar)");
+        var limit = Environment.TickCount64 + 150_000;
+        while (Environment.TickCount64 < limit)
         {
-            if (Vivo()) { _s.Ui.Escribir(""); _s.Ui.Escribir("Docker listo.", Nivel.Ok); return true; }
-            if (_s.Ct.IsCancellationRequested || Teclado.PulsoCancelar()) break;
-            _s.Ui.EscribirInline(".");
+            if (Live()) { _s.Ui.Write(""); _s.Ui.Write("Docker listo.", Level.Ok); return true; }
+            if (_s.Ct.IsCancellationRequested || ConsoleKeys.PressCancel()) break;
+            _s.Ui.WriteInline(".");
             _s.Ct.WaitHandle.WaitOne(3000);
         }
-        _s.Ui.Escribir("");
-        _s.Ui.Escribir("Docker no respondió.", Nivel.Error);
+        _s.Ui.Write("");
+        _s.Ui.Write("Docker no respondió.", Level.Error);
         return false;
     }
 }

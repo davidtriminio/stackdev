@@ -1,0 +1,105 @@
+using System.Text.RegularExpressions;
+
+namespace StackDev.Core.Deploy;
+
+public enum GuardLevel
+{
+    /// <summary>Must not reach the server. The deployment stops unless the file is removed from the publish folder.</summary>
+    Block,
+    /// <summary>Worth knowing about, does not stop the deployment.</summary>
+    Warn,
+}
+
+public sealed record GuardFinding(GuardLevel Level, string RelativePath, string Reason);
+
+/// <summary>Looks through a publish folder for files that should never be uploaded: environment files, private keys, local databases, debug symbols.</summary>
+public static class PublishGuard
+{
+    /// <summary>
+    /// Files that every normal publish contains and that are always left out (development settings, debug symbols).
+    /// They are removed without asking; anything else blocked (keys, .env, databases) is a surprise and needs the user's say.
+    /// </summary>
+    public static bool IsRoutine(string relativePath) =>
+        Regex.IsMatch(relativePath, @"(^|/)appsettings\.Development\.json$|\.pdb$", RegexOptions.IgnoreCase);
+
+    private static readonly (Regex Pattern, GuardLevel Level, string Reason)[] Rules =
+    {
+        (new(@"(^|/)\.env(\..+)?$", RegexOptions.IgnoreCase), GuardLevel.Block, "archivo de entorno con secretos; el servidor tiene el suyo"),
+        (new(@"(^|/)appsettings\.Development\.json$", RegexOptions.IgnoreCase), GuardLevel.Block, "configuración de desarrollo; no debe usarse en producción"),
+        (new(@"(^|/)secrets\.json$", RegexOptions.IgnoreCase), GuardLevel.Block, "archivo de secretos de usuario"),
+        (new(@"\.(pem|key|pfx|p12|jks|keystore|ppk)$", RegexOptions.IgnoreCase), GuardLevel.Block, "clave privada o certificado"),
+        (new(@"(^|/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$", RegexOptions.IgnoreCase), GuardLevel.Block, "clave SSH"),
+        (new(@"\.pdb$", RegexOptions.IgnoreCase), GuardLevel.Block, "símbolos de depuración (muestran rutas de tu código)"),
+        (new(@"\.(db|sqlite|sqlite3|db-wal|db-shm|mdf|ldf)$", RegexOptions.IgnoreCase), GuardLevel.Block, "base de datos local; reemplazaría o expondría datos"),
+        (new(@"\.(log|bak)$", RegexOptions.IgnoreCase), GuardLevel.Warn, "archivo de registro o copia"),
+        (new(@"(^|/)launchSettings\.json$", RegexOptions.IgnoreCase), GuardLevel.Warn, "perfil de ejecución local"),
+        (new(@"\.(user|suo)$", RegexOptions.IgnoreCase), GuardLevel.Warn, "archivo personal del editor"),
+        (new(@"(^|/)wwwroot/uploads/.+", RegexOptions.IgnoreCase), GuardLevel.Warn, "archivos subidos por usuarios; el servidor guarda los suyos"),
+    };
+
+    private static readonly Regex InlineSecret = new(
+        @"""(?<k>[A-Za-z0-9_.]*(password|pwd|secret|token|apikey|api_key|privatekey|jwtkey)[A-Za-z0-9_.]*|key)""\s*:\s*""(?<v>[^""]{6,})""",
+        RegexOptions.IgnoreCase);
+
+    private static readonly Regex ConnectionPassword = new(@"(password|pwd)\s*=\s*(?<v>[^;""]+)", RegexOptions.IgnoreCase);
+
+    private static readonly string[] Placeholders = { "change", "your", "xxx", "***", "<", "{", "secret_here", "placeholder", "todo", "example", "dummy" };
+
+    public static List<GuardFinding> Scan(string publishDir)
+    {
+        var result = new List<GuardFinding>();
+        if (!Directory.Exists(publishDir)) return result;
+
+        foreach (var file in Directory.EnumerateFiles(publishDir, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(publishDir, file).Replace('\\', '/');
+            foreach (var (pattern, level, reason) in Rules)
+            {
+                if (!pattern.IsMatch(rel)) continue;
+                result.Add(new GuardFinding(level, rel, reason));
+                break;
+            }
+            if (Regex.IsMatch(rel, @"^appsettings(\.[^/]+)?\.json$", RegexOptions.IgnoreCase) && !rel.EndsWith("Development.json", StringComparison.OrdinalIgnoreCase))
+                result.AddRange(ScanSettings(file, rel));
+        }
+        return result.OrderBy(f => f.Level).ThenBy(f => f.RelativePath, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static IEnumerable<GuardFinding> ScanSettings(string file, string rel)
+    {
+        string text;
+        try { text = File.ReadAllText(file); }
+        catch (IOException) { yield break; }
+
+        foreach (Match m in InlineSecret.Matches(text))
+        {
+            var v = m.Groups["v"].Value;
+            if (IsPlaceholder(v)) continue;
+            yield return new GuardFinding(GuardLevel.Warn, rel, $"«{m.Groups["k"].Value}» parece tener un valor real; los secretos van en el .env del servidor");
+        }
+        foreach (Match m in ConnectionPassword.Matches(text))
+        {
+            if (IsPlaceholder(m.Groups["v"].Value)) continue;
+            yield return new GuardFinding(GuardLevel.Warn, rel, "una cadena de conexión incluye una contraseña; muévela al .env del servidor");
+            break;
+        }
+    }
+
+    private static bool IsPlaceholder(string v) =>
+        Placeholders.Any(p => v.Contains(p, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Deletes the blocking files from the publish folder (it is a throwaway copy, never the project). Returns what was removed.</summary>
+    public static List<string> RemoveBlocked(string publishDir, IEnumerable<GuardFinding> findings)
+    {
+        var removed = new List<string>();
+        var root = Path.GetFullPath(publishDir);
+        foreach (var f in findings.Where(f => f.Level == GuardLevel.Block))
+        {
+            var full = Path.GetFullPath(Path.Combine(root, f.RelativePath));
+            if (!full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)) continue;   // never leave the publish folder
+            try { if (File.Exists(full)) { File.Delete(full); removed.Add(f.RelativePath); } }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        return removed;
+    }
+}
