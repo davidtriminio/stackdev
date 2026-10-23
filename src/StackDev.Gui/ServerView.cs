@@ -739,7 +739,17 @@ public sealed class ServerView : ScrollViewer
         else if (result.Secrets is { } secrets) DeployDialogs.ShowSecrets(_owner, secrets, req.Service);
         if (result.HttpsPending && req.IssueCertificate) await FinishHttpsAsync(sv, req);
         else if (req.IssueCertificate) _log($"✔ La API quedará en https://{req.Domain}", Level.Ok);
-        if (s is not null && (depl is null || depl.Server != sv.Id || depl.Service != req.Service))
+        if (s is not null && depl is not null && depl.Server == sv.Id && depl.Service == req.Service
+            && (!string.Equals(depl.Domain, req.Domain, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(depl.Dll)))
+        {
+            // Already pointing at this API: no question to ask, but the address chosen in the form must not be lost.
+            depl.Domain = req.Domain;
+            if (string.IsNullOrEmpty(depl.Dll)) depl.Dll = req.Dll;
+            _saveDeployment(depl);
+            Update();
+            _log($"Guardé la dirección de la API: https://{req.Domain}", Level.Ok);
+        }
+        else if (s is not null && (depl is null || depl.Server != sv.Id || depl.Service != req.Service))
         {
             if (deployAfter || Dialogs.Confirm(_owner, $"¿Dejo este proyecto apuntando a «{req.Service}» en {sv.Name}?", true))
             {
