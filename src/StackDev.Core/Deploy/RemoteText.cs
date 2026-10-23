@@ -69,6 +69,7 @@ public static class RemoteText
         E("firewalld: http and https allowed", "firewalld: http y https permitidos");
         E("ufw: ports 80 and 443 allowed", "ufw: puertos 80 y 443 permitidos");
 
+        E("The values were saved, but the service still does not start.", "Se guardaron los valores, pero el servicio todavía no arranca.");
         E("Checking PostgreSQL", "Revisando PostgreSQL");
         R(@"Creating the user (\S+)", "Creando el usuario de base de datos $1");
         R(@"Creating the database (\S+)", "Creando la base de datos $1");

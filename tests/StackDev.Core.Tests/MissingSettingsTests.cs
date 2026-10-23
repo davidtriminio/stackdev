@@ -98,3 +98,15 @@ public class DatabaseAndCredentialTests
         Assert.False(R("Host=x").CreatePostgres);
     }
 }
+
+public class ConnectionStringHintTests
+{
+    [Fact]
+    public void Postgres_connection_strings_can_be_created_by_the_app()
+    {
+        Assert.True(MissingSettings.CanCreateDatabase("ConnectionStrings__Postgres", false));
+        Assert.True(MissingSettings.CanCreateDatabase("ConnectionStrings__Default", true));
+        Assert.False(MissingSettings.CanCreateDatabase("ConnectionStrings__Default", false));
+        Assert.False(MissingSettings.CanCreateDatabase("Smtp__Host", true));
+    }
+}

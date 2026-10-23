@@ -38,9 +38,11 @@ public static class EnvService
             if (restart) args.Add("--restart");
             var r = session.Execute("env-write", args, e => DeployService.Relay(e, 10, 85, progress), CancellationToken.None, env.SecretValues());
             if (r.Ok) return new(DeployOutcome.Success, restart ? "Variables guardadas y servicio reiniciado." : "Variables guardadas. Reinicia el servicio para aplicarlas.");
+            var missing = MissingSettings.Parse(r.Value("missing"));
             return r.ExitCode switch
             {
-                20 => new(DeployOutcome.RolledBack, r.FailMessage ?? "Los valores nuevos rompieron el servicio; volvió el archivo anterior."),
+                23 => new(DeployOutcome.StartFailed, r.FailMessage ?? "Se guardaron los valores, pero el servicio todavía no arranca.", Missing: missing),
+                20 => new(DeployOutcome.RolledBack, r.FailMessage ?? "Los valores nuevos rompieron el servicio; volvió el archivo anterior.", Missing: missing),
                 21 => new(DeployOutcome.RollbackFailed, r.FailMessage ?? "Los valores nuevos rompieron el servicio y no se pudo recuperar."),
                 _ => new(DeployOutcome.Failed, r.LaunchError ?? r.FailMessage ?? $"El servidor terminó con el código {r.ExitCode}."),
             };
