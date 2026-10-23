@@ -152,3 +152,8 @@ Si el servicio de tu proyecto aún no existe, «Subir API» lo detecta antes de 
 
 Para no depender de la consola: la dirección pública viene resuelta con una dirección gratuita (`servicio.IP.sslip.io`) que ya apunta al servidor, el correo del certificado es opcional, la base de datos se elige según los paquetes y la cadena de conexión de tu proyecto, y se comprueba que los puertos 80 y 443 respondan desde internet. Si el certificado queda pendiente, la app explica el motivo (DNS, proxy o reglas de red de la nube) y ofrece «reintentar» cuando lo resuelvas.
 
+### Claves y base de datos de cada API
+
+- Con PostgreSQL en el mismo servidor, deja vacía la cadena de conexión: StackDev instala PostgreSQL si falta y crea un usuario (`<api>_app`) y una base de datos propios de esa API, con una clave aleatoria.
+- Todas las claves que genera (base de datos, administrador, clave JWT, variables que faltaban) se guardan cifradas en la sección «Credenciales» del proyecto, con el nombre «`<api> @ <servidor>` · …». En el servidor solo viven en el `.env` de la API.
+- Si la API no arranca por variables que faltan, StackDev las detecta en el registro del servicio, crea las que son claves, y para el resto (correo, pagos…) te da los pasos para ponerlas en «Variables (.env)».

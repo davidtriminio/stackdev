@@ -14,6 +14,7 @@ public static class RemoteText
         "web-nginx" => "Nginx",
         "certbot" => "certbot (certificados HTTPS)",
         "rsync" => "rsync",
+        "postgres" => "PostgreSQL",
         "runtime" => "el runtime de ASP.NET Core",
         _ => name,
     };
@@ -38,7 +39,7 @@ public static class RemoteText
         E("Done", "Listo");
         R(@"Going back to the previous version \((.+)\)", "Volviendo a la versión anterior ($1)");
         E("HTTPS certificate", "Certificado HTTPS");
-        rules.Add((new Regex(@"^Installing (web-apache|web-nginx|certbot|rsync|runtime)$"), m => "Instalando " + Item(m.Groups[1].Value)));
+        rules.Add((new Regex(@"^Installing (web-apache|web-nginx|certbot|rsync|postgres|runtime)$"), m => "Instalando " + Item(m.Groups[1].Value)));
         E("Installing the new file", "Instalando el archivo nuevo");
         E("Installing the secrets file", "Instalando el archivo de secretos");
         E("Replacing the files", "Reemplazando los archivos");
@@ -51,7 +52,7 @@ public static class RemoteText
         R(@"Stopping (.+)", "Deteniendo $1");
 
         // ---- info
-        rules.Add((new Regex(@"^(web-apache|web-nginx|certbot|rsync|runtime) installed$"), m => Item(m.Groups[1].Value) + " instalado"));
+        rules.Add((new Regex(@"^(web-apache|web-nginx|certbot|rsync|postgres|runtime) installed$"), m => Item(m.Groups[1].Value) + " instalado"));
         R(@"Backup (.+) saved", "Copia $1 guardada");
         E("Certificate issued and HTTP now redirects to HTTPS", "Certificado emitido; HTTP ahora redirige a HTTPS");
         E("HTTPS skipped", "HTTPS omitido");
@@ -68,9 +69,20 @@ public static class RemoteText
         E("firewalld: http and https allowed", "firewalld: http y https permitidos");
         E("ufw: ports 80 and 443 allowed", "ufw: puertos 80 y 443 permitidos");
 
+        E("Checking PostgreSQL", "Revisando PostgreSQL");
+        R(@"Creating the user (\S+)", "Creando el usuario de base de datos $1");
+        R(@"Creating the database (\S+)", "Creando la base de datos $1");
+        E("PostgreSQL is not installed; installing it", "PostgreSQL no está instalado; lo instalo");
+        R(@"The user (\S+) already existed; its password was renewed", "El usuario $1 ya existía; le puse una clave nueva");
+        E("Could not install PostgreSQL", "No se pudo instalar PostgreSQL");
+        E("Could not set the database password", "No se pudo poner la clave del usuario de base de datos");
+        E("Could not create the database user", "No se pudo crear el usuario de base de datos");
+        E("Could not create the database", "No se pudo crear la base de datos");
+        E("Invalid database password", "La clave de la base de datos no es válida");
+
         // ---- warnings
         R(@"ASP\.NET Core runtime (\d+) is not installed\. Install it before the first deploy: (.+)", "El runtime de ASP.NET Core $1 no está instalado. Instálalo antes de la primera subida: $2");
-        rules.Add((new Regex(@"^Could not install (web-apache|web-nginx|certbot|rsync|runtime)$"), m => "No se pudo instalar " + Item(m.Groups[1].Value)));
+        rules.Add((new Regex(@"^Could not install (web-apache|web-nginx|certbot|rsync|postgres|runtime)$"), m => "No se pudo instalar " + Item(m.Groups[1].Value)));
         E("Could not reload firewalld", "No se pudo recargar firewalld");
         E("Could not save the current version", "No se pudo guardar la versión actual");
         E("Could not set httpd_can_network_connect", "No se pudo activar httpd_can_network_connect");
