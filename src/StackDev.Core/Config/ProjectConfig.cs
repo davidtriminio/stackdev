@@ -33,6 +33,8 @@ public sealed class DeploymentConfig : ConfigSection
     [JsonPropertyName("service")] public string? Service { get; set; }
     [JsonPropertyName("dll")] public string? Dll { get; set; }
     [JsonPropertyName("domain")] public string? Domain { get; set; }
+    /// <summary>The API's .csproj, relative to the project folder (found automatically the first time).</summary>
+    [JsonPropertyName("project")] public string? Project { get; set; }
 }
 
 /// <summary>Base de todas las secciones: guarda los campos que esta versión no conoce.</summary>
