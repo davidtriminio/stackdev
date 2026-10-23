@@ -1427,7 +1427,7 @@ public partial class MainWindow : Window
             : new GridLength(m == TerminalMode.Half && _appliedMode == TerminalMode.Hidden ? 3 : 1, GridUnitType.Star);
         TerminalDivider.Visibility = m == TerminalMode.Half ? Visibility.Visible : Visibility.Collapsed;
         _terminals?.MarkComplete(m == TerminalMode.Full);
-        Dispatcher.InvokeAsync(AdjustCards, DispatcherPriority.Loaded);
+        Dispatcher.InvokeAsync(() => { AdjustCards(); AdjustHome(); }, DispatcherPriority.Loaded);   // the hidden views keep widths measured for the old split: redo them
 
         var opens = _appliedMode == TerminalMode.Hidden && m != TerminalMode.Hidden;
         var closes = _appliedMode != TerminalMode.Hidden && m == TerminalMode.Hidden;

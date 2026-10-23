@@ -126,6 +126,33 @@
     <Setter Property="Margin" Value="0,0,6,6" />
   </Style>
 
+  <!-- Fila de un menú desplegable propio (en lugar del menú de Windows) -->
+  <Style x:Key="BtnMenuItem" TargetType="Button">
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Row" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Row" Property="Background" Value="{StaticResource LineBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.5" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- Principal compacto: la acción de una fila de botones pequeños (misma altura que BtnChip) -->
   <Style x:Key="BtnPrimarySm" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
     <Setter Property="Padding" Value="12,6" />
