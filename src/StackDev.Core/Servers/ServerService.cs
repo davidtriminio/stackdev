@@ -4,7 +4,8 @@ using System.Text.RegularExpressions;
 
 namespace StackDev.Core.Servers;
 
-public sealed record SshResult(bool Ok, string Message);
+/// <param name="Fingerprint">Set when the server is not trusted yet: the fingerprint the user has to confirm.</param>
+public sealed record SshResult(bool Ok, string Message, HostKeyInfo? Untrusted = null);
 
 public sealed record ApiStatus(bool Active, string State, string From, string Errors, int? Http, DateTime? CertExpires, string? Problem);
 
@@ -27,6 +28,8 @@ public static class ServerService
         if (r.ErrorHome is not null) return "No encuentro ssh en este equipo (instala «Cliente OpenSSH» en las características de Windows).";
         if (r.TimeExpired) return "El servidor no respondió a tiempo: revisa la IP, que esté encendido y que el puerto 22 esté abierto.";
         var e = r.Error.Trim();
+        if (e.Contains("REMOTE HOST IDENTIFICATION HAS CHANGED", StringComparison.OrdinalIgnoreCase) || e.Contains("Host key verification failed", StringComparison.OrdinalIgnoreCase))
+            return "La huella del servidor no coincide con la que confirmaste. Puede ser una reinstalación del servidor o un ataque: no se conectó. Si estás seguro, quita la huella guardada y verifícala de nuevo.";
         if (e.Contains("Permission denied", StringComparison.OrdinalIgnoreCase)) return "El servidor rechazó la clave o el usuario. Revisa el usuario y que la clave sea la correcta.";
         if (e.Contains("UNPROTECTED PRIVATE KEY", StringComparison.OrdinalIgnoreCase) || e.Contains("bad permissions", StringComparison.OrdinalIgnoreCase))
             return "La clave tiene permisos demasiado abiertos (se puede corregir desde aquí).";
@@ -40,6 +43,13 @@ public static class ServerService
     {
         if (string.IsNullOrWhiteSpace(s.Host)) return new(false, "Falta el host.");
         if (!string.IsNullOrWhiteSpace(s.Key) && !File.Exists(s.Key)) return new(false, "No existe la clave: " + s.Key);
+        if (!HostKeys.IsTrusted(s))
+        {
+            var key = HostKeys.Scan(s);
+            return key is null
+                ? new(false, "El servidor no respondió para leer su huella: revisa la IP, el puerto y que esté encendido.")
+                : new(false, "Servidor sin verificar: confirma su huella para poder conectar.", key);
+        }
         var r = Ssh.Run(s, "echo stackdev-ok; uname -sr; if command -v httpd >/dev/null 2>&1; then echo web=apache; elif command -v nginx >/dev/null 2>&1; then echo web=nginx; else echo web=ninguno; fi; sudo -n true 2>/dev/null && echo sudo=ok || echo sudo=password", 25);
         if (!r.Ok || !r.Output.Contains("stackdev-ok")) return new(false, ExplainFailure(r, s));
         var lines = r.Output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -58,6 +68,8 @@ public static class ServerService
     public static ApiStatus State(Server s, string service, string? domain)
     {
         var svc = Safe(service);
+        if (!HostKeys.IsTrusted(s))
+            return new(false, "sin verificar", "", "", null, null, "Servidor sin verificar: usa «Verificar y probar» en su tarjeta para confirmar su huella.");
         var cmd = $"systemctl is-active {svc} 2>&1; systemctl show {svc} -p ActiveEnterTimestamp --value 2>&1; echo '---'; sudo -n journalctl -u {svc} -p err -n 5 --no-pager 2>&1";
         var r = Ssh.Run(s, cmd, 25);
         if (r.ErrorHome is not null || r.TimeExpired || (r.Code == 255))
@@ -99,6 +111,7 @@ public static class ServerService
     {
         if (action is not ("start" or "stop" or "restart")) return new(false, "Acción no válida.");
         var svc = Safe(service);
+        if (!HostKeys.IsTrusted(s)) return new(false, "Servidor sin verificar: usa «Verificar y probar» en su tarjeta.");
         var r = Ssh.Run(s, $"sudo -n systemctl {action} {svc} && systemctl is-active {svc}", 40);
         if (r.Ok) return new(true, $"{action}: {r.Output.Trim()}");
         return new(false, string.IsNullOrWhiteSpace(r.Error) ? ExplainFailure(r, s) : r.Error.Trim());
