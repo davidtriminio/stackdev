@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using StackDev.Core.Config;
+using StackDev.Core.Deploy;
 using StackDev.Core.Servers;
 
 namespace StackDev.Gui;
@@ -13,10 +14,10 @@ namespace StackDev.Gui;
 /// <summary>Ventanas para agregar o editar un servidor y para decir a qué servidor y servicio se sube un proyecto.</summary>
 public static class ServerDialogs
 {
-    private static Brush P(string key) => (Brush)Application.Current.FindResource(key);
-    private static Style GetStyle(string key) => (Style)Application.Current.FindResource(key);
+    internal static Brush P(string key) => (Brush)Application.Current.FindResource(key);
+    internal static Style GetStyle(string key) => (Style)Application.Current.FindResource(key);
 
-    private static Window Base(Window? owner, string title, double width)
+    internal static Window Base(Window? owner, string title, double width)
     {
         var w = new Window
         {
@@ -32,7 +33,7 @@ public static class ServerDialogs
         return w;
     }
 
-    private static TextBox Field(Panel panel, string label, string val, string? help = null)
+    internal static TextBox Field(Panel panel, string label, string val, string? help = null)
     {
         panel.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
         var box = new TextBox { Text = val, Margin = new Thickness(0, 0, 0, help is null ? 12 : 2) };
@@ -42,21 +43,21 @@ public static class ServerDialogs
         return box;
     }
 
-    private static Button Button(string text, bool primary)
+    internal static Button Button(string text, bool primary)
     {
         var b = new Button { Content = text, MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
         if (primary) { b.Style = GetStyle("BtnPrimary"); b.IsDefault = true; } else b.IsCancel = true;
         return b;
     }
 
-    private static StackPanel ButtonRow(params Button[] buttons)
+    internal static StackPanel ButtonRow(params Button[] buttons)
     {
         var p = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
         foreach (var b in buttons) p.Children.Add(b);
         return p;
     }
 
-    private static TextBlock Error() => new()
+    internal static TextBlock Error() => new()
     {
         Foreground = P("ErrBrush"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed,
     };
@@ -154,7 +155,26 @@ public static class ServerDialogs
 
         var service = Field(root, "Nombre del servicio en el servidor", current?.Service ?? suggestionService,
             "El que usaste en provision-api.sh: minúsculas, números y guiones. Es el servicio systemd y la carpeta en /var/www.");
-        var dll = Field(root, "Archivo .dll que arranca la API", current?.Dll ?? suggestionDll);
+        TextBox? dllBox = null;
+        var find = new Button { Content = "Buscar APIs ya instaladas en este servidor…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(12, 6, 12, 6) };
+        find.Click += async (_, _) =>
+        {
+            find.IsEnabled = false;
+            find.Content = "Consultando el servidor…";
+            string? err = null;
+            var server = servers[index];
+            var apis = await System.Threading.Tasks.Task.Run(() => DeployService.DiscoverApis(server, out err));
+            find.IsEnabled = true;
+            find.Content = "Buscar APIs ya instaladas en este servidor…";
+            if (err is not null) { Dialogs.Confirm(w, err, true); return; }
+            if (apis.Count == 0) { Dialogs.Confirm(w, "No encontré servicios .NET instalados en ese servidor. Si es una API nueva, usa «Aprovisionar API nueva».", true); return; }
+            var i = Dialogs.Choose(w, "APIs .NET instaladas en el servidor", apis.Select(a => $"{a.Service}   ·   {a.Dll}   ·   {a.State}").ToList(), 0);
+            if (i < 0) return;
+            service.Text = apis[i].Service;
+            if (apis[i].Dll.Length > 0 && dllBox is not null) dllBox.Text = apis[i].Dll;
+        };
+        root.Children.Add(find);
+        dllBox = Field(root, "Archivo .dll que arranca la API", current?.Dll ?? suggestionDll);
         var domain = Field(root, "Dominio público de la API (opcional)", current?.Domain ?? "",
             "Sin https://. Sirve para comprobar que responde y cuándo vence el certificado.");
 
@@ -172,7 +192,8 @@ public static class ServerDialogs
             {
                 Server = servers[index].Id,
                 Service = svc,
-                Dll = dll.Text.Trim().Length == 0 ? null : dll.Text.Trim(),
+                Dll = dllBox.Text.Trim().Length == 0 ? null : dllBox.Text.Trim(),
+                Project = current?.Project,
                 Domain = ServerService.CleanDomain(domain.Text),
                 Extra = current?.Extra,
             };
