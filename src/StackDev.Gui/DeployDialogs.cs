@@ -237,7 +237,7 @@ public static class DeployDialogs
                 : "Ej. mi-api.midominio.com, sin https://. Su registro A debe apuntar a " + server.Host + " (sin proxy si usas Cloudflare).", 253);
         if (autoDomain is not null)
         {
-            var useAuto = new Button { Content = "Usar la dirección automática", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, -6, 0, 12), Padding = new Thickness(12, 5, 12, 5) };
+            var useAuto = new Button { Content = "Usar la dirección automática", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, -6, 0, 12) };
             useAuto.Click += (_, _) => dom.Text = autoDomain;
             root.Children.Add(useAuto);
         }
@@ -283,7 +283,7 @@ public static class DeployDialogs
         var admin = new PasswordBox { Margin = new Thickness(0, 0, 0, 2), MaxLength = 100 };
         advanced.Children.Add(admin);
         advanced.Children.Add(Muted("Vacía = se genera una fuerte y te la muestro una sola vez. La clave JWT se genera siempre."));
-        var more = new Button { Content = "Opciones avanzadas  ▸", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10), Padding = new Thickness(12, 6, 12, 6) };
+        var more = new Button { Content = "Opciones avanzadas  ▸", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10) };
         more.Click += (_, _) =>
         {
             var show = advanced.Visibility != Visibility.Visible;
