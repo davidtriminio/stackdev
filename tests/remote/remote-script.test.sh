@@ -166,6 +166,25 @@ o="$(R prepare --install 'web;rm')"; eq "$(code "$o")" 10 "install list is valid
 o="$(R prepare)"; eq "$(code "$o")" 10 "nothing to install"
 o="$(R prepare --install bogus)"; eq "$(code "$o")" 31 "unknown item fails"
 
+echo "== https (certificate for an existing site)"
+cat > "$STUBS/certbot" <<'S'
+#!/bin/sh
+echo "$*" >> "$SD_ROOT/.certbot"
+case "$*" in *bad.example.com*) echo "Challenge failed for domain bad.example.com"; exit 1 ;; esac
+exit 0
+S
+chmod +x "$STUBS/certbot"; rm -f "$SD_ROOT/.certbot"
+o="$(R https --domain shop.example.com --web apache)"
+eq "$(code "$o")" 0 "https exit"; has "$o" "##KV https=ok" "https ok"; has "$(cat "$SD_ROOT/.certbot")" "--register-unsafely-without-email" "no email still works"
+rm -f "$SD_ROOT/.certbot"
+o="$(R https --domain shop.example.com --web nginx --email me@example.com)"; has "$o" "##KV https=ok" "https ok with email"; has "$(cat "$SD_ROOT/.certbot")" "-m me@example.com" "email passed"; has "$(cat "$SD_ROOT/.certbot")" "--nginx" "web plugin"
+o="$(R https --domain bad.example.com --web apache)"
+eq "$(code "$o")" 0 "failed certificate is not a script failure"; has "$o" "##KV https=pending" "pending"; has "$o" "Challenge failed" "certbot output is shown"; has "$o" "##WARN The certificate could not be issued" "warning"
+o="$(R https --web apache)"; eq "$(code "$o")" 10 "https needs a domain"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5070\n' > "$RUN/p4.env"
+o="$(R provision --svc mail-api --dll M.dll --domain mail.example.com --port 5070 --web apache --https yes --run-dir "$RUN" --env-file "$RUN/p4.env")"
+eq "$(code "$o")" 0 "provision with https and no email"; has "$o" "##KV https=ok" "provision issues the certificate without an email"
+
 echo; echo "$PASS passed, $FAIL failed"
 rm -rf "$T"
 [ "$FAIL" = 0 ]

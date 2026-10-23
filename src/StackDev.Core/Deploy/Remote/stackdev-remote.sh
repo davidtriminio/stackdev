@@ -2,7 +2,7 @@
 # stackdev-remote.sh - runs ON THE SERVER, as root (StackDev calls it through sudo).
 # StackDev uploads a fresh copy for every operation and removes it afterwards; do not edit it by hand.
 #
-# Subcommands: preflight | discover | prepare | deploy | rollback | backups | provision | env-read | env-write
+# Subcommands: preflight | discover | prepare | https | deploy | rollback | backups | provision | env-read | env-write
 # Output protocol (one item per line, everything else is plain log):
 #   ##STEP n/total title      ##INFO text      ##WARN text      ##FAIL code text
 #   ##KV key=value            ##API svc|dll|dir|user|state         ##BACKUP ts|date|size_kb
@@ -263,6 +263,29 @@ cmd_preflight() {
     kv suggested_port "$(suggest_port)"
     kv free_mb "$(free_mb "$([ -d "$APPS" ] && echo "$APPS" || echo "$ROOT/")")"
     kv backups "$(backup_ids "$SVC" | wc -l)"
+    echo "##DONE"
+}
+
+# ---------------------------------------------------------------- https: certificate for a site that already exists
+# Without an email Let's Encrypt still issues the certificate (it just cannot send expiry reminders).
+issue_certificate() {
+    command -v certbot >/dev/null 2>&1 || { warn "certbot is not installed"; return 2; }
+    local out mail=(-m "$EMAIL")
+    [ -n "$EMAIL" ] || mail=(--register-unsafely-without-email)
+    if out="$(certbot "--$WEB" -d "$DOMAIN" --redirect --non-interactive --agree-tos "${mail[@]}" 2>&1)"; then
+        info "Certificate issued and HTTP now redirects to HTTPS"
+        return 0
+    fi
+    printf '%s\n' "$out" | tail -n 8
+    warn "The certificate could not be issued"
+    return 1
+}
+
+cmd_https() {
+    STEP_TOTAL=1
+    [ -n "$DOMAIN" ] || fail 10 "Missing arguments"
+    step "HTTPS certificate"
+    if issue_certificate; then kv https ok; else kv https pending; fi
     echo "##DONE"
 }
 
@@ -629,16 +652,10 @@ NGINX_EOF
 
     step "HTTPS certificate"
     if [ "$HTTPS" != "yes" ]; then
-        info "HTTPS skipped. Later: sudo certbot --$WEB -d $DOMAIN --redirect"
-    elif ! command -v certbot >/dev/null 2>&1; then
-        warn "certbot is not installed. Install it and run: sudo certbot --$WEB -d $DOMAIN --redirect"
-    elif [ -z "$EMAIL" ]; then
-        warn "No email given for the certificate. Run: sudo certbot --$WEB -d $DOMAIN --redirect"
-    elif certbot "--$WEB" -d "$DOMAIN" --redirect --non-interactive --agree-tos -m "$EMAIL" >/dev/null 2>&1; then
-        info "Certificate issued and HTTP now redirects to HTTPS"
+        info "HTTPS skipped"
+    elif issue_certificate; then
         kv https ok
     else
-        warn "The certificate could not be issued (is the DNS record for $DOMAIN pointing here, and not proxied?). Retry later: sudo certbot --$WEB -d $DOMAIN --redirect"
         kv https pending
     fi
 
@@ -651,6 +668,7 @@ case "$CMD" in
     preflight)  cmd_preflight ;;
     discover)   cmd_discover ;;
     prepare)    cmd_prepare ;;
+    https)      cmd_https ;;
     deploy)     cmd_deploy ;;
     rollback)   cmd_rollback ;;
     backups)    cmd_backups ;;
