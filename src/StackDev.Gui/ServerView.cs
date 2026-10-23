@@ -177,7 +177,7 @@ public sealed class ServerView : ScrollViewer
         var verified = _trusted.TryGetValue(sv.Id, out var isTrusted) && isTrusted;
         buttons.Children.Add(Button(verified ? "Probar conexión" : "Verificar y probar", () => _ = TestAsync(sv), primary: true));
         if (verified) buttons.Children.Add(Button("Terminal SSH", () => _terminal($"ssh {sv.Name}", Ssh.TerminalLine(sv, ""))));
-        if (verified) buttons.Children.Add(Button("Aprovisionar API nueva", () => _ = ProvisionApiAsync(sv)));
+        if (verified) buttons.Children.Add(Button("Crear API nueva", () => _ = ProvisionApiAsync(sv)));
         buttons.Children.Add(Button("Editar", () => EditServer(sv)));
         if (verified) buttons.Children.Add(Button("Quitar huella", () => ForgetHostKey(sv)));
         buttons.Children.Add(Button("Eliminar", () => DeleteServer(sv), danger: true));
@@ -459,9 +459,9 @@ public sealed class ServerView : ScrollViewer
         if (found.Count == 0)
         {
             if (!Dialogs.Confirm(_owner,
-                    $"En «{sv.Name}» no hay ninguna API .NET instalada todavía.\n\nTe ayudo a crear una para «{api.ProjectName}»: se preparan el usuario, la carpeta, el servicio, el proxy {sv.WebName} y el HTTPS. Después la subimos. ¿Continúo?", true))
+                    $"En «{sv.Name}» no hay ninguna API .NET instalada todavía.\n\nTe ayudo a crear una para «{api.ProjectName}»: se preparan el usuario, la carpeta, el servicio, el proxy {sv.WebName} y el HTTPS. Después subimos tu código. ¿Continúo?", true))
                 return;
-            await ProvisionApiAsync(sv);
+            await ProvisionApiAsync(sv, deployAfter: true);
             return;
         }
 
@@ -470,7 +470,7 @@ public sealed class ServerView : ScrollViewer
         labels.Add("➕  Crear una API nueva en este servidor");
         var pick = Dialogs.Choose(_owner, $"APIs instaladas en {sv.Name}. ¿A cuál se sube «{api.ProjectName}»?  (★ = parece ser esta)", labels, 0);
         if (pick < 0) return;
-        if (pick == ordered.Count) { await ProvisionApiAsync(sv); return; }
+        if (pick == ordered.Count) { await ProvisionApiAsync(sv, deployAfter: true); return; }
 
         var chosen = ordered[pick];
         if (!LooksLikeApi(chosen, api) && !Dialogs.Confirm(_owner,
@@ -546,6 +546,21 @@ public sealed class ServerView : ScrollViewer
             depl.Dll = dll;
             _saveDeployment(depl);
         }
+        _log($"Revisando {sv.Name} antes de compilar…", Level.Info);
+        var check = await Task.Run(() => DeployService.Preflight(sv, depl.Service!));
+        if (!check.Ok)
+        {
+            var why = check.LaunchError ?? check.FailMessage ?? "No se pudo consultar el servidor.";
+            _log("✘ " + why, Level.Error);
+            Dialogs.Confirm(_owner, "No pude revisar el servidor:\n" + why, true);
+            return;
+        }
+        if (check.Value("service_exists") != "yes")
+        {
+            if (Dialogs.Confirm(_owner, $"La API «{depl.Service}» todavía no existe en «{sv.Name}».\n\n¿La creo ahora? Reviso el servidor, preparo lo que falte, la creo y después subo tu código.", true))
+                await ProvisionApiAsync(sv, deployAfter: true);
+            return;
+        }
         var req = new DeployRequest { Server = sv, Project = api.ProjectPath, Service = depl.Service!, Dll = dll, Domain = depl.Domain };
 
         _log($"Subiendo {depl.Service} a {sv.Name}…", Level.Info);
@@ -557,38 +572,82 @@ public sealed class ServerView : ScrollViewer
         _state = null;
         await QueryStatusAsync(force: true);
 
-        if (result.Outcome == DeployOutcome.NeedsProvision && Dialogs.Confirm(_owner, $"El servicio «{depl.Service}» no existe en {sv.Name}. ¿Lo aprovisiono ahora?", true))
-            await ProvisionApiAsync(sv);
+        if (result.Outcome == DeployOutcome.NeedsProvision && Dialogs.Confirm(_owner, $"La API «{depl.Service}» no existe en {sv.Name}. ¿La creo ahora y la subo después?", true))
+            await ProvisionApiAsync(sv, deployAfter: true);
     }
 
     // ------------------------------------------------------------ provision
 
-    private async Task ProvisionApiAsync(Server sv)
+    private static Server WithWeb(Server sv, string web) => new()
     {
-        var s = _session();
+        Id = sv.Id, Name = sv.Name, Host = sv.Host, User = sv.User, Port = sv.Port, Key = sv.Key, Web = web,
+    };
+
+    /// <summary>
+    /// Creates a new API on the server: first a check of what the server has (installing what is missing when the user agrees),
+    /// then a short form, then the setup. With <paramref name="deployAfter"/> it goes on to upload the code without asking again.
+    /// </summary>
+    private async Task ProvisionApiAsync(Server sv, bool deployAfter = false)
+    {
         if (!IsTrusted(sv) && (await TestAsync(sv) is null || !IsTrusted(sv))) return;
+        var s = _session();
         var depl = s?.Ctx.Config.Deployment;
         var api = s is null ? null : PickApi(s, depl?.Project);
         var service = depl?.Service ?? api?.SuggestedService ?? "api";
         var dll = depl?.Dll ?? api?.Dll ?? "";
         var domain = depl?.Domain ?? "";
 
-        _log($"Consultando {sv.Name}…", Level.Info);
-        var pre = await Task.Run(() => DeployService.Preflight(sv, service));
-        if (!pre.Ok)
+        // 1) look at the server, and fix what is missing if the user wants
+        RemoteResult pre;
+        while (true)
         {
-            _log("✘ " + (pre.LaunchError ?? pre.FailMessage ?? "No se pudo consultar el servidor."), Level.Error);
-            return;
+            _log($"Revisando {sv.Name}…", Level.Info);
+            var service1 = service;
+            pre = await Task.Run(() => DeployService.Preflight(sv, service1));
+            if (!pre.Ok)
+            {
+                var why = pre.LaunchError ?? pre.FailMessage ?? "No se pudo consultar el servidor.";
+                _log("✘ " + why, Level.Error);
+                Dialogs.Confirm(_owner, "No pude revisar el servidor:\n" + why, true);
+                return;
+            }
+            var domain1 = domain;
+            var dns = string.IsNullOrWhiteSpace(domain1) ? null : await Task.Run(() => ProvisionService.CheckDns(ServerService.CleanDomain(domain1) ?? domain1, sv.Host));
+            var items = ServerReadiness.Evaluate(new(pre.Values, sv.Web, api?.RuntimeMajor, ServerService.CleanDomain(domain), dns, WantHttps: true));
+            var choice = DeployDialogs.Readiness(_owner, sv, items);
+            if (choice == DeployDialogs.ReadinessChoice.Cancel) return;
+            if (choice == DeployDialogs.ReadinessChoice.Continue) break;
+
+            var fixes = ServerReadiness.Fixable(items);
+            var webNow = ServerReadiness.RecommendedWeb(pre.Values, sv.Web);
+            var runtime = api?.RuntimeMajor;
+            _log($"Instalando en {sv.Name}: {ServerReadiness.InstallList(fixes)}…", Level.Info);
+            var prepared = OperationWindow.Run(_owner, $"Preparar {sv.Name}", canCancel: false,
+                (win, report, ct) => ProvisionService.Prepare(sv, fixes, webNow, runtime, report, ct),
+                r => (r.Ok, r.Message));
+            if (prepared is not null) _log(prepared.Message, prepared.Ok ? Level.Ok : Level.Error);
+            // check again: shows what is fine now and what still is not
         }
-        if (pre.Value("service_exists") == "yes")
-            if (!Dialogs.Confirm(_owner, $"En {sv.Name} ya existe un servicio llamado «{service}». Elige otro nombre en el formulario; no se sobrescribe nada sin avisar. ¿Continuar?", true)) return;
+
+        // the web server found on the machine decides which one to configure
+        var web = ServerReadiness.RecommendedWeb(pre.Values, sv.Web);
+        if (!string.Equals(web, sv.Web, StringComparison.OrdinalIgnoreCase))
+        {
+            sv = WithWeb(sv, web);
+            var list = _store.Read();
+            var i = list.FindIndex(x => x.Id == sv.Id);
+            if (i >= 0) { list[i].Web = web; _store.Save(list); }
+            _log($"{sv.Name} usa {sv.WebName}: lo dejo anotado.", Level.Info);
+        }
         var port = int.TryParse(pre.Value("suggested_port"), out var p) ? p : 5000;
 
+        // 2) the form
         var req = DeployDialogs.ProvisionForm(_owner, sv, service, dll, domain, port, api?.RuntimeMajor);
         if (req is null) return;
 
-        _log($"Aprovisionando {req.Service} en {sv.Name}…", Level.Info);
-        var result = OperationWindow.Run(_owner, $"Aprovisionar {req.Service} en {sv.Name}", canCancel: false,
+        // 3) create it
+        _log($"Creando {req.Service} en {sv.Name}…", Level.Info);
+        var result = OperationWindow.Run(_owner, $"Crear {req.Service} en {sv.Name}", canCancel: false,
             (win, report, ct) => ProvisionService.Provision(req, report, ct),
             r => (r.Ok, r.Message));
         if (result is null) return;
@@ -598,7 +657,7 @@ public sealed class ServerView : ScrollViewer
         if (result.Secrets is { } secrets) DeployDialogs.ShowSecrets(_owner, secrets, req.Service);
         if (s is not null && (depl is null || depl.Server != sv.Id || depl.Service != req.Service))
         {
-            if (Dialogs.Confirm(_owner, $"¿Dejo este proyecto apuntando a «{req.Service}» en {sv.Name}?", true))
+            if (deployAfter || Dialogs.Confirm(_owner, $"¿Dejo este proyecto apuntando a «{req.Service}» en {sv.Name}?", true))
             {
                 _saveDeployment(new DeploymentConfig
                 {
@@ -610,7 +669,7 @@ public sealed class ServerView : ScrollViewer
             }
         }
         if (s?.Ctx.Config.Deployment is { } linked && linked.Service == req.Service && linked.Server == sv.Id
-            && Dialogs.Confirm(_owner, "El servidor está listo. ¿Subo ahora la API?", true))
+            && (deployAfter || Dialogs.Confirm(_owner, "La API está creada. ¿Subo ahora tu código?", true)))
             await DeployApiAsync(sv, linked);
     }
 

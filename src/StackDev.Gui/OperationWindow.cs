@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using StackDev.Core.Deploy;
 using StackDev.Core.Ui;
 
@@ -18,11 +19,13 @@ public sealed class OperationWindow : Window
 {
     private const int MaxLines = 3000;
 
-    private readonly TextBlock _step = new() { FontSize = 14, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
-    private readonly ProgressBar _bar = new() { Minimum = 0, Maximum = 100, Margin = new Thickness(0, 10, 0, 12) };
+    private readonly TextBlock _step = new() { FontSize = 16, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Text = "Empezando…" };
+    private readonly Ellipse _dot = new() { Width = 10, Height = 10, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+    private readonly ProgressBar _bar = new() { Minimum = 0, Maximum = 100, Height = 6, Margin = new Thickness(0, 12, 0, 14) };
     private readonly StackPanel _lines = new();
     private readonly ScrollViewer _scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-    private readonly TextBlock _result = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed };
+    private readonly TextBlock _result = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
+    private readonly Border _banner = new() { BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 14, 0, 0), Visibility = Visibility.Collapsed };
     private readonly Button _cancel = new() { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8) };
     private readonly Button _copy = new() { Content = "Copiar registro", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0) };
     private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
@@ -41,6 +44,15 @@ public sealed class OperationWindow : Window
         ShowInTaskbar = false;
         WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner;
         TitleBar.Apply(this);
+        // A Window subclass does not get the implicit Window style of the theme, so the colors are set here.
+        SetResourceReference(BackgroundProperty, "BgBrush");
+        SetResourceReference(ForegroundProperty, "TextBrush");
+        SetResourceReference(FontFamilyProperty, "UiFont");
+        FontSize = 13;
+        _dot.Fill = ServerDialogs.P("AccentBrush");
+        _banner.Background = ServerDialogs.P("Surface2Brush");
+        _banner.Child = _result;
+        _bar.Foreground = ServerDialogs.P("AccentBrush");
 
         _close.Style = ServerDialogs.GetStyle("BtnPrimary");
         _scroll.Content = _lines;
@@ -60,6 +72,10 @@ public sealed class OperationWindow : Window
         buttons.Children.Add(_close);
         _cancel.Visibility = canCancel ? Visibility.Visible : Visibility.Collapsed;
 
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(_dot);
+        header.Children.Add(_step);
+
         var grid = new Grid { Margin = new Thickness(22) };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -68,12 +84,12 @@ public sealed class OperationWindow : Window
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(_bar, 1);
         Grid.SetRow(logFrame, 2);
-        Grid.SetRow(_result, 3);
+        Grid.SetRow(_banner, 3);
         Grid.SetRow(buttons, 4);
-        grid.Children.Add(_step);
+        grid.Children.Add(header);
         grid.Children.Add(_bar);
         grid.Children.Add(logFrame);
-        grid.Children.Add(_result);
+        grid.Children.Add(_banner);
         grid.Children.Add(buttons);
         Content = grid;
 
@@ -150,11 +166,15 @@ public sealed class OperationWindow : Window
         _cancel.Visibility = Visibility.Collapsed;
         _close.Visibility = Visibility.Visible;
         _bar.Value = ok ? 100 : _bar.Value;
-        _bar.Foreground = ok ? ServerDialogs.P("OkBrush") : ServerDialogs.P("ErrBrush");
-        _step.Text = ok ? "Listo" : "No terminó bien";
-        _result.Text = (ok ? "✔ " : "✘ ") + text;
-        _result.Foreground = ok ? ServerDialogs.P("OkBrush") : ServerDialogs.P("ErrBrush");
-        _result.Visibility = Visibility.Visible;
+        var color = ok ? ServerDialogs.P("OkBrush") : ServerDialogs.P("ErrBrush");
+        _bar.Foreground = color;
+        _dot.Fill = color;
+        _step.Text = ok ? "Listo" : "No se pudo completar";
+        _result.Text = text;
+        _result.Foreground = ServerDialogs.P("TextBrush");
+        _banner.BorderBrush = color;
+        _banner.Visibility = Visibility.Visible;
+        _scroll.ScrollToEnd();
         _text.AppendLine((ok ? "OK: " : "ERROR: ") + text);
         _close.Focus();
     }
