@@ -111,12 +111,12 @@ public static class ServerDialogs
         {
             if (name.Text.Trim().Length == 0 || host.Text.Trim().Length == 0 || user.Text.Trim().Length == 0)
             { error.Text = "Escribe el nombre, el host y el usuario."; error.Visibility = Visibility.Visible; return; }
-            if (!int.TryParse(port.Text.Trim(), out var port) || port is < 1 or > 65535)
+            if (!int.TryParse(port.Text.Trim(), out var portNumber) || portNumber is < 1 or > 65535)
             { error.Text = "El puerto debe ser un número entre 1 y 65535."; error.Visibility = Visibility.Visible; return; }
             s.Name = name.Text.Trim();
             s.Host = host.Text.Trim();
             s.User = user.Text.Trim();
-            s.Port = port;
+            s.Port = portNumber;
             s.Key = key.Text.Trim().Trim('"');
             s.Web = nginx ? "nginx" : "apache";
             result = s;
