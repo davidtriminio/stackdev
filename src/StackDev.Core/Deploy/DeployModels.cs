@@ -20,9 +20,11 @@ public enum DeployOutcome
     Failed,
     /// <summary>The service does not exist on the server yet.</summary>
     NeedsProvision,
+    /// <summary>First upload: the files are on the server but the service did not start, and there was no earlier version to go back to.</summary>
+    StartFailed,
 }
 
-public sealed record DeployResult(DeployOutcome Outcome, string Message, string? BackupId = null, ApiStatus? Status = null)
+public sealed record DeployResult(DeployOutcome Outcome, string Message, string? BackupId = null, ApiStatus? Status = null, IReadOnlyList<string>? Missing = null)
 {
     public bool Ok => Outcome == DeployOutcome.Success;
 }

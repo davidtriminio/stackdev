@@ -119,6 +119,11 @@ public static class RemoteText
         E("The uploaded env file is not there", "No está el archivo de variables subido");
         E("The uploaded file is not there", "No está el archivo subido");
         E("The new values broke the service; the previous file is back and the service runs again.", "Los valores nuevos rompieron el servicio; se restauró el archivo anterior y el servicio vuelve a funcionar.");
+        R(@"First upload: the files are on the server but the service did not start \((.+)\)\. It is stopped; there was no previous version to go back to\.", "Es la primera subida: los archivos ya están en el servidor pero el servicio no arrancó ($1). Quedó detenido; no había una versión anterior a la que volver.");
+        E("the service did not start", "el servicio no arrancó");
+        E("copying the files failed", "falló la copia de archivos");
+        E("setting permissions failed", "falló el ajuste de permisos");
+        R(@"the service is not healthy after (\d+)s", "el servicio no responde bien tras $1 s");
         R(@"The new version failed \((.+)\)\. The previous version is running again\.", "La versión nueva falló ($1). La versión anterior vuelve a estar en marcha.");
         R(@"The new values broke the service and it is still down with the previous file\. Backup: (.+)", "Los valores nuevos rompieron el servicio y sigue caído con el archivo anterior. Copia: $1");
         R(@"The new version failed \((.+)\) AND the automatic rollback failed\. Backup (\S+) is in (.+)", "La versión nueva falló ($1) y la vuelta atrás automática también. La copia $2 está en $3");
@@ -145,7 +150,7 @@ public static class RemoteText
     }
 
     private static string Expand(string template, Match m) =>
-        Regex.Replace(template, @"\$(\d)", d => m.Groups[int.Parse(d.Groups[1].Value)].Value);
+        Regex.Replace(template, @"\$(\d)", d => Translate(m.Groups[int.Parse(d.Groups[1].Value)].Value));
 
     /// <summary>The Spanish text for a message of the remote script, or the same text when there is no translation.</summary>
     public static string Translate(string text)

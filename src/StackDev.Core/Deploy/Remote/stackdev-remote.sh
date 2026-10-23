@@ -210,6 +210,13 @@ wait_healthy() {
 
 show_journal() { journalctl -u "$1" -n 25 --no-pager 2>/dev/null | sed 's/^/    | /' || true; }
 
+# Settings the app complained about ("'Section:Key' is not set"), as environment variable names, comma separated.
+missing_settings() {
+    journalctl -u "$1" -n 60 --no-pager 2>/dev/null \
+        | grep -oE "'[A-Za-z][A-Za-z0-9_]*(:[A-Za-z0-9_]+)*' (is|are) (not set|missing|required)" \
+        | sed -E "s/^'([^']+)'.*/\1/; s/:/__/g" | sort -u | paste -sd, - || true
+}
+
 # Backup ids (YYYYMMDD-HHMMSS) of a service, newest first.
 backup_ids() { find "$BACKUPS/$1" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | grep -E '^[0-9]{8}-[0-9]{6}$' | sort -r; }
 
@@ -358,6 +365,8 @@ cmd_deploy() {
     if [ -n "$RUNTIME" ] && ! has_runtime "$RUNTIME"; then
         fail 11 "ASP.NET Core runtime $RUNTIME is not installed on the server. Install it with: $(runtime_hint "$RUNTIME")"
     fi
+    local first="no"
+    [ -f "$APP_DIR/$DLL" ] || first="yes"
     local new="$RUN_DIR/new" need have
     rm -rf "$new"; mkdir -p "$new"
     tar -xzf "$BUNDLE" -C "$new" || fail 12 "The archive could not be extracted"
@@ -403,6 +412,14 @@ cmd_deploy() {
     if [ -n "$broken" ]; then
         warn "Deployment failed: $broken"
         show_journal "$SVC"
+        local missing; missing="$(missing_settings "$SVC")"
+        [ -z "$missing" ] || kv missing "$missing"
+        if [ "$first" = "yes" ]; then
+            # Nothing to go back to: keep the uploaded files, stop the crash loop and let the user fix the settings.
+            systemctl stop "$SVC" >/dev/null 2>&1 || true
+            rm -rf "$RUN_DIR/new"
+            fail 22 "First upload: the files are on the server but the service did not start ($broken). It is stopped; there was no previous version to go back to."
+        fi
         STEP_TOTAL=7
         step "Going back to the previous version ($ts)"
         if restore_backup "$SVC" "$ts"; then
