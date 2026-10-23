@@ -204,6 +204,7 @@ public sealed class ServerView : ScrollViewer
             var row = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
             row.Children.Add(Button("Subir al servidor (asistente)", () => _ = GuidedSetupAsync(servers, depl), primary: true));
             row.Children.Add(Button("Configurar a mano", () => ConfigureDeployment(servers, depl)));
+            row.Children.Add(Button("Direcciones y pruebas", ShowAddresses));
             body.Children.Add(row);
             return Card("\uE8B7", "#6EE787", $"Este proyecto · {name}", null, body);
         }
@@ -222,6 +223,7 @@ public sealed class ServerView : ScrollViewer
         buttons.Children.Add(Button(running ? "Comprobar y reiniciar" : "Comprobar y poner en marcha",
             () => _ = LaunchAsync(sv, depl, running ? LaunchMode.Restart : LaunchMode.Start), primary: true));
         buttons.Children.Add(Button("Subir API", () => _ = DeployApiAsync(sv, depl)));
+        buttons.Children.Add(Button("Direcciones y pruebas", ShowAddresses));
         buttons.Children.Add(Button("Logs en vivo", () => _terminal($"logs {svc}", Ssh.TerminalLine(sv, $"sudo journalctl -u {svc} -f -n 100 --no-pager"))));
         var extra = new WrapPanel { Margin = new Thickness(0, 4, 0, 0), Visibility = _showMore ? Visibility.Visible : Visibility.Collapsed };
         extra.Children.Add(Button("Variables (.env)", () => _ = EditVariablesAsync(sv, svc)));
@@ -546,6 +548,17 @@ public sealed class ServerView : ScrollViewer
         DeployOutcome.Cancelled => "Cancelado: " + r.Message,
         _ => r.Message,
     };
+
+    /// <summary>The addresses of the project (this computer and the server) with Open, Test and Copy, in one window.</summary>
+    private void ShowAddresses()
+    {
+        var s = _session();
+        if (s is null) return;
+        var depl = s.Ctx.Config.Deployment;
+        var sv = _store.Search(depl?.Server);
+        ApiStatus? status = _state;
+        ApisWindow.Show(_owner, ApiCatalog.Build(s.Ctx, sv, depl, status));
+    }
 
     private Task DeployApiAsync(Server sv, DeploymentConfig depl) => LaunchAsync(sv, depl, LaunchMode.Deploy);
 
