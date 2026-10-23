@@ -54,7 +54,7 @@ public static class MissingSettings
         return sb.ToString().TrimEnd();
     }
 
-    private static string Hint(string name)
+    public static string Hint(string name)
     {
         var n = name.ToLowerInvariant();
         if (n.Contains("connectionstring") || n.Contains("database")) return "la cadena de conexión de tu base de datos";

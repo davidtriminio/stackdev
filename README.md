@@ -157,3 +157,7 @@ Para no depender de la consola: la dirección pública viene resuelta con una di
 - Con PostgreSQL en el mismo servidor, deja vacía la cadena de conexión: StackDev instala PostgreSQL si falta y crea un usuario (`<api>_app`) y una base de datos propios de esa API, con una clave aleatoria.
 - Todas las claves que genera (base de datos, administrador, clave JWT, variables que faltaban) se guardan cifradas en la sección «Credenciales» del proyecto, con el nombre «`<api> @ <servidor>` · …». En el servidor solo viven en el `.env` de la API.
 - Si la API no arranca por variables que faltan, StackDev las detecta en el registro del servicio, crea las que son claves, y para el resto (correo, pagos…) te da los pasos para ponerlas en «Variables (.env)».
+
+### Comprobar y poner en marcha
+
+El botón principal de la tarjeta del servidor abre **una sola ventana** (la pantalla de atrás se desenfoca) con los pasos: servidor, configuración de la API, arranque y comprobación final. Si falta algo, las preguntas salen dentro de la misma ventana: las claves y la base de datos se crean solas, y los valores que solo tú sabes se escriben ahí mismo. Al terminar muestra dónde corre la API (dirección y servidor) y la tarjeta lo deja visible. «Subir API» usa la misma ventana. El resto de acciones (variables, versiones anteriores, detener…) están en «Más acciones».
