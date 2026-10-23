@@ -29,7 +29,7 @@ public static class Dialogs
 
     private static Button Button(string text, bool primary, bool cancel = false)
     {
-        var b = new Button { Content = text, MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
+        var b = new Button { Content = text, MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
         if (primary) { b.Style = GetStyle("BtnPrimary"); b.IsDefault = true; }
         b.IsCancel = cancel;
         return b;
@@ -104,8 +104,8 @@ public static class Dialogs
     {
         var w = Base(owner, "Abrir proyecto", 620);
         var path = new TextBox { Text = last ?? "" };
-        var browse = new Button { Content = "Examinar…", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 7, 14, 7) };
-        var search = new Button { Content = "Buscar proyectos aquí", Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(12, 6, 12, 6) };
+        var browse = new Button { Content = "Examinar…", Margin = new Thickness(8, 0, 0, 0) };
+        var search = new Button { Content = "Buscar proyectos aquí", Margin = new Thickness(0, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         var list = new ListBox { Height = 190, Margin = new Thickness(0, 10, 0, 0) };
         var ok = Button("Abrir", true);
         var cancel = Button("Cancelar", false, cancel: true);

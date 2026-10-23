@@ -54,7 +54,7 @@ public static class ServerDialogs
 
     internal static Button Button(string text, bool primary)
     {
-        var b = new Button { Content = text, MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
+        var b = new Button { Content = text, MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
         if (primary) { b.Style = GetStyle("BtnPrimary"); b.IsDefault = true; } else b.IsCancel = true;
         return b;
     }
@@ -90,7 +90,7 @@ public static class ServerDialogs
         rowKey.ColumnDefinitions.Add(new ColumnDefinition());
         rowKey.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var key = new TextBox { Text = s.Key, MaxLength = 260 };
-        var browse = new Button { Content = "Examinar…", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 7, 14, 7) };
+        var browse = new Button { Content = "Examinar…", Margin = new Thickness(8, 0, 0, 0) };
         Grid.SetColumn(browse, 1);
         rowKey.Children.Add(key);
         rowKey.Children.Add(browse);
@@ -170,7 +170,7 @@ public static class ServerDialogs
         var service = Field(root, "Nombre del servicio en el servidor", current?.Service ?? suggestionService,
             "Minúsculas, números y guiones, hasta 40 caracteres (ej. mi-api). Es el servicio systemd y la carpeta en /var/www. Si ya está instalado, usa el botón de abajo para elegirlo.", 40);
         TextBox? dllBox = null;
-        var find = new Button { Content = "Buscar APIs ya instaladas en este servidor…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(12, 6, 12, 6) };
+        var find = new Button { Content = "Buscar APIs ya instaladas en este servidor…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12) };
         find.Click += async (_, _) =>
         {
             find.IsEnabled = false;

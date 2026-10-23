@@ -36,10 +36,10 @@ public sealed class LaunchWindow : Window
     private readonly StackPanel _questionBody = new();
     private readonly TextBlock _result = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
     private readonly Border _banner = new() { BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 14, 0, 0), Visibility = Visibility.Collapsed };
-    private readonly Button _copy = new() { Content = "Copiar registro", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
-    private readonly Button _open = new() { Content = "Abrir en el navegador ▾", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
-    private readonly Button _cancel = new() { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
-    private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
+    private readonly Button _copy = new() { Content = "Copiar registro", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button _open = new() { Content = "Abrir en el navegador ▾", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
+    private readonly Button _cancel = new() { Content = "Cancelar", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Margin = new Thickness(8, 0, 0, 0), Visibility = Visibility.Collapsed };
     private readonly StringBuilder _text = new();
     private readonly CancellationTokenSource _cts = new();
     private bool _running = true;
@@ -302,7 +302,7 @@ public sealed class LaunchWindow : Window
         for (var i = 0; i < options.Count; i++)
         {
             var index = i;
-            var b = new Button { Content = options[i], MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Margin = new Thickness(8, 0, 0, 0) };
+            var b = new Button { Content = options[i], MinWidth = 90, Margin = new Thickness(8, 0, 0, 0) };
             if (i == 0) b.Style = ServerDialogs.GetStyle("BtnPrimary");
             b.Click += (_, _) => chosen(index);
             row.Children.Add(b);

@@ -130,11 +130,11 @@
         <WrapPanel x:Name="ActionsPanel" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
           <Button Style="{StaticResource BtnIcon}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE756;" FontSize="16"
                   ToolTip="Abrir una terminal en la raíz del proyecto" Margin="0,0,8,10" VerticalAlignment="Top" Padding="10,9" Click="RootTerminal_Click" />
-          <Button x:Name="BtnNavQuick" Margin="0,0,8,10" Padding="12,9" ToolTip="Cambiar de navegador para este proyecto (o para todos)" Click="NavQuick_Click" />
-          <Button x:Name="BtnBrowser" Margin="0,0,8,10" Padding="12,9" ToolTip="Abrir la web o la API en el navegador elegido" Click="Browser_Click" />
-          <Button x:Name="BtnUp" Content="▶  Levantar todo" Style="{StaticResource BtnPrimary}" Margin="0,0,8,10" Padding="14,9" Click="Up_Click" />
-          <Button x:Name="BtnCheck" Content="✓  Verificar" Margin="0,0,8,10" Padding="14,9" Click="Check_Click" />
-          <Button x:Name="BtnDown" Content="■  Detener todo" Style="{StaticResource BtnDanger}" Margin="0,0,0,10" Padding="14,9" Click="Down_Click" />
+          <Button x:Name="BtnNavQuick" Margin="0,0,8,10" ToolTip="Cambiar de navegador para este proyecto (o para todos)" Click="NavQuick_Click" />
+          <Button x:Name="BtnBrowser" Margin="0,0,8,10" ToolTip="Abrir la web o la API en el navegador elegido" Click="Browser_Click" />
+          <Button x:Name="BtnUp" Content="▶  Levantar todo" Style="{StaticResource BtnPrimary}" Margin="0,0,8,10" Click="Up_Click" />
+          <Button x:Name="BtnCheck" Content="✓  Verificar" Margin="0,0,8,10" Click="Check_Click" />
+          <Button x:Name="BtnDown" Content="■  Detener todo" Style="{StaticResource BtnDanger}" Margin="0,0,0,10" Click="Down_Click" />
         </WrapPanel>
       </Grid>
 
@@ -202,7 +202,7 @@
             </Grid.ColumnDefinitions>
             <TextBox x:Name="TxtCommand" FontFamily="{StaticResource MonoFont}" KeyDown="TxtCommand_KeyDown" />
             <Button Grid.Column="1" Content="Ejecutar" Style="{StaticResource BtnPrimary}" Margin="8,0,0,0" Click="RunCommand_Click" />
-            <Button Grid.Column="2" Content="En otra ventana" Margin="8,0,0,0" Padding="14,9" Click="RunWindow_Click" />
+            <Button Grid.Column="2" Content="En otra ventana" Margin="8,0,0,0" Click="RunWindow_Click" />
           </Grid>
         </Grid>
 
@@ -232,16 +232,16 @@
                 </Grid>
                 <StackPanel x:Name="SummaryPanel" Margin="0,0,0,6" />
                 <WrapPanel Margin="0,6,0,0">
-                  <Button Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Padding="14,9" Click="CfgComponents_Click">
+                  <Button Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="CfgComponents_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE713;" /><TextBlock Text="Componentes del proyecto…" /></StackPanel>
                   </Button>
-                  <Button Margin="0,0,8,8" Padding="14,9" Click="CfgRedetect_Click">
+                  <Button Margin="0,0,8,8" Click="CfgRedetect_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE721;" /><TextBlock Text="Detectar de nuevo" /></StackPanel>
                   </Button>
-                  <Button Margin="0,0,8,8" Padding="14,9" Click="CfgEdit_Click">
+                  <Button Margin="0,0,8,8" Click="CfgEdit_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE70F;" /><TextBlock Text="Editar dev-menu.json" /></StackPanel>
                   </Button>
-                  <Button Margin="0,0,8,8" Padding="14,9" Click="CfgMove_Click">
+                  <Button Margin="0,0,8,8" Click="CfgMove_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE8AB;" /><TextBlock Text="Mover fuera del proyecto" /></StackPanel>
                   </Button>
                 </WrapPanel>
@@ -313,13 +313,13 @@
                   </StackPanel>
                 </Grid>
                 <WrapPanel>
-                  <Button Margin="0,0,8,8" Padding="14,9" Click="CfgSync_Click">
+                  <Button Margin="0,0,8,8" Click="CfgSync_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE895;" /><TextBlock Text="Traer estado de flutter-dev" /></StackPanel>
                   </Button>
-                  <Button Margin="0,0,8,8" Padding="14,9" Click="CfgLogs_Click">
+                  <Button Margin="0,0,8,8" Click="CfgLogs_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE8A5;" /><TextBlock Text="Abrir carpeta de logs" /></StackPanel>
                   </Button>
-                  <Button Margin="0,0,8,8" Padding="14,9" Click="CfgStatus_Click">
+                  <Button Margin="0,0,8,8" Click="CfgStatus_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE838;" /><TextBlock Text="Abrir carpeta del estado" /></StackPanel>
                   </Button>
                 </WrapPanel>

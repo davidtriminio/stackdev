@@ -277,7 +277,7 @@ public static class ComponentsDialog
         });
 
         var save = new Button { Content = "Guardar", Style = (Style)Application.Current.FindResource("BtnPrimary"), MinWidth = 100, IsDefault = true, Margin = new Thickness(8, 0, 0, 0) };
-        var cancel = new Button { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 9, 16, 9), IsCancel = true };
+        var cancel = new Button { Content = "Cancelar", MinWidth = 90, IsCancel = true };
         var saved = false;
         save.Click += (_, _) => { saved = true; window.Close(); };
         cancel.Click += (_, _) => window.Close();
