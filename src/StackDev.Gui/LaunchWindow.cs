@@ -43,6 +43,7 @@ public sealed class LaunchWindow : Window
     private readonly StringBuilder _text = new();
     private readonly CancellationTokenSource _cts = new();
     private bool _running = true;
+    private readonly Dictionary<int, System.Diagnostics.Stopwatch> _stepStart = new();
     private string? _url;
 
     private LaunchWindow(Window? owner, string title, string subtitle, IReadOnlyList<string> stepNames)
@@ -171,6 +172,9 @@ public sealed class LaunchWindow : Window
         {
             if (index < 0 || index >= _rows.Count) return;
             var (icon, name, text) = _rows[index];
+            if (state == StepState.Running) _stepStart[index] = System.Diagnostics.Stopwatch.StartNew();
+            else if (_stepStart.Remove(index, out var sw))
+                AddLine(new ProgressEvent("", $"  «{name.Text}»: {(state == StepState.Ok ? "bien" : state == StepState.Warning ? "con aviso" : "falló")} en {sw.Elapsed.TotalSeconds:0.0} s{(detail is null ? "" : " — " + detail)}", Level.Muted));
             (icon.Text, var brush) = state switch
             {
                 StepState.Running => ("▶", ServerDialogs.P("AccentBrush")),
@@ -188,6 +192,28 @@ public sealed class LaunchWindow : Window
                 text.Visibility = Visibility.Visible;
             }
         }));
+    }
+
+    /// <summary>
+    /// While something slow runs, writes a line every 10 s saying what is awaited, for how long and up to when,
+    /// so the window never looks frozen and the log shows where the time went. Dispose it when the wait is over.
+    /// </summary>
+    public IDisposable Waiting(string what, int limitSec)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var timer = new Timer(_ => Info($"  … {what}: {(int)clock.Elapsed.TotalSeconds} s (límite {limitSec} s)", Level.Muted), null, 10_000, 10_000);
+        return new WaitHandle(timer, clock, what, this);
+    }
+
+    private sealed class WaitHandle : IDisposable
+    {
+        private readonly Timer _timer; private readonly System.Diagnostics.Stopwatch _clock; private readonly string _what; private readonly LaunchWindow _w;
+        public WaitHandle(Timer t, System.Diagnostics.Stopwatch c, string what, LaunchWindow w) { _timer = t; _clock = c; _what = what; _w = w; }
+        public void Dispose()
+        {
+            _timer.Dispose();
+            _w.Info($"  {_what}: terminó en {_clock.Elapsed.TotalSeconds:0.0} s", Level.Muted);
+        }
     }
 
     /// <summary>Marks every step still in progress as failed, so nothing is left spinning after an error or a cancel.</summary>

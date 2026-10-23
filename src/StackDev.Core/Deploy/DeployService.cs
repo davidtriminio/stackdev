@@ -182,6 +182,9 @@ public static class DeployService
     /// <summary>Longest a server check may take before it is reported as not answering.</summary>
     public const int PreflightLimitSec = 60;
 
+    /// <summary>Longest the trial start of an API may take (the script itself waits about 15 s for it).</summary>
+    public const int CheckLimitSec = 90;
+
     /// <summary>Facts about the server and one service name (does it exist, which runtimes, which port is free...).</summary>
     public static RemoteResult Preflight(Server server, string service, CancellationToken ct = default, Action<RemoteEvent>? onEvent = null)
     {
@@ -215,7 +218,7 @@ public static class DeployService
         if (!HostKeys.IsTrusted(server)) return new(DeployOutcome.Failed, "El servidor aún no está verificado.");
         using var session = new RemoteSession(server);
         if (session.Open(ct) is { } e) return new(DeployOutcome.Failed, e);
-        var r = session.Execute("check", new[] { "--svc", service, "--dll", dll }, onEvent, ct, timeoutSec: 180, idleSec: 90);
+        var r = session.Execute("check", new[] { "--svc", service, "--dll", dll }, onEvent, ct, timeoutSec: CheckLimitSec, idleSec: 60);
         if (r.Ok) return new(DeployOutcome.Success, "La API arranca con su configuración actual.");
         var missing = MissingSettings.Parse(r.Value("missing"));
         return r.ExitCode == 24

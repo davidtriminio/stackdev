@@ -64,7 +64,9 @@ public sealed class LaunchFlow
         win.Info("Revisando el servidor…", Level.Title);
         win.Info($"Conectando con {_sv.User}@{_sv.Host}:{(_sv.Port is > 0 ? _sv.Port : 22)} por SSH (máximo {DeployService.PreflightLimitSec} s)…", Level.Muted);
         // The facts come one by one; showing them tells which one the server is stuck on if it ever stops answering.
-        var pre = DeployService.Preflight(_sv, _service, ct, e =>
+        RemoteResult pre;
+        using (win.Waiting("revisar el servidor", DeployService.PreflightLimitSec))
+        pre = DeployService.Preflight(_sv, _service, ct, e =>
         {
             if (e.Kind == RemoteEventKind.Kv && e.Key is not (null or "deployed_content")) win.Info($"  {e.Key} = {e.Text}", Level.Muted);
             else DeployService.Relay(e, 0, 0, win.Report);
@@ -89,7 +91,9 @@ public sealed class LaunchFlow
         // ---- 2) the settings of the API
         win.Step(1, StepState.Running);
         win.Info("Probando la API con su configuración real…", Level.Title);
-        var check = DeployService.Check(_sv, _service, _dll, ct, e => DeployService.Relay(e, 0, 0, win.Report));
+        DeployResult check;
+        using (win.Waiting("probar la API con su configuración", DeployService.CheckLimitSec))
+            check = DeployService.Check(_sv, _service, _dll, ct, e => DeployService.Relay(e, 0, 0, win.Report));
         if (ct.IsCancellationRequested) { win.Step(1, StepState.Failed, "Cancelado"); return new(false, "Cancelado."); }
         if (check.Ok) win.Step(1, StepState.Ok, "La API arranca con su configuración actual");
         else if (check.Outcome == DeployOutcome.NotReady && check.Message.Contains("Todavía no hay una API", StringComparison.Ordinal))
@@ -169,7 +173,10 @@ public sealed class LaunchFlow
         win.Step(3, StepState.Running);
         win.Info("Comprobando que responde…", Level.Title);
         ApiStatus? st = null;
-        try { st = ServerService.State(_sv, _service, _domain); } catch (ArgumentException) { }
+        win.Info("Preguntando al servidor si el servicio está activo (SSH, máx. 25 s)" + (string.IsNullOrEmpty(_domain) ? "." : $" y abriendo https://{_domain} (máx. 10 s)."), Level.Muted);
+        using (win.Waiting("comprobación final", 40))
+            try { st = ServerService.State(_sv, _service, _domain); } catch (ArgumentException) { }
+        if (st is not null) win.Info($"  servicio: {st.State}" + (st.Http is int code ? $", HTTPS respondió {code}" : string.IsNullOrEmpty(_domain) ? "" : ", HTTPS no respondió") + (st.CertExpires is DateTime ex ? $", certificado vence {ex:yyyy-MM-dd}" : ""), Level.Muted);
         var url = string.IsNullOrEmpty(_domain) ? null : "https://" + _domain;
         if (st is null || st.Problem is not null || !st.Active)
         {
