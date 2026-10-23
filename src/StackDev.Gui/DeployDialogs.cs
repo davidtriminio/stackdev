@@ -221,18 +221,30 @@ public static class DeployDialogs
     }
 
     /// <summary>Asks what a new API needs: the essentials first, the rest under «Opciones avanzadas». Null when cancelled.</summary>
-    public static ProvisionRequest? ProvisionForm(Window? owner, Server server, string service, string dll, string domain, int port, int? runtime)
+    public static ProvisionRequest? ProvisionForm(Window? owner, Server server, string service, string dll, string domain, int port, int? runtime,
+        string? autoDomain = null, ProjectHints.DatabaseHint? dbHint = null, string? apiLabel = null)
     {
         var w = ServerDialogs.Base(owner, "Crear una API nueva", 600);
         var root = new StackPanel { Margin = new Thickness(22) };
         root.Children.Add(Muted($"Se prepara «{server.Name}» para esta API: usuario, carpetas, secretos, servicio, sitio de {server.WebName}, firewall y HTTPS. No sube código; eso lo hace «Subir API»."));
 
+        if (apiLabel is not null) root.Children.Add(Body("API detectada: " + apiLabel, 12.5));
+
         var svc = ServerDialogs.Field(root, "Nombre del servicio", service, "Minúsculas, números y guiones, hasta 40 caracteres (ej. mi-api).", 40);
-        var dom = ServerDialogs.Field(root, "Dominio público de la API", domain, "Ej. mi-api.midominio.com, sin https://. Su registro A debe apuntar a " + server.Host + " (sin proxy si usas Cloudflare).", 253);
+        var dom = ServerDialogs.Field(root, "Dirección pública de la API", string.IsNullOrWhiteSpace(domain) ? autoDomain ?? "" : domain,
+            autoDomain is not null
+                ? "Ya viene una dirección gratuita que apunta a tu servidor, sin configurar DNS. Si tienes un dominio propio, escríbelo aquí (su registro A debe apuntar a " + server.Host + ", sin proxy si usas Cloudflare)."
+                : "Ej. mi-api.midominio.com, sin https://. Su registro A debe apuntar a " + server.Host + " (sin proxy si usas Cloudflare).", 253);
+        if (autoDomain is not null)
+        {
+            var useAuto = new Button { Content = "Usar la dirección automática", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, -6, 0, 12), Padding = new Thickness(12, 5, 12, 5) };
+            useAuto.Click += (_, _) => dom.Text = autoDomain;
+            root.Children.Add(useAuto);
+        }
 
         var kinds = new[] { DatabaseKind.Sqlite, DatabaseKind.Postgres, DatabaseKind.None };
         var names = new[] { "SQLite (archivo en el servidor)", "PostgreSQL (cadena de conexión)", "Ninguna / la configuro después" };
-        var kind = 0;
+        var kind = dbHint is null ? 0 : Math.Max(0, Array.IndexOf(kinds, dbHint.Kind));
         root.Children.Add(new TextBlock { Text = "Base de datos (clic para cambiar)", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
         var dbButton = Toggle("");
         var pgPanel = new StackPanel { Visibility = Visibility.Collapsed };
@@ -245,12 +257,13 @@ public static class DeployDialogs
         SetDb();
         dbButton.Click += (_, _) => { kind = (kind + 1) % kinds.Length; SetDb(); };
         root.Children.Add(dbButton);
+        if (dbHint is not null) root.Children.Add(Muted("Elegida porque " + dbHint.Reason + "."));
         root.Children.Add(pgPanel);
 
         var https = true;
         var httpsButton = Toggle("");
         var emailPanel = new StackPanel();
-        var email = ServerDialogs.Field(emailPanel, "Correo para el certificado", "", "Let's Encrypt lo usa para avisarte si va a vencer.", 120);
+        var email = ServerDialogs.Field(emailPanel, "Correo para avisos del certificado (opcional)", "", "Let's Encrypt lo usa para avisarte si va a vencer. Puedes dejarlo vacío.", 120);
         void SetHttps()
         {
             httpsButton.Content = (https ? "HTTPS con certificado gratis (Let's Encrypt): Sí" : "HTTPS: No, lo hago después") + "   ▾";
@@ -306,7 +319,6 @@ public static class DeployDialogs
             if (dllBox.Text.Trim().Length == 0) { Problem("Escribe el archivo .dll que arranca la API (ej. MiApi.dll).", dllBox, true); return; }
             if (ServerValidation.CheckPort(portBox.Text, out var p) is { } portProblem) { Problem(portProblem.Message, portBox, true); return; }
             if (!Sh.ValidPort(p)) { Problem("El puerto debe estar entre 1024 y 65535.", portBox, true); return; }
-            if (https && email.Text.Trim().Length == 0) { Problem("Escribe un correo para el certificado, o elige no pedirlo ahora.", email); return; }
             var req = new ProvisionRequest
             {
                 Server = server,

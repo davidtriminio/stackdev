@@ -595,7 +595,10 @@ public sealed class ServerView : ScrollViewer
         var api = s is null ? null : PickApi(s, depl?.Project);
         var service = depl?.Service ?? api?.SuggestedService ?? "api";
         var dll = depl?.Dll ?? api?.Dll ?? "";
-        var domain = depl?.Domain ?? "";
+        var auto = ProvisionService.AutoDomain(service, sv.Host);
+        var domain = string.IsNullOrWhiteSpace(depl?.Domain) ? auto ?? "" : depl!.Domain!;
+        var database = api is null ? null : ProjectHints.DetectDatabase(api.ProjectPath);
+        var apiLabel = api is null ? null : $"{api.ProjectName}" + (api.RuntimeMajor is int rm ? $"  ·  .NET {rm}" : "") + $"  ·  {Paths.Relative(s!.Root, api.ProjectPath)}";
 
         // 1) look at the server, and fix what is missing if the user wants
         RemoteResult pre;
@@ -613,7 +616,8 @@ public sealed class ServerView : ScrollViewer
             }
             var domain1 = domain;
             var dns = string.IsNullOrWhiteSpace(domain1) ? null : await Task.Run(() => ProvisionService.CheckDns(ServerService.CleanDomain(domain1) ?? domain1, sv.Host));
-            var items = ServerReadiness.Evaluate(new(pre.Values, sv.Web, api?.RuntimeMajor, ServerService.CleanDomain(domain), dns, WantHttps: true));
+            var ports = await Task.Run(() => ProvisionService.CheckPorts(sv.Host));
+            var items = ServerReadiness.Evaluate(new(pre.Values, sv.Web, api?.RuntimeMajor, ServerService.CleanDomain(domain), dns, WantHttps: true, PortsProblem: ports));
             var choice = DeployDialogs.Readiness(_owner, sv, items);
             if (choice == DeployDialogs.ReadinessChoice.Cancel) return;
             if (choice == DeployDialogs.ReadinessChoice.Continue) break;
@@ -642,7 +646,7 @@ public sealed class ServerView : ScrollViewer
         var port = int.TryParse(pre.Value("suggested_port"), out var p) ? p : 5000;
 
         // 2) the form
-        var req = DeployDialogs.ProvisionForm(_owner, sv, service, dll, domain, port, api?.RuntimeMajor);
+        var req = DeployDialogs.ProvisionForm(_owner, sv, service, dll, domain, port, api?.RuntimeMajor, auto, database, apiLabel);
         if (req is null) return;
 
         // 3) create it
@@ -655,6 +659,8 @@ public sealed class ServerView : ScrollViewer
         if (!result.Ok) return;
 
         if (result.Secrets is { } secrets) DeployDialogs.ShowSecrets(_owner, secrets, req.Service);
+        if (result.HttpsPending && req.IssueCertificate) await FinishHttpsAsync(sv, req);
+        else if (req.IssueCertificate) _log($"✔ La API quedará en https://{req.Domain}", Level.Ok);
         if (s is not null && (depl is null || depl.Server != sv.Id || depl.Service != req.Service))
         {
             if (deployAfter || Dialogs.Confirm(_owner, $"¿Dejo este proyecto apuntando a «{req.Service}» en {sv.Name}?", true))
@@ -671,6 +677,32 @@ public sealed class ServerView : ScrollViewer
         if (s?.Ctx.Config.Deployment is { } linked && linked.Service == req.Service && linked.Server == sv.Id
             && (deployAfter || Dialogs.Confirm(_owner, "La API está creada. ¿Subo ahora tu código?", true)))
             await DeployApiAsync(sv, linked);
+    }
+
+    /// <summary>The certificate did not come out: say why in plain words and offer to try again once it is fixed, with no console.</summary>
+    private async Task FinishHttpsAsync(Server sv, ProvisionRequest req)
+    {
+        while (true)
+        {
+            var ports = await Task.Run(() => ProvisionService.CheckPorts(sv.Host));
+            var dns = await Task.Run(() => ProvisionService.CheckDns(req.Domain, sv.Host));
+            var why = ports ?? dns
+                ?? "Let's Encrypt no pudo validar «" + req.Domain + "». Revisa que la dirección apunte a este servidor y que no pase por un proxy (en Cloudflare, nube gris).";
+            _log("⚠ El certificado HTTPS quedó pendiente.", Level.Warning);
+            if (!Dialogs.Confirm(_owner, $"La API ya está creada, pero el certificado HTTPS quedó pendiente.\n\n{why}\n\nCuando lo hayas resuelto, ¿lo intento otra vez ahora?", true))
+            {
+                _log("Puedes pedir el certificado más tarde con «Crear API nueva» o desde el servidor.", Level.Info);
+                return;
+            }
+            var retry = OperationWindow.Run(_owner, $"Certificado HTTPS de {req.Domain}", canCancel: false,
+                (win, report, ct) => ProvisionService.RetryHttps(sv, req.Domain, req.CertificateEmail, sv.Web, report, ct),
+                r => (r.Ok && !r.HttpsPending, r.Message));
+            if (retry is { Ok: true, HttpsPending: false })
+            {
+                _log($"✔ Certificado emitido: https://{req.Domain}", Level.Ok);
+                return;
+            }
+        }
     }
 
     // ------------------------------------------------------------ variables and versions
