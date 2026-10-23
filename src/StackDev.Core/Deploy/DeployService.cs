@@ -179,12 +179,15 @@ public static class DeployService
             : new(DeployOutcome.Failed, r.LaunchError ?? r.FailMessage ?? "No se pudo volver atrás.");
     }
 
+    /// <summary>Longest a server check may take before it is reported as not answering.</summary>
+    public const int PreflightLimitSec = 60;
+
     /// <summary>Facts about the server and one service name (does it exist, which runtimes, which port is free...).</summary>
-    public static RemoteResult Preflight(Server server, string service, CancellationToken ct = default)
+    public static RemoteResult Preflight(Server server, string service, CancellationToken ct = default, Action<RemoteEvent>? onEvent = null)
     {
         using var session = new RemoteSession(server);
         if (session.Open(ct) is { } e) return new RemoteResult { LaunchError = e };
-        return session.Execute("preflight", new[] { "--svc", service }, null, ct);
+        return session.Execute("preflight", new[] { "--svc", service }, onEvent, ct, timeoutSec: PreflightLimitSec, idleSec: 40);
     }
 
     /// <summary>
@@ -206,13 +209,13 @@ public static class DeployService
     }
 
     /// <summary>Starts the installed application for a few seconds with the real settings, to know whether it would start. Changes nothing.</summary>
-    public static DeployResult Check(Server server, string service, string dll, CancellationToken ct = default)
+    public static DeployResult Check(Server server, string service, string dll, CancellationToken ct = default, Action<RemoteEvent>? onEvent = null)
     {
         if (!Sh.Service.IsMatch(service) || !Sh.Dll.IsMatch(dll)) return new(DeployOutcome.Failed, "Nombre de servicio o .dll no válido.");
         if (!HostKeys.IsTrusted(server)) return new(DeployOutcome.Failed, "El servidor aún no está verificado.");
         using var session = new RemoteSession(server);
         if (session.Open(ct) is { } e) return new(DeployOutcome.Failed, e);
-        var r = session.Execute("check", new[] { "--svc", service, "--dll", dll }, null, ct);
+        var r = session.Execute("check", new[] { "--svc", service, "--dll", dll }, onEvent, ct, timeoutSec: 180, idleSec: 90);
         if (r.Ok) return new(DeployOutcome.Success, "La API arranca con su configuración actual.");
         var missing = MissingSettings.Parse(r.Value("missing"));
         return r.ExitCode == 24
@@ -234,7 +237,7 @@ public static class DeployService
     // ------------------------------------------------------------ pieces
 
     /// <summary>Translates what the script prints into progress; steps move the bar between <paramref name="from"/> and <paramref name="from"/>+<paramref name="span"/>.</summary>
-    internal static void Relay(RemoteEvent e, int from, int span, Action<ProgressEvent> progress)
+    public static void Relay(RemoteEvent e, int from, int span, Action<ProgressEvent> progress)
     {
         switch (e.Kind)
         {

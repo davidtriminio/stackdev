@@ -15,6 +15,9 @@ public sealed class RemoteSession : IDisposable
     private readonly Server _server;
     private readonly object _gate = new();
 
+    /// <summary>Longest silence tolerated from a remote command (installs print as they go, so this is generous).</summary>
+    public const int DefaultIdleSec = 300;
+
     public RemoteSession(Server server) => _server = server;
 
     public string? RunDir { get; private set; }
@@ -65,10 +68,13 @@ public sealed class RemoteSession : IDisposable
     /// Runs a subcommand of the script as root. Lines are interpreted and delivered to <paramref name="onEvent"/>
     /// (secrets masked); the env file of env-read is only collected, never delivered.
     /// </summary>
-    public RemoteResult Execute(string subcommand, IEnumerable<string> args, Action<RemoteEvent>? onEvent, CancellationToken ct, IEnumerable<string>? secrets = null)
+    public RemoteResult Execute(string subcommand, IEnumerable<string> args, Action<RemoteEvent>? onEvent, CancellationToken ct, IEnumerable<string>? secrets = null,
+        int timeoutSec = 0, int idleSec = DefaultIdleSec)
     {
         var result = new RemoteResult();
         if (RunDir is null) { result.LaunchError = "La sesión con el servidor no está abierta."; return result; }
+        onEvent?.Invoke(new RemoteEvent(RemoteEventKind.Info, $"Ejecutando «{subcommand}» en el servidor (límite: {(timeoutSec > 0 ? timeoutSec + " s" : idleSec + " s sin respuesta")})"));
+        var lastSeen = "al empezar";
 
         var cmd = new StringBuilder($"sudo -n bash {Sh.Quote(RunDir + "/stackdev-remote.sh")} {subcommand}");
         foreach (var a in args) cmd.Append(' ').Append(Sh.Quote(a));
@@ -88,6 +94,8 @@ public sealed class RemoteSession : IDisposable
                 if (raw.Contains("a password is required", StringComparison.OrdinalIgnoreCase) || raw.Contains("no tty present", StringComparison.OrdinalIgnoreCase))
                     sudoAsksPassword = true;
                 var e = RemoteProtocol.Parse(raw);
+                if (e.Kind is RemoteEventKind.Step or RemoteEventKind.Info) lastSeen = "«" + RemoteText.Translate(e.Text) + "»";
+                else if (e.Kind == RemoteEventKind.Kv && e.Key != "missing") lastSeen = "después de leer «" + e.Key + "»";
                 switch (e.Kind)
                 {
                     case RemoteEventKind.EnvBegin: inEnv = true; return;
@@ -103,10 +111,15 @@ public sealed class RemoteSession : IDisposable
             }
         }
 
-        var code = ProcessRunner.RunCapturing("ssh", ssh, null, null, ct, Handle);
+        var code = ProcessRunner.RunCapturing("ssh", ssh, null, null, ct, Handle, timeoutSec, idleSec, closeStdin: true);
         result.ExitCode = code;
         result.FailMessage = fail is null ? null : SecretMask.Mask(fail, known);
-        if (code == 127) result.LaunchError = "No encuentro ssh en este equipo (instala «Cliente OpenSSH» en las características de Windows).";
+        if (code == ProcessRunner.TimedOut)
+            result.LaunchError = timeoutSec > 0
+                ? $"El servidor no respondió en {timeoutSec} s (se quedó parado {lastSeen})."
+                : $"El servidor no dio señales en {idleSec} s (se quedó parado {lastSeen}).";
+        else if (code == 130 && ct.IsCancellationRequested) result.LaunchError = "Cancelado.";
+        else if (code == 127) result.LaunchError = "No encuentro ssh en este equipo (instala «Cliente OpenSSH» en las características de Windows).";
         else if (code == 255 && !result.Done) result.LaunchError = "Se perdió la conexión con el servidor.";
         else if (sudoAsksPassword) result.FailMessage = "El usuario necesita sudo sin contraseña (NOPASSWD) para que StackDev pueda trabajar en el servidor.";
         else if (code != 0 && fail is null && !result.Done) result.FailMessage = $"El servidor terminó con el código {code}.";
