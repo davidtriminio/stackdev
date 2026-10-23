@@ -178,17 +178,65 @@ public sealed class LaunchFlow
             try { st = ServerService.State(_sv, _service, _domain); } catch (ArgumentException) { }
         if (st is not null) win.Info($"  servicio: {st.State}" + (st.Http is int code ? $", HTTPS respondió {code}" : string.IsNullOrEmpty(_domain) ? "" : ", HTTPS no respondió") + (st.CertExpires is DateTime ex ? $", certificado vence {ex:yyyy-MM-dd}" : ""), Level.Muted);
         var url = string.IsNullOrEmpty(_domain) ? null : "https://" + _domain;
-        if (st is null || st.Problem is not null || !st.Active)
+        if (st is null || st.Problem is not null)
         {
-            win.Step(3, StepState.Warning, st?.Problem ?? "El servicio no figura activo todavía");
-            return new(false, "La API se inició pero no la veo activa todavía. Pulsa «Actualizar estado» en unos segundos o mira «Logs en vivo».", url);
+            win.Step(3, StepState.Warning, st?.Problem ?? "No pude consultar el servicio");
+            return new(false, "No pude consultar el estado de la API. Pulsa «Actualizar estado» en unos segundos o mira «Logs en vivo».", url);
         }
+        if (Verify(win, ct, st, url) is { } stop) return stop;
         win.Step(3, StepState.Ok, url is null ? $"Activa en {_sv.Name}" : $"Activa: {url}");
         var where = url is null ? $"en {_sv.Name} ({_sv.Host})" : $"en {url}, servidor {_sv.Name} ({_sv.Host})";
         var tail = _made.Count > 0 ? $"\n\nGuardé {_made.Count} clave(s) en «Credenciales» (cifradas en este equipo)." : "";
         return new(true, $"La API «{_service}» está corriendo {where}." + tail, url);
     }
 
+
+    /// <summary>
+    /// Looks at the API from the outside and, for each problem found, stops to ask: repair it (when StackDev can), check again,
+    /// carry on as it is or stop here. Null when everything is fine; otherwise the outcome to finish with.
+    /// </summary>
+    private LaunchOutcome? Verify(LaunchWindow win, CancellationToken ct, ApiStatus st, string? url)
+    {
+        for (var round = 0; round < 4; round++)
+        {
+            Diagnosis d;
+            if (string.IsNullOrEmpty(_domain))
+                d = new(new[] { st.Active ? "✔ El servicio está activo en el servidor." : "✘ El servicio está detenido." },
+                    st.Active ? Array.Empty<DiagnosisIssue>() : new[] { new DiagnosisIssue(IssueKind.ServiceDown, "El servicio está detenido", "La API no está corriendo en el servidor.", true, "Iniciar el servicio") });
+            else
+                using (win.Waiting("revisar la dirección pública (DNS, puertos, certificado)", 40))
+                    d = ApiDiagnosis.Run(_sv, _domain, st, ct);
+            foreach (var f in d.Facts) win.Info("  " + f, Level.Muted);
+            if (d.Healthy) return null;
+
+            var issue = d.Issues[0];
+            var more = d.Issues.Count > 1 ? $"\n\n(Hay {d.Issues.Count - 1} aviso(s) más; se verán después de este.)" : "";
+            win.Step(3, StepState.Warning, issue.Title);
+            var options = new[] { issue.Fixable ? issue.FixLabel! : "Volver a comprobar", "Continuar sin arreglar", "Detener aquí" };
+            var pick = win.Ask($"{issue.Title}\n\n{issue.Detail}{more}\n\nEl proceso está en pausa. ¿Qué hago?", options);
+            if (pick == 1) return new(false, $"La API está subida, pero queda un aviso: {issue.Title}. {issue.Detail}", url);
+            if (pick != 0) { win.Step(3, StepState.Failed, "Detenido"); return new(false, $"Detenido en la comprobación final: {issue.Title}.", url); }
+
+            win.Step(3, StepState.Running);
+            if (!issue.Fixable) { win.Info("Compruebo otra vez…", Level.Title); continue; }
+            win.Info(issue.FixLabel + "…", Level.Title);
+            if (issue.Kind == IssueKind.ServiceDown)
+            {
+                var started = ServerService.Operation(_sv, _service, "start");
+                win.Info(started.Message, started.Ok ? Level.Ok : Level.Error);
+            }
+            else
+            {
+                var repaired = ProvisionService.RepairSite(_sv, _service, _domain!, _sv.Web, win.Report, ct);
+                win.Info(repaired.Message, repaired.Ok ? (repaired.HttpsPending ? Level.Warning : Level.Ok) : Level.Error);
+            }
+            if (ct.IsCancellationRequested) return new(false, "Cancelado.", url);
+            win.Info("Compruebo otra vez…", Level.Title);
+            try { st = ServerService.State(_sv, _service, _domain); } catch (ArgumentException) { }
+        }
+        win.Step(3, StepState.Warning, "Sigue habiendo avisos");
+        return new(false, "Probé varias veces y la dirección pública sigue con avisos. Mira el registro de arriba.", url);
+    }
     /// <summary>
     /// Completes the settings the API needs. Keys are generated, a missing PostgreSQL connection gets a database of its own,
     /// and the values only the user knows are asked in the window. False (with the reason) when the user stops or it cannot be done.

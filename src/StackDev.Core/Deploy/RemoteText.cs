@@ -133,6 +133,7 @@ public static class RemoteText
         R(@"Port (\d+) is already in use or assigned to another site", "El puerto $1 ya está en uso o asignado a otro sitio");
         R(@"The service '(.+)' already exists\. Deploy to it, or provision again with overwrite\.", "El servicio «$1» ya existe. Sube a él, o créalo de nuevo reemplazándolo.");
         R(@"The service '(.+)' does not exist on this server\. Provision it first\.", "El servicio «$1» no existe en este servidor. Aprovisiónalo primero.");
+        E("The port of the API is not known (ASPNETCORE_URLS is not in its settings).", "No sé en qué puerto corre la API (falta ASPNETCORE_URLS en su configuración)");
         E("There is no backup to go back to", "No hay una copia a la que volver");
         R(@"(.+) is not at the root of the upload", "$1 no está en la raíz de lo subido");
         E("The archive could not be extracted", "No se pudo descomprimir lo subido");

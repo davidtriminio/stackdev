@@ -14,7 +14,8 @@ public static class ApisWindow
     /// <param name="load">Builds the list again (it is called after every save).</param>
     /// <param name="save">Saves the address (and, if asked, the folder and start command) of a local app. Returns an error text, or null when saved.</param>
     /// <param name="setupServer">Opens the assistant that picks the server and the API (the window closes first).</param>
-    public static void Show(Window? owner, Func<IReadOnlyList<ApiEntry>> load, Func<ApiEntry, string, string?, string?, string?> save, Action setupServer)
+    public static void Show(Window? owner, Func<IReadOnlyList<ApiEntry>> load, Func<ApiEntry, string, string?, string?, string?> save, Action setupServer,
+        Func<Diagnosis?>? diagnose = null, Func<DiagnosisIssue, string>? repair = null)
     {
         var w = ServerDialogs.Base(owner, "Direcciones y pruebas", 760);
         var root = new StackPanel { Margin = new Thickness(22) };
@@ -40,7 +41,7 @@ public static class ApisWindow
                     FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = ServerDialogs.P("AccentBrush"), Margin = new Thickness(0, 10, 0, 6),
                 });
                 foreach (var e in entries.Where(x => x.Scope == scope))
-                    root.Children.Add(e.Configured ? Card(e) : FormCard(e, w, save, Build, setupServer, text => notice = text));
+                    root.Children.Add(e.Configured ? Card(e, e.Scope == ApiScope.Server ? diagnose : null, repair) : FormCard(e, w, save, Build, setupServer, text => notice = text));
             }
             var close = ServerDialogs.Button("Cerrar", true);
             close.IsDefault = false;   // Enter inside a form must not close the window
@@ -101,7 +102,7 @@ public static class ApisWindow
         };
     }
 
-    private static Border Card(ApiEntry e)
+    private static Border Card(ApiEntry e, Func<Diagnosis?>? diagnose, Func<DiagnosisIssue, string>? repair)
     {
         var stack = new StackPanel();
         var head = new WrapPanel();
@@ -112,6 +113,7 @@ public static class ApisWindow
         stack.Children.Add(head);
         stack.Children.Add(new TextBlock { Text = e.Detail, FontSize = 11.5, Foreground = ServerDialogs.P("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 6) });
 
+        var fixes = new StackPanel();
         var result = new TextBlock
         {
             FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12, TextWrapping = TextWrapping.Wrap,
@@ -126,9 +128,9 @@ public static class ApisWindow
             var url = e.Url!;
             stack.Children.Add(new TextBox { Text = url, IsReadOnly = true, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 12.5 });
             var row = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-            var open = new Button { Content = "Abrir ▾", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+            var open = new Button { Content = "Abrir ▾", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 8) };
             open.Click += async (sender, _) => await BrowserMenu.ShowAsync((FrameworkElement)sender, url);
-            var test = new Button { Content = "Probar", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+            var test = new Button { Content = "Probar", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 8) };
             test.Style = ServerDialogs.GetStyle("BtnPrimary");
             test.Click += async (_, _) =>
             {
@@ -138,13 +140,43 @@ public static class ApisWindow
                 result.Text = "Probando…";
                 try
                 {
+                    fixes.Children.Clear();
+                    if (diagnose is not null)
+                    {
+                        // The server's address is checked from the outside step by step, and what is wrong comes with its repair button.
+                        var d = await Task.Run(diagnose);
+                        if (d is not null)
+                        {
+                            result.Text = string.Join("\n", d.Facts);
+                            result.Foreground = d.Healthy ? ServerDialogs.P("TextBrush") : ServerDialogs.P("WarnBrush");
+                            foreach (var issue in d.Issues)
+                            {
+                                fixes.Children.Add(new TextBlock { Text = "⚠ " + issue.Title, FontWeight = FontWeights.SemiBold, FontSize = 12.5, Margin = new Thickness(0, 10, 0, 2), Foreground = ServerDialogs.P("WarnBrush") });
+                                fixes.Children.Add(new TextBlock { Text = issue.Detail, FontSize = 12, TextWrapping = TextWrapping.Wrap, Foreground = ServerDialogs.P("MutedBrush"), Margin = new Thickness(0, 0, 0, 6) });
+                                if (!issue.Fixable || repair is null) continue;
+                                var fix = new Button { Content = issue.FixLabel, Padding = new Thickness(14, 6, 14, 6), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+                                fix.Style = ServerDialogs.GetStyle("BtnPrimary");
+                                var captured = issue;
+                                fix.Click += (_, _) =>
+                                {
+                                    fix.IsEnabled = false;
+                                    var message = repair(captured);
+                                    result.Text = message + "\nPulsa «Probar» para comprobar otra vez.";
+                                    result.Foreground = ServerDialogs.P("TextBrush");
+                                    fixes.Children.Clear();
+                                };
+                                fixes.Children.Add(fix);
+                            }
+                            return;
+                        }
+                    }
                     var found = await ApiEndpoints.ProbeAsync(url);
                     result.Text = string.Join("\n", ApiCatalog.Describe(found));
                     result.Foreground = found.Count == 0 ? ServerDialogs.P("ErrBrush") : ServerDialogs.P("TextBrush");
                 }
                 finally { test.IsEnabled = true; }
             };
-            var copy = new Button { Content = "Copiar dirección", Padding = new Thickness(14, 6, 14, 6) };
+            var copy = new Button { Content = "Copiar dirección", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 0, 8) };
             copy.Click += (_, _) => { try { Clipboard.SetText(url); } catch (System.Runtime.InteropServices.COMException) { } };
             row.Children.Add(open);
             row.Children.Add(test);
@@ -152,6 +184,7 @@ public static class ApisWindow
             stack.Children.Add(row);
         }
         stack.Children.Add(result);
+        stack.Children.Add(fixes);
         return new Border
         {
             Background = ServerDialogs.P("Surface2Brush"), CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 10, 14, 12),

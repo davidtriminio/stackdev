@@ -593,8 +593,35 @@ public sealed class ServerView : ScrollViewer
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return "No pude guardar: " + ex.Message; }
         }
+        Diagnosis? Diagnose()
+        {
+            var depl = _session()?.Ctx.Config.Deployment;
+            var sv = _store.Search(depl?.Server);
+            if (sv is null || string.IsNullOrWhiteSpace(depl?.Domain)) return null;
+            ApiStatus? status = null;
+            try { status = ServerService.State(sv, depl!.Service ?? "", depl.Domain); } catch (ArgumentException) { }
+            return ApiDiagnosis.Run(sv, depl!.Domain!, status);
+        }
+        string Repair(DiagnosisIssue issue)
+        {
+            var depl = _session()?.Ctx.Config.Deployment;
+            var sv = _store.Search(depl?.Server);
+            if (sv is null || depl?.Service is null || string.IsNullOrWhiteSpace(depl.Domain)) return "No encuentro el servidor o el dominio de este proyecto.";
+            var domain = depl.Domain!;
+            if (issue.Kind == IssueKind.ServiceDown)
+            {
+                var started = ServerService.Operation(sv, depl.Service, "start");
+                _log(started.Message, started.Ok ? Level.Ok : Level.Error);
+                return started.Ok ? "✔ Servicio iniciado." : "✘ No pude iniciarlo: " + started.Message;
+            }
+            var done = OperationWindow.Run(_owner, $"Crear el sitio de {domain}", canCancel: false,
+                (win, report, ct) => ProvisionService.RepairSite(sv, depl.Service, domain, sv.Web, report, ct),
+                r => (r.Ok && !r.HttpsPending, r.Message));
+            _log(done.Message, done.Ok ? Level.Ok : Level.Error);
+            return (done.Ok ? (done.HttpsPending ? "⚠ " : "✔ ") : "✘ ") + done.Message;
+        }
         var wantSetup = false;
-        ApisWindow.Show(_owner, Load, Save, () => wantSetup = true);
+        ApisWindow.Show(_owner, Load, Save, () => wantSetup = true, Diagnose, Repair);
         Update();
         if (wantSetup) await GuidedSetupAsync(_store.Read(), _session()?.Ctx.Config.Deployment);
     }
