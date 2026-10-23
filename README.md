@@ -143,3 +143,10 @@ Los servidores, las credenciales de prueba y los `dev-menu.json` guardados con c
 ### Asistente «Subir al servidor»
 
 Elige el servidor, confirma su huella la primera vez, detecta la API del proyecto y revisa qué APIs ya hay instaladas en el servidor. Si hay alguna, la eliges (★ marca la que parece ser esta); si no hay ninguna, te guía para crear una nueva (proxy Apache/Nginx, HTTPS y servicio) y luego la sube.
+
+### Crear una API nueva sin saber qué falta
+
+Antes de crear nada, el asistente revisa el servidor y muestra una lista: servidor web (Apache/Nginx), runtime de ASP.NET Core que necesita tu proyecto, certbot, DNS del dominio, espacio en disco y si el nombre ya existe. Lo que se puede instalar con el gestor de paquetes del servidor (dnf, yum o apt) se instala con un botón; lo demás se explica con el comando para hacerlo a mano. El formulario de creación pide solo servicio, dominio, base de datos y HTTPS; el resto está en «Opciones avanzadas».
+
+Si el servicio de tu proyecto aún no existe, «Subir API» lo detecta antes de compilar y ofrece crearlo y seguir con la subida. Los archivos de desarrollo del publish (`appsettings.Development.json`, `.pdb`) se dejan fuera sin preguntar; llaves, `.env` y bases de datos sí piden confirmación.
+
