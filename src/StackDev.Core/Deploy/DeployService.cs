@@ -127,7 +127,8 @@ public static class DeployService
                     P("Listo", "Despliegue terminado.", Level.Ok, 100);
                     return new(DeployOutcome.Success, "Despliegue terminado.", result.Value("backup"), status);
                 }
-                case 20: return new(DeployOutcome.RolledBack, result.FailMessage ?? "La versión nueva falló; volvió la anterior.");
+                case 20: return new(DeployOutcome.RolledBack, result.FailMessage ?? "La versión nueva falló; volvió la anterior.", Missing: MissingSettings.Parse(result.Value("missing")));
+                case 22: return new(DeployOutcome.StartFailed, result.FailMessage ?? "Los archivos están en el servidor pero el servicio no arrancó.", Missing: MissingSettings.Parse(result.Value("missing")));
                 case 21: return new(DeployOutcome.RollbackFailed, result.FailMessage ?? "La versión nueva falló y no se pudo volver a la anterior.");
                 case 12: return new(DeployOutcome.Failed, (result.FailMessage ?? "La subida llegó dañada.") + " No se cambió nada.");
                 default:

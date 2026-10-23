@@ -522,6 +522,7 @@ public sealed class ServerView : ScrollViewer
         DeployOutcome.Success => "Despliegue terminado.",
         DeployOutcome.RolledBack => "↩ " + r.Message,
         DeployOutcome.RollbackFailed => "‼ " + r.Message,
+        DeployOutcome.StartFailed => "⚠ " + r.Message,
         DeployOutcome.NeedsProvision => r.Message,
         DeployOutcome.Cancelled => "Cancelado: " + r.Message,
         _ => r.Message,
@@ -568,12 +569,72 @@ public sealed class ServerView : ScrollViewer
             (win, report, ct) => DeployService.Deploy(req, new DeployDialogs.GuiDecisions(win), report, ct),
             r => (r.Ok, Describe(r)));
         if (result is null) return;
-        _log(Describe(result), result.Ok ? Level.Ok : result.Outcome is DeployOutcome.Cancelled or DeployOutcome.RolledBack ? Level.Warning : Level.Error);
+        _log(Describe(result), result.Ok ? Level.Ok : result.Outcome is DeployOutcome.Cancelled or DeployOutcome.RolledBack or DeployOutcome.StartFailed ? Level.Warning : Level.Error);
         _state = null;
         await QueryStatusAsync(force: true);
 
+        if (result.Missing is { Count: > 0 } missing && result.Outcome is DeployOutcome.StartFailed or DeployOutcome.RolledBack or DeployOutcome.RollbackFailed)
+        {
+            await FixMissingSettingsAsync(sv, depl, missing, result.Outcome);
+            return;
+        }
+        if (result.Outcome == DeployOutcome.StartFailed)
+        {
+            Dialogs.Confirm(_owner, "Los archivos quedaron en el servidor, pero el servicio no arrancó y no pude saber por qué.\n\nRevisa el registro de la operación (las líneas con «|» son lo que dijo el servicio) o abre «Variables (.env)» para ver qué falta.", true);
+            return;
+        }
         if (result.Outcome == DeployOutcome.NeedsProvision && Dialogs.Confirm(_owner, $"La API «{depl.Service}» no existe en {sv.Name}. ¿La creo ahora y la subo después?", true))
             await ProvisionApiAsync(sv, deployAfter: true);
+    }
+
+    /// <summary>
+    /// The API refused to start because some settings are missing. Offers to create them (random values for keys and secrets),
+    /// restart the service, and upload again when the failed upload had been undone.
+    /// </summary>
+    private async Task FixMissingSettingsAsync(Server sv, DeploymentConfig depl, IReadOnlyList<string> missing, DeployOutcome outcome)
+    {
+        var service = depl.Service!;
+        var list = string.Join("\n", missing.Select(m => "  • " + m));
+        var undone = outcome is DeployOutcome.RolledBack or DeployOutcome.RollbackFailed;
+        var ask = $"La API «{service}» no arranca porque le faltan estas variables:\n\n{list}\n\n¿Las genero con valores seguros, las agrego al .env del servidor y " + (undone ? "vuelvo a subir?" : "la reinicio?");
+        if (!Dialogs.Confirm(_owner, ask, true)) return;
+
+        var read = await Task.Run(() => EnvService.Read(sv, service));
+        if (!read.Ok || read.File is null)
+        {
+            _log("✘ " + read.Message, Level.Error);
+            Dialogs.Confirm(_owner, "No pude leer el .env del servidor:\n" + read.Message, true);
+            return;
+        }
+        var (generated, manual) = MissingSettings.Fill(read.File, missing);
+        if (generated.Count > 0)
+        {
+            var env = read.File;
+            var write = OperationWindow.Run(_owner, $"Agregar variables a {service}", canCancel: false,
+                (win, report, ct) => EnvService.Write(sv, service, env, restart: !undone, report, ct),
+                r => (r.Ok, r.Message));
+            if (write is null) return;
+            _log(Describe(write), write.Ok ? Level.Ok : Level.Error);
+            if (!write.Ok) return;
+        }
+        var notes = new List<string>();
+        if (generated.Count > 0) notes.Add("Creé: " + string.Join(", ", generated) + ".");
+        if (generated.Any(g => g.Contains("Webhook", StringComparison.OrdinalIgnoreCase)))
+            notes.Add("Ojo: el secreto del webhook de pagos es inventado. Cuando conectes el proveedor de pagos, pon el valor real en «Variables (.env)».");
+        if (manual.Count > 0) notes.Add("Faltan valores que solo tú conoces: " + string.Join(", ", manual) + ". Ponlos en «Variables (.env)».");
+        _log(string.Join(" ", notes), manual.Count > 0 ? Level.Warning : Level.Info);
+        if (manual.Count > 0 || generated.Count == 0)
+        {
+            Dialogs.Confirm(_owner, string.Join("\n\n", notes), true);
+            return;
+        }
+        if (undone) await DeployApiAsync(sv, depl);
+        else
+        {
+            _state = null;
+            await QueryStatusAsync(force: true);
+            Dialogs.Confirm(_owner, $"Listo: «{service}» arrancó con las variables nuevas.\n\n" + string.Join("\n\n", notes.Skip(1)), true);
+        }
     }
 
     // ------------------------------------------------------------ provision
