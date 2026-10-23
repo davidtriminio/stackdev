@@ -47,7 +47,7 @@ public class ConfigTests
         Assert.Contains("Migración 'nueva'", text);            // sin \u0027 ni \u00F3
         Assert.Contains("\\\"hola\\\"", text);                  // las comillas dobles sí se escapan
         Assert.DoesNotContain("\r", text);
-        Assert.StartsWith("{\n  \"nombre\"", text);              // sangría de 2 espacios
+        Assert.StartsWith("{\n  \"name\"", text);              // sangría de 2 espacios
         Assert.EndsWith("}\n", text);
         Assert.DoesNotContain("\"postgres\"", text);             // sección ausente: no se escribe
     }
