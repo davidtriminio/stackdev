@@ -27,6 +27,7 @@ public static class ConfigJson
     /// <summary>Lee la configuración; los secretos guardados como <c>dpapi:…</c> se descifran (en memoria siempre están en claro).</summary>
     public static ProjectConfig Read(string json)
     {
+        json = LegacyKeys.Upgrade(json, LegacyKeys.Project, out _);
         var cfg = JsonSerializer.Deserialize<ProjectConfig>(json, Options) ?? new ProjectConfig();
         Transform(cfg, Protection.Decrypt, onlySecrets: false);
         return cfg;

@@ -35,8 +35,9 @@ public sealed class CredentialsStore
             var text = File.ReadAllText(FilePath, Encoding.UTF8).Trim();
             var flat = Protection.IsEncrypted(text) ? Protection.Decrypt(text) : text;
             if (flat.Length == 0) return new();   // cifrado por otro usuario/equipo: no se puede leer
+            flat = Config.LegacyKeys.Upgrade(flat, Config.LegacyKeys.Credential, out var upgraded);
             var list = JsonSerializer.Deserialize<List<Credential>>(flat, Options) ?? new();
-            if (!Protection.IsEncrypted(text) && Protection.Available && list.Count > 0) Save(list);   // migra el texto plano heredado
+            if ((upgraded || !Protection.IsEncrypted(text)) && Protection.Available && list.Count > 0) Save(list);   // migra el texto plano heredado
             return list;
         }
         catch (Exception ex) when (ex is JsonException or IOException)
