@@ -498,12 +498,25 @@ public sealed class ServerView : ScrollViewer
                 $"«{chosen.Service}» ejecuta {(chosen.Dll.Length > 0 ? chosen.Dll : "otra aplicación")}, y tu proyecto genera {api.Dll}.\n\nSi subes, el contenido de ese servicio se reemplaza por esta API (queda una copia para volver atrás). ¿Es la misma API?", false))
             return;
 
+        // Linking an API that already exists: without its address the project would show as "sin configurar", so ask for it here.
+        var domain = current is not null && current.Server == sv.Id && current.Service == chosen.Service ? current.Domain : null;
+        while (string.IsNullOrWhiteSpace(domain))
+        {
+            var suggested = ProvisionService.AutoDomain(chosen.Service, sv.Host) ?? "";
+            var typed = Dialogs.Ask(_owner,
+                $"¿En qué dirección responde «{chosen.Service}»? Escribe solo el dominio, sin https:// (por ejemplo api.midominio.com).\n\nSi la creaste con StackDev y no pusiste dominio propio, es la dirección gratuita sugerida. Déjalo vacío para anotarlo después.",
+                suggested);
+            if (string.IsNullOrWhiteSpace(typed)) break;
+            var clean = ServerService.CleanDomain(typed);
+            if (clean is not null && Sh.Domain.IsMatch(clean)) domain = clean;
+            else Dialogs.Confirm(_owner, "Ese dominio no es válido. Ejemplo: mi-api.midominio.com", true);
+        }
         var cfg = new DeploymentConfig
         {
             Server = sv.Id,
             Service = chosen.Service,
             Dll = chosen.Dll.Length > 0 ? chosen.Dll : api.Dll,
-            Domain = current?.Domain,
+            Domain = domain,
             Project = Paths.Relative(s.Root, api.ProjectPath),
             Extra = current?.Extra,
         };
