@@ -695,11 +695,23 @@ apache_vhost_path() {
     if [ -d "$ROOT/etc/apache2/sites-available" ]; then echo "$ROOT/etc/apache2/sites-available/$SVC.conf"; else echo "$ROOT/etc/httpd/conf.d/$SVC.conf"; fi
 }
 
+# Tests the web server configuration. When it is rejected: shows why (last lines of the test), puts the previous site back
+# (or disables the new one) so the web server keeps working, and returns 1.
+config_test() {
+    local vhost="$1" bak="$2" out
+    shift 2
+    if out="$("$@" 2>&1)"; then return 0; fi
+    printf '%s\n' "$out" | tail -n 8 | sed 's/^/    | /'
+    if [ -n "$bak" ]; then cp -p "$bak" "$vhost"; else command -v a2dissite >/dev/null 2>&1 && a2dissite "$SVC" >/dev/null 2>&1; rm -f "$vhost"; fi
+    return 1
+}
+
 # Writes the web server site that proxies $DOMAIN to 127.0.0.1:$PORT and reloads the web server (shared by provision and site).
 write_site() {
     local vhost
     if [ "$WEB" = "apache" ]; then vhost="$(apache_vhost_path)"; else vhost="$ROOT/etc/nginx/conf.d/$SVC.conf"; fi
-    if [ -f "$vhost" ]; then cp -p "$vhost" "$vhost.stackdev-$(date +%Y%m%d-%H%M%S).bak"; fi
+    local bak=""
+    if [ -f "$vhost" ]; then bak="$vhost.stackdev-$(date +%Y%m%d-%H%M%S).bak"; cp -p "$vhost" "$bak"; fi
     if [ "$WEB" = "apache" ]; then
         render > "$vhost" <<'APACHE_EOF' || fail 30 "Could not write the Apache site"
 <VirtualHost *:80>
@@ -720,8 +732,10 @@ APACHE_EOF
             a2enmod proxy proxy_http headers >/dev/null 2>&1 || true
             a2ensite "$SVC" >/dev/null 2>&1 || true
         fi
-        if command -v apachectl >/dev/null 2>&1; then apachectl -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Apache rejected the configuration; the new site was removed"; }
-        elif command -v httpd >/dev/null 2>&1; then httpd -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Apache rejected the configuration; the new site was removed"; }; fi
+        # Debian-style Apache has no ServerRoot/logs folder
+        if [ -d "$ROOT/etc/apache2/sites-available" ]; then sed -i -e 's|logs/|${APACHE_LOG_DIR}/|g' "$vhost"; fi
+        if command -v apachectl >/dev/null 2>&1; then config_test "$vhost" "$bak" apachectl -t || fail 30 "Apache rejected the configuration; the new site was removed"
+        elif command -v httpd >/dev/null 2>&1; then config_test "$vhost" "$bak" httpd -t || fail 30 "Apache rejected the configuration; the new site was removed"; fi
         systemctl reload httpd >/dev/null 2>&1 || systemctl reload apache2 >/dev/null 2>&1 || fail 30 "Could not reload Apache"
     else
         render > "$vhost" <<'NGINX_EOF' || fail 30 "Could not write the Nginx site"
@@ -747,7 +761,7 @@ server {
     }
 }
 NGINX_EOF
-        nginx -t >/dev/null 2>&1 || { rm -f "$vhost"; fail 30 "Nginx rejected the configuration; the new site was removed"; }
+        config_test "$vhost" "$bak" nginx -t || fail 30 "Nginx rejected the configuration; the new site was removed"
         systemctl reload nginx >/dev/null 2>&1 || fail 30 "Could not reload Nginx"
     fi
     info "Site for $DOMAIN written to ${vhost#"$ROOT"}"
@@ -860,6 +874,10 @@ cmd_site() {
     STEP_TOTAL=3
     [ -n "$SVC" ] && [ -n "$DOMAIN" ] || fail 10 "Missing arguments"
     service_exists "$SVC" || fail 11 "The service '$SVC' does not exist on this server. Provision it first."
+    # The web server that is actually running decides which site to write (the saved choice may be out of date).
+    if systemctl is-active --quiet nginx 2>/dev/null && ! systemctl is-active --quiet apache2 2>/dev/null && ! systemctl is-active --quiet httpd 2>/dev/null; then WEB=nginx
+    elif ! systemctl is-active --quiet nginx 2>/dev/null && { systemctl is-active --quiet apache2 2>/dev/null || systemctl is-active --quiet httpd 2>/dev/null; }; then WEB=apache; fi
+    info "Using $WEB"
     [ -n "$PORT" ] || PORT="$(env_port)"
     [ -n "$PORT" ] || fail 11 "The port of the API is not known (ASPNETCORE_URLS is not in its settings)."
     if [ "$WEB" = "apache" ] && ! command -v httpd >/dev/null 2>&1 && ! command -v apache2 >/dev/null 2>&1; then fail 11 "Apache is not installed"; fi
