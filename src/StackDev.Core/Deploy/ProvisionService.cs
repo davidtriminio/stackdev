@@ -19,6 +19,8 @@ public sealed class ProvisionRequest
     public DatabaseKind Database { get; init; } = DatabaseKind.Sqlite;
     /// <summary>Connection string when <see cref="Database"/> is Postgres.</summary>
     public string? PostgresConnection { get; init; }
+    /// <summary>With Postgres and no connection string: create a user and a database of their own for this API on the server.</summary>
+    public bool CreatePostgres => Database == DatabaseKind.Postgres && string.IsNullOrWhiteSpace(PostgresConnection);
     /// <summary>Admin password; empty means generate a strong one.</summary>
     public string? AdminPassword { get; init; }
     /// <summary>Origin of the frontend (CORS), e.g. https://my-app.vercel.app. Empty to add it later.</summary>
@@ -35,7 +37,11 @@ public sealed class ProvisionRequest
 /// <summary>Secrets created for a new API. Shown once to the user and never logged.</summary>
 public sealed record ProvisionSecrets(string AdminPassword, string JwtKey);
 
-public sealed record ProvisionResult(bool Ok, string Message, ProvisionSecrets? Secrets = null, bool HttpsPending = false, string? DnsWarning = null);
+/// <summary>A key or password the app created for an API. It is saved in the user's Credentials, encrypted on this computer.</summary>
+public sealed record GeneratedCredential(string Name, string User, string Key, string Note);
+
+public sealed record ProvisionResult(bool Ok, string Message, ProvisionSecrets? Secrets = null, bool HttpsPending = false, string? DnsWarning = null,
+    IReadOnlyList<GeneratedCredential>? Generated = null);
 
 /// <summary>Sets up a new API on a server: user, folders, secrets, systemd unit, Apache or Nginx site, firewall, HTTPS.</summary>
 public static class ProvisionService
@@ -62,6 +68,14 @@ public static class ProvisionService
         return (env, new ProvisionSecrets(admin, jwt));
     }
 
+    private static ProvisionRequest WithPostgres(this ProvisionRequest r, string connection) => new()
+    {
+        Server = r.Server, Service = r.Service, Dll = r.Dll, Domain = r.Domain, Port = r.Port, Database = r.Database,
+        PostgresConnection = connection, AdminPassword = r.AdminPassword, FrontendOrigin = r.FrontendOrigin,
+        IssueCertificate = r.IssueCertificate, CertificateEmail = r.CertificateEmail, RuntimeMajor = r.RuntimeMajor,
+        Overwrite = r.Overwrite, ExtraEnv = r.ExtraEnv,
+    };
+
     /// <summary>Everything that can be checked before touching the server.</summary>
     public static string? Validate(ProvisionRequest r)
     {
@@ -70,7 +84,6 @@ public static class ProvisionService
         if (!Sh.Domain.IsMatch(r.Domain)) return "El dominio no es válido (por ejemplo: mi-api.midominio.com).";
         if (!Sh.ValidPort(r.Port)) return "El puerto debe estar entre 1024 y 65535.";
         if (r.IssueCertificate && !string.IsNullOrWhiteSpace(r.CertificateEmail) && !Sh.Email.IsMatch(r.CertificateEmail!)) return "El correo del certificado no es válido.";
-        if (r.Database == DatabaseKind.Postgres && string.IsNullOrWhiteSpace(r.PostgresConnection)) return "Falta la cadena de conexión de PostgreSQL.";
         if (!string.IsNullOrWhiteSpace(r.FrontendOrigin) && !Uri.TryCreate(r.FrontendOrigin, UriKind.Absolute, out var u)) return "El origen del frontend debe ser una URL completa (https://...).";
         if (!HostKeys.IsTrusted(r.Server)) return "El servidor aún no está verificado: prueba la conexión y confirma su huella.";
         return null;
@@ -150,7 +163,19 @@ public static class ProvisionService
         void P(string message, Level level = Level.Normal, int percent = -1) => progress(new ProgressEvent("Aprovisionar", message, level, percent));
 
         if (Validate(req) is { } problem) return new(false, problem);
+        var generated = new List<GeneratedCredential>();
+        if (req.CreatePostgres)
+        {
+            P("Creando la base de datos propia de esta API…", Level.Title, 3);
+            var db = DatabaseService.Create(req.Server, req.Service, progress, ct);
+            if (!db.Ok) return new(false, db.Message);
+            req = req.WithPostgres(db.Connection!);
+            generated.Add(new($"{req.Service} @ {req.Server.Name} · base de datos", db.User!, db.Password!,
+                $"PostgreSQL en el servidor, base «{db.Database}». Cadena: Host=127.0.0.1;Port=5432;Database={db.Database};Username={db.User};Password=<clave>"));
+        }
         var (env, secrets) = BuildEnv(req);
+        generated.Add(new($"{req.Service} @ {req.Server.Name} · administrador", "admin", secrets.AdminPassword, "Contraseña del administrador de la API (Admin__Password)."));
+        generated.Add(new($"{req.Service} @ {req.Server.Name} · clave JWT", "", secrets.JwtKey, "Clave de firma de tokens (Jwt__Key). Si la cambias, se cierran las sesiones abiertas."));
         var dns = req.IssueCertificate ? CheckDns(req.Domain, req.Server.Host) : null;
         if (dns is not null) P("⚠ " + dns, Level.Warning);
 
@@ -183,7 +208,7 @@ public static class ProvisionService
             P("Listo.", Level.Ok, 100);
             return new(true, pending
                 ? "API aprovisionada. El certificado HTTPS quedó pendiente (revisa el DNS y vuelve a intentarlo)."
-                : "API aprovisionada.", secrets, pending, dns);
+                : "API aprovisionada.", secrets, pending, dns, generated);
         }
         finally
         {

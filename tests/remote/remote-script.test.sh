@@ -54,6 +54,13 @@ cat > "$STUBS/dotnet" <<'S'
 [ "$1" = "--list-runtimes" ] && echo "Microsoft.AspNetCore.App 9.0.1 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]"
 exit 0
 S
+printf '#!/bin/sh\nshift 3\nexec "$@"\n' > "$STUBS/runuser"
+cat > "$STUBS/psql" <<'S'
+#!/bin/sh
+echo "ARGS: $*" >> "$SD_ROOT/.psql.log"
+[ -t 0 ] || cat >> "$SD_ROOT/.psql.log"
+exit 0
+S
 chmod +x "$STUBS"/*
 export PATH="$STUBS:$PATH"
 
@@ -123,6 +130,19 @@ has "$o" "##KV missing=Identity__Jwt__SigningKey,Payments__WebhookSecret" "missi
 eq "$(cat "$SD_ROOT/var/www/$fs/First.Api.dll")" f1 "uploaded files kept on a first deploy"
 eq "$(cat "$SD_ROOT/.state/$fs.state")" inactive "service stopped, no crash loop"
 rm -f "$SD_ROOT/.journal" "$SD_ROOT/var/www/$fs/BROKEN"
+
+echo "== db-create makes a user and a database of its own"
+printf 'Ab3dEf6hIj9lMn2pQr5tUv8x\n' > "$RUN/db.pw"
+o="$(R db-create --svc shop-api --run-dir "$RUN" --pw-file "$RUN/db.pw")"
+eq "$(code "$o")" 0 "db-create exit"; has "$o" "##KV db_name=shop_api" "db name"; has "$o" "##KV db_user=shop_api_app" "db user"
+has "$(cat "$SD_ROOT/.psql.log")" "CREATE ROLE shop_api_app WITH LOGIN PASSWORD 'Ab3dEf6hIj9lMn2pQr5tUv8x'" "role created from stdin"
+has "$(cat "$SD_ROOT/.psql.log")" "CREATE DATABASE shop_api OWNER shop_api_app" "database created"
+hasnt "$o" "Ab3dEf6hIj9lMn2pQr5tUv8x" "password never printed"
+[ ! -e "$RUN/db.pw" ] && ok || bad "password file should be removed"
+printf "bad'; DROP\n" > "$RUN/db2.pw"
+o="$(R db-create --svc shop-api --run-dir "$RUN" --pw-file "$RUN/db2.pw")"; eq "$(code "$o")" 10 "unsafe password rejected"
+o="$(R db-create --svc shop-api --run-dir "$RUN" --pw-file /etc/passwd)"; eq "$(code "$o")" 10 "password file outside run dir"
+rm -f "$SD_ROOT/.psql.log"
 
 echo "== prune keeps N"
 for i in 1 2 3 4; do /bin/sleep 1.1; echo "v$i" > "$T/b1/Demo.Api.dll"; tar -czf "$RUN/p.tgz" -C "$T/b1" .

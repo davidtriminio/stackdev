@@ -587,6 +587,25 @@ public sealed class ServerView : ScrollViewer
             await ProvisionApiAsync(sv, deployAfter: true);
     }
 
+    /// <summary>Keeps generated keys in the project's Credentials (encrypted on this computer). False when they could not be saved.</summary>
+    private bool SaveCredentials(IEnumerable<GeneratedCredential> items)
+    {
+        var s = _session();
+        if (s is null) return false;
+        try
+        {
+            new StackDev.Core.Credentials.CredentialsStore(s.State.ConfigFolder(s.Key)).Upsert(
+                items.Select(c => new StackDev.Core.Credentials.Credential { Name = c.Name, User = c.User, Key = c.Key, Note = c.Note }));
+            _log($"Guardé {items.Count()} clave(s) en «Credenciales».", Level.Ok);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log("⚠ No pude guardar las claves en «Credenciales»: " + ex.Message, Level.Warning);
+            return false;
+        }
+    }
+
     /// <summary>
     /// The API refused to start because some settings are missing. Offers to create them (random values for keys and secrets),
     /// restart the service, and upload again when the failed upload had been undone.
@@ -618,10 +637,14 @@ public sealed class ServerView : ScrollViewer
             if (!write.Ok) return;
         }
         var notes = new List<string>();
-        if (generated.Count > 0) notes.Add("Creé: " + string.Join(", ", generated) + ".");
+        if (generated.Count > 0)
+        {
+            var saved = SaveCredentials(generated.Select(g => new GeneratedCredential($"{service} @ {sv.Name} · {g}", "", read.File.Get(g) ?? "", $"Variable {g}, creada automáticamente porque la API no arrancaba sin ella.")));
+            notes.Add("Creé: " + string.Join(", ", generated) + (saved ? ". Quedaron guardadas en «Credenciales»." : "."));
+        }
         if (generated.Any(g => g.Contains("Webhook", StringComparison.OrdinalIgnoreCase)))
             notes.Add("Ojo: el secreto del webhook de pagos es inventado. Cuando conectes el proveedor de pagos, pon el valor real en «Variables (.env)».");
-        if (manual.Count > 0) notes.Add("Faltan valores que solo tú conoces: " + string.Join(", ", manual) + ". Ponlos en «Variables (.env)».");
+        if (manual.Count > 0) notes.Add(MissingSettings.Guide(service, manual));
         _log(string.Join(" ", notes), manual.Count > 0 ? Level.Warning : Level.Info);
         if (manual.Count > 0 || generated.Count == 0)
         {
@@ -719,7 +742,9 @@ public sealed class ServerView : ScrollViewer
         _log(result.Message, result.Ok ? Level.Ok : Level.Error);
         if (!result.Ok) return;
 
-        if (result.Secrets is { } secrets) DeployDialogs.ShowSecrets(_owner, secrets, req.Service);
+        if (result.Generated is { Count: > 0 } made)
+            DeployDialogs.ShowGenerated(_owner, made, req.Service, SaveCredentials(made));
+        else if (result.Secrets is { } secrets) DeployDialogs.ShowSecrets(_owner, secrets, req.Service);
         if (result.HttpsPending && req.IssueCertificate) await FinishHttpsAsync(sv, req);
         else if (req.IssueCertificate) _log($"✔ La API quedará en https://{req.Domain}", Level.Ok);
         if (s is not null && (depl is null || depl.Server != sv.Id || depl.Service != req.Service))
