@@ -55,13 +55,21 @@ public static class DeployService
             var findings = PublishGuard.Scan(outDir);
             var blocked = findings.Where(f => f.Level == GuardLevel.Block).ToList();
             var removed = new List<string>();
-            if (blocked.Count > 0)
+            var routine = blocked.Where(f => PublishGuard.IsRoutine(f.RelativePath)).ToList();
+            var surprising = blocked.Except(routine).ToList();
+            if (routine.Count > 0)
             {
-                foreach (var b in blocked) P("Revisar", $"✘ {b.RelativePath}: {b.Reason}", Level.Error);
-                if (decisions.BlockedFiles(blocked) == GuardDecision.Cancel)
+                removed.AddRange(PublishGuard.RemoveBlocked(outDir, routine));
+                P("Revisar", $"Se dejan fuera {routine.Count} archivo(s) de desarrollo (solo en la copia temporal): {string.Join(", ", routine.Select(f => f.RelativePath).Take(3))}{(routine.Count > 3 ? "…" : "")}", Level.Info);
+            }
+            if (surprising.Count > 0)
+            {
+                foreach (var b in surprising) P("Revisar", $"✘ {b.RelativePath}: {b.Reason}", Level.Error);
+                if (decisions.BlockedFiles(surprising) == GuardDecision.Cancel)
                     return new(DeployOutcome.Cancelled, "Cancelado: el publish contiene archivos que no deben subirse.");
-                removed = PublishGuard.RemoveBlocked(outDir, blocked);
-                P("Revisar", $"Quité {removed.Count} archivo(s) del publish (la copia temporal, no tu proyecto).", Level.Warning);
+                var gone = PublishGuard.RemoveBlocked(outDir, surprising);
+                removed.AddRange(gone);
+                P("Revisar", $"Quité {gone.Count} archivo(s) del publish (la copia temporal, no tu proyecto).", Level.Warning);
             }
             var warnings = findings.Where(f => f.Level == GuardLevel.Warn).ToList();
             foreach (var w in warnings) P("Revisar", $"⚠ {w.RelativePath}: {w.Reason}", Level.Warning);

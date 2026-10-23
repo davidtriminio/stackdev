@@ -15,19 +15,26 @@ public sealed record GuardFinding(GuardLevel Level, string RelativePath, string 
 /// <summary>Looks through a publish folder for files that should never be uploaded: environment files, private keys, local databases, debug symbols.</summary>
 public static class PublishGuard
 {
+    /// <summary>
+    /// Files that every normal publish contains and that are always left out (development settings, debug symbols).
+    /// They are removed without asking; anything else blocked (keys, .env, databases) is a surprise and needs the user's say.
+    /// </summary>
+    public static bool IsRoutine(string relativePath) =>
+        Regex.IsMatch(relativePath, @"(^|/)appsettings\.Development\.json$|\.pdb$", RegexOptions.IgnoreCase);
+
     private static readonly (Regex Pattern, GuardLevel Level, string Reason)[] Rules =
     {
-        (new(@"(^|/)\.env(\..+)?$", RegexOptions.IgnoreCase), GuardLevel.Block, "environment file (secrets); the server has its own"),
-        (new(@"(^|/)appsettings\.Development\.json$", RegexOptions.IgnoreCase), GuardLevel.Block, "development settings must not run in production"),
-        (new(@"(^|/)secrets\.json$", RegexOptions.IgnoreCase), GuardLevel.Block, "user secrets file"),
-        (new(@"\.(pem|key|pfx|p12|jks|keystore|ppk)$", RegexOptions.IgnoreCase), GuardLevel.Block, "private key or certificate"),
-        (new(@"(^|/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$", RegexOptions.IgnoreCase), GuardLevel.Block, "SSH key"),
-        (new(@"\.pdb$", RegexOptions.IgnoreCase), GuardLevel.Block, "debug symbols (expose source paths)"),
-        (new(@"\.(db|sqlite|sqlite3|db-wal|db-shm|mdf|ldf)$", RegexOptions.IgnoreCase), GuardLevel.Block, "local database; it would replace or leak data"),
-        (new(@"\.(log|bak)$", RegexOptions.IgnoreCase), GuardLevel.Warn, "log or backup file"),
-        (new(@"(^|/)launchSettings\.json$", RegexOptions.IgnoreCase), GuardLevel.Warn, "local launch profile"),
-        (new(@"\.(user|suo)$", RegexOptions.IgnoreCase), GuardLevel.Warn, "per-user IDE file"),
-        (new(@"(^|/)wwwroot/uploads/.+", RegexOptions.IgnoreCase), GuardLevel.Warn, "uploaded user files; the server keeps its own"),
+        (new(@"(^|/)\.env(\..+)?$", RegexOptions.IgnoreCase), GuardLevel.Block, "archivo de entorno con secretos; el servidor tiene el suyo"),
+        (new(@"(^|/)appsettings\.Development\.json$", RegexOptions.IgnoreCase), GuardLevel.Block, "configuración de desarrollo; no debe usarse en producción"),
+        (new(@"(^|/)secrets\.json$", RegexOptions.IgnoreCase), GuardLevel.Block, "archivo de secretos de usuario"),
+        (new(@"\.(pem|key|pfx|p12|jks|keystore|ppk)$", RegexOptions.IgnoreCase), GuardLevel.Block, "clave privada o certificado"),
+        (new(@"(^|/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$", RegexOptions.IgnoreCase), GuardLevel.Block, "clave SSH"),
+        (new(@"\.pdb$", RegexOptions.IgnoreCase), GuardLevel.Block, "símbolos de depuración (muestran rutas de tu código)"),
+        (new(@"\.(db|sqlite|sqlite3|db-wal|db-shm|mdf|ldf)$", RegexOptions.IgnoreCase), GuardLevel.Block, "base de datos local; reemplazaría o expondría datos"),
+        (new(@"\.(log|bak)$", RegexOptions.IgnoreCase), GuardLevel.Warn, "archivo de registro o copia"),
+        (new(@"(^|/)launchSettings\.json$", RegexOptions.IgnoreCase), GuardLevel.Warn, "perfil de ejecución local"),
+        (new(@"\.(user|suo)$", RegexOptions.IgnoreCase), GuardLevel.Warn, "archivo personal del editor"),
+        (new(@"(^|/)wwwroot/uploads/.+", RegexOptions.IgnoreCase), GuardLevel.Warn, "archivos subidos por usuarios; el servidor guarda los suyos"),
     };
 
     private static readonly Regex InlineSecret = new(
@@ -68,12 +75,12 @@ public static class PublishGuard
         {
             var v = m.Groups["v"].Value;
             if (IsPlaceholder(v)) continue;
-            yield return new GuardFinding(GuardLevel.Warn, rel, $"«{m.Groups["k"].Value}» has a real-looking value; secrets belong in the server .env");
+            yield return new GuardFinding(GuardLevel.Warn, rel, $"«{m.Groups["k"].Value}» parece tener un valor real; los secretos van en el .env del servidor");
         }
         foreach (Match m in ConnectionPassword.Matches(text))
         {
             if (IsPlaceholder(m.Groups["v"].Value)) continue;
-            yield return new GuardFinding(GuardLevel.Warn, rel, "a connection string includes a password; move it to the server .env");
+            yield return new GuardFinding(GuardLevel.Warn, rel, "una cadena de conexión incluye una contraseña; muévela al .env del servidor");
             break;
         }
     }
