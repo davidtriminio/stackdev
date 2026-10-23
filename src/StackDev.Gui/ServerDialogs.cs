@@ -33,10 +33,19 @@ public static class ServerDialogs
         return w;
     }
 
-    internal static TextBox Field(Panel panel, string label, string val, string? help = null)
+    internal static TextBox Field(Panel panel, string label, string val, string? help = null, int maxLength = 0, bool digitsOnly = false)
     {
         panel.Children.Add(new TextBlock { Text = label, FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
         var box = new TextBox { Text = val, Margin = new Thickness(0, 0, 0, help is null ? 12 : 2) };
+        if (maxLength > 0) box.MaxLength = maxLength;
+        if (digitsOnly)
+        {
+            box.PreviewTextInput += (_, e) => e.Handled = !e.Text.All(char.IsAsciiDigit);
+            DataObject.AddPastingHandler(box, (_, e) =>
+            {
+                if (e.DataObject.GetData(DataFormats.UnicodeText) is not string pasted || !pasted.Trim().All(char.IsAsciiDigit)) e.CancelCommand();
+            });
+        }
         panel.Children.Add(box);
         if (help is not null)
             panel.Children.Add(new TextBlock { Text = help, FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 12), TextWrapping = TextWrapping.Wrap });
@@ -71,16 +80,16 @@ public static class ServerDialogs
         var w = Base(owner, current is null ? "Agregar servidor" : "Editar servidor", 560);
         var root = new StackPanel { Margin = new Thickness(22) };
 
-        var name = Field(root, "Nombre (para reconocerlo)", s.Name, "Por ejemplo: Oracle producción, VPS clientes.");
-        var host = Field(root, "IP o dominio del servidor", s.Host, "Lo ves en la consola de tu proveedor (Oracle, AWS, etc.) > Instancias > IP pública.");
-        var user = Field(root, "Usuario SSH", s.User, "Típicos: opc (Oracle Linux), ubuntu (Ubuntu), ec2-user (Amazon Linux), root.");
-        var port = Field(root, "Puerto SSH", s.Port.ToString());
+        var name = Field(root, "Nombre (para reconocerlo)", s.Name, "Por ejemplo: Oracle producción, VPS clientes.", ServerValidation.NameMax);
+        var host = Field(root, "IP o dominio del servidor", s.Host, "Solo la IP o el dominio, sin usuario ni puerto. La ves en la consola de tu proveedor (Oracle, AWS…) > Instancias > IP pública.", ServerValidation.HostMax);
+        var user = Field(root, "Usuario SSH", s.User, "Típicos: opc (Oracle Linux), ubuntu (Ubuntu), ec2-user (Amazon Linux), root.", ServerValidation.UserMax);
+        var port = Field(root, "Puerto SSH (1 a 65535)", s.Port.ToString(), "Casi siempre es 22.", 5, digitsOnly: true);
 
         root.Children.Add(new TextBlock { Text = "Clave SSH (el archivo privado, no el .pub)", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
         var rowKey = new Grid { Margin = new Thickness(0, 0, 0, 12) };
         rowKey.ColumnDefinitions.Add(new ColumnDefinition());
         rowKey.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var key = new TextBox { Text = s.Key };
+        var key = new TextBox { Text = s.Key, MaxLength = 260 };
         var browse = new Button { Content = "Examinar…", Margin = new Thickness(8, 0, 0, 0), Padding = new Thickness(14, 7, 14, 7) };
         Grid.SetColumn(browse, 1);
         rowKey.Children.Add(key);
@@ -107,12 +116,17 @@ public static class ServerDialogs
         var ok = Button("Guardar", true);
         var cancel = Button("Cancelar", false);
         Server? result = null;
+        var boxes = new Dictionary<string, TextBox> { ["name"] = name, ["host"] = host, ["user"] = user, ["port"] = port, ["key"] = key };
         ok.Click += (_, _) =>
         {
-            if (name.Text.Trim().Length == 0 || host.Text.Trim().Length == 0 || user.Text.Trim().Length == 0)
-            { error.Text = "Escribe el nombre, el host y el usuario."; error.Visibility = Visibility.Visible; return; }
-            if (!int.TryParse(port.Text.Trim(), out var portNumber) || portNumber is < 1 or > 65535)
-            { error.Text = "El puerto debe ser un número entre 1 y 65535."; error.Visibility = Visibility.Visible; return; }
+            host.Text = ServerValidation.CleanHost(host.Text);
+            if (ServerValidation.CheckServer(name.Text, host.Text, user.Text, port.Text, key.Text.Trim().Trim('"'), out var portNumber) is { } problem)
+            {
+                error.Text = problem.Message;
+                error.Visibility = Visibility.Visible;
+                if (boxes.TryGetValue(problem.Field, out var bad)) { bad.Focus(); bad.SelectAll(); }
+                return;
+            }
             s.Name = name.Text.Trim();
             s.Host = host.Text.Trim();
             s.User = user.Text.Trim();
@@ -154,7 +168,7 @@ public static class ServerDialogs
         root.Children.Add(buttonServer);
 
         var service = Field(root, "Nombre del servicio en el servidor", current?.Service ?? suggestionService,
-            "El que usaste en provision-api.sh: minúsculas, números y guiones. Es el servicio systemd y la carpeta en /var/www.");
+            "Minúsculas, números y guiones, hasta 40 caracteres (ej. mi-api). Es el servicio systemd y la carpeta en /var/www. Si ya está instalado, usa el botón de abajo para elegirlo.", 40);
         TextBox? dllBox = null;
         var find = new Button { Content = "Buscar APIs ya instaladas en este servidor…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12), Padding = new Thickness(12, 6, 12, 6) };
         find.Click += async (_, _) =>
@@ -174,9 +188,9 @@ public static class ServerDialogs
             if (apis[i].Dll.Length > 0 && dllBox is not null) dllBox.Text = apis[i].Dll;
         };
         root.Children.Add(find);
-        dllBox = Field(root, "Archivo .dll que arranca la API", current?.Dll ?? suggestionDll);
+        dllBox = Field(root, "Archivo .dll que arranca la API", current?.Dll ?? suggestionDll, "Termina en .dll (ej. MiApi.dll). Se detecta solo al buscar tu proyecto.", 100);
         var domain = Field(root, "Dominio público de la API (opcional)", current?.Domain ?? "",
-            "Sin https://. Sirve para comprobar que responde y cuándo vence el certificado.");
+            "Sin https://. Sirve para comprobar que responde y cuándo vence el certificado.", 253);
 
         var error = Error();
         root.Children.Add(error);
@@ -186,8 +200,14 @@ public static class ServerDialogs
         ok.Click += (_, _) =>
         {
             var svc = service.Text.Trim();
-            if (!ServerService.ServiceName.IsMatch(svc))
-            { error.Text = "El servicio debe empezar con una letra minúscula y usar solo minúsculas, números y guiones (ej. mi-api)."; error.Visibility = Visibility.Visible; return; }
+            if (ServerValidation.CheckDeployment(svc, dllBox.Text, domain.Text) is { } problem)
+            {
+                error.Text = problem.Message;
+                error.Visibility = Visibility.Visible;
+                var bad = problem.Field switch { "service" => service, "dll" => dllBox!, _ => domain };
+                bad.Focus(); bad.SelectAll();
+                return;
+            }
             result = new DeploymentConfig
             {
                 Server = servers[index].Id,
