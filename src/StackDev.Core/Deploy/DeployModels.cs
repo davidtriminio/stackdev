@@ -24,6 +24,8 @@ public enum DeployOutcome
     StartFailed,
     /// <summary>The new version was tried before replacing anything and does not start with the current settings: nothing changed.</summary>
     NotReady,
+    /// <summary>The build is identical to what the server already runs: nothing was uploaded.</summary>
+    AlreadyDeployed,
 }
 
 public sealed record DeployResult(DeployOutcome Outcome, string Message, string? BackupId = null, ApiStatus? Status = null, IReadOnlyList<string>? Missing = null)
@@ -59,6 +61,8 @@ public sealed class DeployRequest
     public string? Domain { get; init; }
     public int Keep { get; init; } = 5;
     public int HealthWaitSeconds { get; init; } = 30;
+    /// <summary>Upload even when the server already has this exact build.</summary>
+    public bool Force { get; init; }
 }
 
 /// <summary>Questions a deployment asks while it runs (the window answers them).</summary>

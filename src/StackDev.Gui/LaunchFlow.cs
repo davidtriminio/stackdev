@@ -97,6 +97,18 @@ public sealed class LaunchFlow
                 win.Info($"Subiendo {_service} a {_sv.Name}…", Level.Title);
                 var r = DeployService.Deploy(_request, new DeployDialogs.GuiDecisions(win), win.Report, ct);
                 if (r.Ok) { win.Step(2, StepState.Ok, "Versión nueva en marcha"); break; }
+                if (r.Outcome == DeployOutcome.AlreadyDeployed)
+                {
+                    win.Info(r.Message, Level.Ok);
+                    if (pre.Value("active") != "active")
+                    {
+                        win.Info("Iniciando la API que ya estaba subida…", Level.Title);
+                        var started = ServerService.Operation(_sv, _service, "start");
+                        if (!started.Ok) { win.Step(2, StepState.Failed, started.Message); return new(false, started.Message); }
+                    }
+                    win.Step(2, StepState.Ok, "Ya estaba subida: no se volvió a subir");
+                    break;
+                }
                 win.Info(r.Message, r.Outcome == DeployOutcome.Cancelled ? Level.Warning : Level.Error);
                 var fixable = r.Missing is { Count: > 0 } && r.Outcome is DeployOutcome.NotReady or DeployOutcome.RolledBack or DeployOutcome.RollbackFailed or DeployOutcome.StartFailed;
                 if (fixable && attempt < 3)

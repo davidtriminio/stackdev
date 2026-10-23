@@ -47,7 +47,7 @@ valid_dir()    { [[ "$1" =~ ^/[A-Za-z0-9._/-]+$ ]] && [[ "$1" != *..* ]]; }
 inside_run_dir() { case "$1" in "$RUN_DIR"/*) [[ "$1" != *..* ]] ;; *) return 1 ;; esac; }
 
 SVC="" DLL="" RUN_DIR="" BUNDLE="" SHA="" KEEP=5 WAIT=30 RUNTIME="" TO="last"
-DOMAIN="" PORT="" WEB="apache" EMAIL="" HTTPS="no" FORCE="no" ENV_FILE_IN="" RESTART="no" DB="" INSTALL="" PW_FILE=""
+DOMAIN="" PORT="" WEB="apache" EMAIL="" HTTPS="no" FORCE="no" ENV_FILE_IN="" RESTART="no" DB="" INSTALL="" PW_FILE="" CONTENT=""
 
 CMD="${1:-}"; shift || true
 while [ $# -gt 0 ]; do
@@ -69,6 +69,7 @@ while [ $# -gt 0 ]; do
         --force)    FORCE="yes"; shift ;;
         --env-file) ENV_FILE_IN="${2:-}"; shift 2 ;;
         --pw-file)  PW_FILE="${2:-}"; shift 2 ;;
+        --content)  CONTENT="${2:-}"; shift 2 ;;
         --restart)  RESTART="yes"; shift ;;
         --db)       DB="${2:-}"; shift 2 ;;
         --install)  INSTALL="${2:-}"; shift 2 ;;
@@ -80,6 +81,7 @@ done
 [ -z "$DLL" ] || valid_dll "$DLL" || fail 10 "Invalid dll name"
 [ -z "$RUN_DIR" ] || valid_dir "$RUN_DIR" || fail 10 "Invalid run directory"
 [ -z "$SHA" ] || valid_sha "$SHA" || fail 10 "Invalid checksum"
+[ -z "$CONTENT" ] || valid_sha "$CONTENT" || fail 10 "Invalid content hash"
 valid_num "$KEEP" || fail 10 "Invalid --keep"
 valid_num "$WAIT" || fail 10 "Invalid --wait"
 [ -z "$RUNTIME" ] || valid_num "$RUNTIME" || fail 10 "Invalid --runtime"
@@ -314,6 +316,7 @@ cmd_preflight() {
     kv active "$(systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
     kv env_file "$([ -f "$ENV_FILE" ] && echo yes || echo no)"
     kv port "$(env_port)"
+    kv deployed_content "$(head -n1 "$BACKUP_DIR/current.content" 2>/dev/null || true)"
     kv postgres "$(command -v psql >/dev/null 2>&1 && echo yes || echo no)"
     kv rsync "$(command -v rsync >/dev/null 2>&1 && echo yes || echo no)"
     kv dotnet "$(dotnet_bin | head -n1)"
@@ -567,6 +570,7 @@ cmd_deploy() {
 
     prune_backups "$SVC" "$KEEP"
     rm -rf "$RUN_DIR/new"
+    if [ -n "$CONTENT" ]; then echo "$CONTENT" > "$BACKUP_DIR/current.content" 2>/dev/null || true; else rm -f "$BACKUP_DIR/current.content"; fi
     kv backup "$ts"
     kv active "$(systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
     echo "##DONE"
@@ -592,7 +596,7 @@ cmd_rollback() {
     local safe; safe="$(new_backup_id "$SVC")"
     mkdir -p "$BACKUP_DIR/$safe/app" && sync_dir "$APP_DIR" "$BACKUP_DIR/$safe/app" || warn "Could not save the current version"
     step "Restoring $ts"
-    if restore_backup "$SVC" "$ts"; then kv restored "$ts"; echo "##DONE"; return 0; fi
+    if restore_backup "$SVC" "$ts"; then rm -f "$BACKUP_DIR/current.content"; kv restored "$ts"; echo "##DONE"; return 0; fi
     show_journal "$SVC"
     fail 21 "The restored version is not healthy either. Backups are in $BACKUP_DIR"
 }

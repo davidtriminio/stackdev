@@ -282,3 +282,29 @@ public class ApiSaveRoundTripTests
         finally { try { Directory.Delete(root, true); Directory.Delete(ext, true); } catch (IOException) { } }
     }
 }
+
+public class ContentHashTests
+{
+    [Fact]
+    public void Same_files_give_the_same_hash_whatever_the_dates_and_changes_change_it()
+    {
+        string Make(string content, DateTime when)
+        {
+            var d = Path.Combine(Path.GetTempPath(), "sd-ch-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(Path.Combine(d, "wwwroot"));
+            File.WriteAllText(Path.Combine(d, "Api.dll"), content);
+            File.WriteAllText(Path.Combine(d, "wwwroot", "a.txt"), "x");
+            File.SetLastWriteTimeUtc(Path.Combine(d, "Api.dll"), when);
+            return d;
+        }
+        var a = Make("v1", new DateTime(2020, 1, 1)); var b = Make("v1", new DateTime(2026, 5, 5)); var c = Make("v2", new DateTime(2020, 1, 1));
+        try
+        {
+            Assert.Equal(DeployService.ContentHash(a), DeployService.ContentHash(b));
+            Assert.NotEqual(DeployService.ContentHash(a), DeployService.ContentHash(c));
+            Assert.Equal(64, DeployService.ContentHash(a).Length);
+            Assert.Equal("", DeployService.ContentHash(Path.Combine(a, "missing")));
+        }
+        finally { foreach (var d in new[] { a, b, c }) try { Directory.Delete(d, true); } catch (IOException) { } }
+    }
+}
