@@ -37,6 +37,7 @@ public sealed class ServerView : ScrollViewer
     private ApiStatus? _state;
     private string _stateOf = "";
     private bool _querying;
+    private bool _showMore;
 
     public ServerView(Window owner, Func<Session?> session, Func<ServerStore> store,
         Action<string, string> terminal, Action<DeploymentConfig?> saveDeployment, Action<string, Level> log)
@@ -217,17 +218,21 @@ public sealed class ServerView : ScrollViewer
 
         var buttons = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
         var svc = depl.Service ?? "";
-        buttons.Children.Add(Button("Subir API", () => _ = DeployApiAsync(sv, depl), primary: true));
+        var running = _state is { Active: true, Problem: null };
+        buttons.Children.Add(Button(running ? "Comprobar y reiniciar" : "Comprobar y poner en marcha",
+            () => _ = LaunchAsync(sv, depl, running ? LaunchMode.Restart : LaunchMode.Start), primary: true));
+        buttons.Children.Add(Button("Subir API", () => _ = DeployApiAsync(sv, depl)));
         buttons.Children.Add(Button("Logs en vivo", () => _terminal($"logs {svc}", Ssh.TerminalLine(sv, $"sudo journalctl -u {svc} -f -n 100 --no-pager"))));
-        buttons.Children.Add(Button("Variables (.env)", () => _ = EditVariablesAsync(sv, svc)));
-        buttons.Children.Add(Button("Versiones anteriores", () => _ = VersionsAsync(sv, svc)));
-        buttons.Children.Add(Button("Actualizar estado", () => _ = QueryStatusAsync(force: true)));
-        buttons.Children.Add(Button("Reiniciar", () => _ = GuardedStartAsync(sv, depl, "restart", "reiniciar")));
-        buttons.Children.Add(Button("Detener", () => _ = ActionAsync(sv, svc, "stop", "detener")));
-        buttons.Children.Add(Button("Iniciar", () => _ = GuardedStartAsync(sv, depl, "start", "iniciar")));
-        buttons.Children.Add(Button("Cambiar de API o servidor", () => _ = GuidedSetupAsync(servers, depl)));
-        buttons.Children.Add(Button("Editar a mano", () => ConfigureDeployment(servers, depl)));
+        var extra = new WrapPanel { Margin = new Thickness(0, 4, 0, 0), Visibility = _showMore ? Visibility.Visible : Visibility.Collapsed };
+        extra.Children.Add(Button("Variables (.env)", () => _ = EditVariablesAsync(sv, svc)));
+        extra.Children.Add(Button("Versiones anteriores", () => _ = VersionsAsync(sv, svc)));
+        extra.Children.Add(Button("Actualizar estado", () => _ = QueryStatusAsync(force: true)));
+        extra.Children.Add(Button("Detener", () => _ = ActionAsync(sv, svc, "stop", "detener")));
+        extra.Children.Add(Button("Cambiar de API o servidor", () => _ = GuidedSetupAsync(servers, depl)));
+        extra.Children.Add(Button("Editar a mano", () => ConfigureDeployment(servers, depl)));
+        buttons.Children.Add(Button(_showMore ? "Menos acciones ▴" : "Más acciones ▾", () => { _showMore = !_showMore; Draw(); }));
         body.Children.Add(buttons);
+        body.Children.Add(extra);
 
         return Card("\uE8B7", "#6EE787", $"Este proyecto · {name}", $"{sv.Destination}  ·  {sv.WebName}", body);
     }
@@ -258,6 +263,9 @@ public sealed class ServerView : ScrollViewer
         var line = new WrapPanel();
         line.Children.Add(Chip((e.Active ? "● " : "○ ") + e.State, color));
         if (!string.IsNullOrEmpty(e.From)) line.Children.Add(Chip("desde " + e.From, P("MutedBrush")));
+        var deplNow = _session()?.Ctx.Config.Deployment;
+        var svNow = _store.Search(deplNow?.Server);
+        if (svNow is not null) line.Children.Add(Chip($"en {svNow.Name} · {svNow.Host}", P("MutedBrush")));
         if (e.Http is int h) line.Children.Add(Chip("HTTPS " + h, h is >= 200 and < 400 ? P("OkBrush") : P("WarnBrush")));
         if (e.CertExpires is DateTime v)
         {
@@ -265,6 +273,17 @@ public sealed class ServerView : ScrollViewer
             line.Children.Add(Chip($"certificado: {days} días", days < 15 ? P("WarnBrush") : P("OkBrush")));
         }
         stack.Children.Add(line);
+        if (e.Active && !string.IsNullOrEmpty(deplNow?.Domain))
+        {
+            var url = "https://" + deplNow!.Domain;
+            var where = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+            where.Children.Add(Text("Corriendo en  " + url, 12.5, P("TextBrush")));
+            where.Children.Add(Button("Abrir", () =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch (System.ComponentModel.Win32Exception) { }
+            }));
+            stack.Children.Add(where);
+        }
         if (!string.IsNullOrWhiteSpace(e.Errors))
         {
             var t = Text("Últimos errores del servicio:", 11.5, P("WarnBrush"));
@@ -336,36 +355,6 @@ public sealed class ServerView : ScrollViewer
         _trusted[sv.Id] = false;
         _probes.Remove(sv.Id);
         Draw();
-    }
-
-    /// <summary>
-    /// Start and restart only go ahead after the application was tried with its real settings; otherwise the missing pieces are
-    /// fixed first, instead of leaving the service crash-looping.
-    /// </summary>
-    private async Task GuardedStartAsync(Server sv, DeploymentConfig depl, string action, string verb)
-    {
-        var service = depl.Service ?? "";
-        if (string.IsNullOrEmpty(depl.Dll))
-        {
-            await ActionAsync(sv, service, action, verb);
-            return;
-        }
-        _log($"Probando que {service} arranca antes de {verb}la…", Level.Info);
-        var check = await Task.Run(() => DeployService.Check(sv, service, depl.Dll!));
-        if (check.Ok) { await ActionAsync(sv, service, action, verb); return; }
-        _log("⚠ " + check.Message, Level.Warning);
-        if (check.Outcome == DeployOutcome.NotReady && check.Missing is { Count: > 0 } missing)
-        {
-            await FixMissingSettingsAsync(sv, depl, missing, DeployOutcome.StartFailed);
-            return;
-        }
-        if (check.Outcome == DeployOutcome.NotReady && check.Message.Contains("Todavía no hay una API", StringComparison.Ordinal))
-        {
-            Dialogs.Confirm(_owner, "Todavía no hay una API subida a este servicio. Pulsa «Subir API» primero.", true);
-            return;
-        }
-        var did = verb == "iniciar" ? "inicié" : "reinicié";
-        Dialogs.Confirm(_owner, $"No {did} «{service}» porque no arranca con su configuración actual.\n\n{check.Message}\n\nAbre «Variables (.env)» o mira «Logs en vivo» para ver el motivo.", true);
     }
 
     private async Task ActionAsync(Server sv, string service, string action, string verb)
@@ -559,68 +548,52 @@ public sealed class ServerView : ScrollViewer
         _ => r.Message,
     };
 
-    private async Task DeployApiAsync(Server sv, DeploymentConfig depl)
+    private Task DeployApiAsync(Server sv, DeploymentConfig depl) => LaunchAsync(sv, depl, LaunchMode.Deploy);
+
+    /// <summary>
+    /// Check, fix and start (or upload) in one window: the steps, the log and every question appear together while the screen behind is blurred.
+    /// </summary>
+    private async Task LaunchAsync(Server sv, DeploymentConfig depl, LaunchMode mode)
     {
         var s = _session();
         if (s is null || string.IsNullOrEmpty(depl.Service)) return;
         if (!IsTrusted(sv) && (await TestAsync(sv) is null || !IsTrusted(sv))) return;
-        var api = PickApi(s, depl.Project);
-        if (api is null)
-        {
-            Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta. Revisa la sección «api» de dev-menu.json.", true);
-            return;
-        }
-        var project = Paths.Relative(s.Root, api.ProjectPath);
-        var dll = string.IsNullOrEmpty(depl.Dll) ? api.Dll : depl.Dll!;
-        if (depl.Project != project || string.IsNullOrEmpty(depl.Dll))
-        {
-            depl.Project = project;
-            depl.Dll = dll;
-            _saveDeployment(depl);
-        }
-        _log($"Revisando {sv.Name} antes de compilar…", Level.Info);
-        var check = await Task.Run(() => DeployService.Preflight(sv, depl.Service!));
-        if (!check.Ok)
-        {
-            var why = check.LaunchError ?? check.FailMessage ?? "No se pudo consultar el servidor.";
-            _log("✘ " + why, Level.Error);
-            Dialogs.Confirm(_owner, "No pude revisar el servidor:\n" + why, true);
-            return;
-        }
-        if (check.Value("service_exists") != "yes")
-        {
-            if (Dialogs.Confirm(_owner, $"La API «{depl.Service}» todavía no existe en «{sv.Name}».\n\n¿La creo ahora? Reviso el servidor, preparo lo que falte, la creo y después subo tu código.", true))
-                await ProvisionApiAsync(sv, deployAfter: true);
-            return;
-        }
-        var req = new DeployRequest { Server = sv, Project = api.ProjectPath, Service = depl.Service!, Dll = dll, Domain = depl.Domain };
 
-        _log($"Subiendo {depl.Service} a {sv.Name}…", Level.Info);
-        var result = OperationWindow.Run(_owner, $"Subir {depl.Service} a {sv.Name}", canCancel: true,
-            (win, report, ct) => DeployService.Deploy(req, new DeployDialogs.GuiDecisions(win), report, ct),
-            r => (r.Ok, Describe(r)));
-        if (result is null) return;
-        _log(Describe(result), result.Ok ? Level.Ok : result.Outcome is DeployOutcome.Cancelled or DeployOutcome.RolledBack or DeployOutcome.StartFailed or DeployOutcome.NotReady ? Level.Warning : Level.Error);
+        var dll = depl.Dll ?? "";
+        DeployRequest? req = null;
+        if (mode == LaunchMode.Deploy)
+        {
+            var api = PickApi(s, depl.Project);
+            if (api is null)
+            {
+                Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta. Revisa la sección «api» de dev-menu.json.", true);
+                return;
+            }
+            var project = Paths.Relative(s.Root, api.ProjectPath);
+            dll = string.IsNullOrEmpty(depl.Dll) ? api.Dll : depl.Dll!;
+            if (depl.Project != project || string.IsNullOrEmpty(depl.Dll))
+            {
+                depl.Project = project;
+                depl.Dll = dll;
+                _saveDeployment(depl);
+            }
+            req = new DeployRequest { Server = sv, Project = api.ProjectPath, Service = depl.Service!, Dll = dll, Domain = depl.Domain };
+        }
+        else if (string.IsNullOrEmpty(dll))
+        {
+            Dialogs.Confirm(_owner, "Todavía no sé qué archivo .dll arranca esta API. Pulsa «Subir API» una vez y quedará anotado.", true);
+            return;
+        }
+
+        var postgres = !string.IsNullOrEmpty(depl.Project) && ProjectHints.DetectDatabase(Paths.Resolve(s.Root, depl.Project)).Kind == DatabaseKind.Postgres;
+        var flow = new LaunchFlow(sv, depl.Service!, dll, depl.Domain, postgres, mode, req, items => SaveCredentials(items));
+        var title = mode switch { LaunchMode.Deploy => $"Subir {depl.Service} a {sv.Name}", LaunchMode.Restart => $"Comprobar y reiniciar {depl.Service}", _ => $"Comprobar y poner en marcha {depl.Service}" };
+        _log(title + "…", Level.Info);
+        var outcome = LaunchWindow.Run(_owner, title, $"{sv.Name}  ·  {sv.Destination}", LaunchFlow.StepNames, (win, ct) => flow.Run(win, ct));
+        _log(outcome.Text, outcome.Ok ? Level.Ok : Level.Warning);
         _state = null;
         await QueryStatusAsync(force: true);
-
-        if (result.Missing is { Count: > 0 } missing && result.Outcome is DeployOutcome.StartFailed or DeployOutcome.RolledBack or DeployOutcome.RollbackFailed or DeployOutcome.NotReady)
-        {
-            await FixMissingSettingsAsync(sv, depl, missing, result.Outcome);
-            return;
-        }
-        if (result.Outcome == DeployOutcome.NotReady)
-        {
-            Dialogs.Confirm(_owner, "La versión nueva no arranca con la configuración actual del servidor, y no pude saber qué falta.\n\nNo se cambió nada: la versión que estaba sigue como estaba.\nRevisa el registro de la operación (las líneas con «|» son lo que dijo la API) o abre «Variables (.env)».", true);
-            return;
-        }
-        if (result.Outcome == DeployOutcome.StartFailed)
-        {
-            Dialogs.Confirm(_owner, "Los archivos quedaron en el servidor, pero el servicio no arrancó y no pude saber por qué.\n\nRevisa el registro de la operación (las líneas con «|» son lo que dijo el servicio) o abre «Variables (.env)» para ver qué falta.", true);
-            return;
-        }
-        if (result.Outcome == DeployOutcome.NeedsProvision && Dialogs.Confirm(_owner, $"La API «{depl.Service}» no existe en {sv.Name}. ¿La creo ahora y la subo después?", true))
-            await ProvisionApiAsync(sv, deployAfter: true);
+        if (outcome.CreateFirst) await ProvisionApiAsync(sv, deployAfter: mode == LaunchMode.Deploy);
     }
 
     /// <summary>Keeps generated keys in the project's Credentials (encrypted on this computer). False when they could not be saved.</summary>
@@ -639,103 +612,6 @@ public sealed class ServerView : ScrollViewer
         {
             _log("⚠ No pude guardar las claves en «Credenciales»: " + ex.Message, Level.Warning);
             return false;
-        }
-    }
-
-    /// <summary>
-    /// The API refused to start because some settings are missing. Offers to create them (random values for keys and secrets),
-    /// restart the service, and upload again when the failed upload had been undone.
-    /// </summary>
-    private async Task FixMissingSettingsAsync(Server sv, DeploymentConfig depl, IReadOnlyList<string> missing, DeployOutcome outcome)
-    {
-        var service = depl.Service!;
-        var undone = outcome is DeployOutcome.RolledBack or DeployOutcome.RollbackFailed or DeployOutcome.NotReady;
-        var s = _session();
-        var pgProject = s is not null && !string.IsNullOrEmpty(depl.Project)
-            && ProjectHints.DetectDatabase(Paths.Resolve(s.Root, depl.Project)).Kind == DatabaseKind.Postgres;
-
-        string Label(string n) => MissingSettings.CanGenerate(n) ? n + "  (la genero)"
-            : MissingSettings.CanCreateDatabase(n, pgProject) ? n + "  (creo una base PostgreSQL propia)" : n + "  (tú me das el valor)";
-        var ask = $"La API «{service}» no arranca porque le faltan estas variables:\n\n{string.Join("\n", missing.Select(m => "  • " + Label(m)))}\n\n"
-            + "Las que puedo resolver las creo y las guardo en «Credenciales»; " + (undone ? "después vuelvo a subir." : "después reinicio la API.") + " ¿Sigo?";
-        if (!Dialogs.Confirm(_owner, ask, true)) return;
-
-        var made = new List<GeneratedCredential>();
-        var manual = new List<string>();
-        var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        IReadOnlyList<string> queue = missing;
-        var started = false;
-        for (var round = 0; round < 6; round++)
-        {
-            var fresh = queue.Where(tried.Add).ToList();
-            if (fresh.Count == 0) break;
-            var read = await Task.Run(() => EnvService.Read(sv, service));
-            if (!read.Ok || read.File is null)
-            {
-                _log("✘ " + read.Message, Level.Error);
-                Dialogs.Confirm(_owner, "No pude leer el .env del servidor:\n" + read.Message, true);
-                return;
-            }
-            var env = read.File;
-            var changed = false;
-            foreach (var n in fresh)
-            {
-                if (!string.IsNullOrEmpty(env.Get(n))) continue;
-                if (MissingSettings.CanGenerate(n))
-                {
-                    env.Set(n, MissingSettings.RandomSecret());
-                    made.Add(new($"{service} @ {sv.Name} · {n}", "", env.Get(n)!, $"Variable {n}, creada automáticamente porque la API no arrancaba sin ella."));
-                    changed = true;
-                }
-                else if (MissingSettings.CanCreateDatabase(n, pgProject))
-                {
-                    var db = OperationWindow.Run(_owner, $"Crear la base de datos de {service}", canCancel: false,
-                        (win, report, ct) => DatabaseService.Create(sv, service, report, ct), r => (r.Ok, r.Message));
-                    if (db is not { Ok: true }) { manual.Add(n); continue; }
-                    env.Set(n, db.Connection!);
-                    made.Add(new($"{service} @ {sv.Name} · base de datos", db.User!, db.Password!, $"PostgreSQL en el servidor, base «{db.Database}» (variable {n})."));
-                    changed = true;
-                }
-                else manual.Add(n);
-            }
-            if (!changed) break;
-            var restart = !undone && manual.Count == 0;
-            var write = OperationWindow.Run(_owner, $"Agregar variables a {service}", canCancel: false,
-                (win, report, ct) => EnvService.Write(sv, service, env, restart, report, ct), r => (r.Ok, r.Message));
-            if (write is null) return;
-            _log(Describe(write), write.Ok ? Level.Ok : Level.Warning);
-            if (write.Ok) { started = restart; break; }
-            if (write.Outcome != DeployOutcome.StartFailed)
-            {
-                if (made.Count > 0) SaveCredentials(made);
-                Dialogs.Confirm(_owner, write.Message, true);
-                return;
-            }
-            queue = write.Missing ?? Array.Empty<string>();
-        }
-
-        var notes = new List<string>();
-        if (made.Count > 0)
-        {
-            var saved = SaveCredentials(made);
-            notes.Add("Creé: " + string.Join(", ", made.Select(m => m.Name.Split('·').Last().Trim())) + (saved ? ". Quedaron guardadas en «Credenciales»." : "."));
-        }
-        if (made.Any(g => g.Name.Contains("Webhook", StringComparison.OrdinalIgnoreCase)))
-            notes.Add("Ojo: el secreto del webhook de pagos es inventado. Cuando conectes el proveedor de pagos, pon el valor real en «Variables (.env)».");
-        if (manual.Count > 0) notes.Add(MissingSettings.Guide(service, manual));
-        _log(string.Join(" ", notes), manual.Count > 0 ? Level.Warning : Level.Info);
-        if (manual.Count > 0 || (!started && !undone))
-        {
-            if (manual.Count == 0) notes.Add("La API todavía no arranca. Revisa el registro de la operación (las líneas con «|») o abre «Variables (.env)».");
-            Dialogs.Confirm(_owner, string.Join("\n\n", notes), true);
-            return;
-        }
-        if (undone) await DeployApiAsync(sv, depl);
-        else
-        {
-            _state = null;
-            await QueryStatusAsync(force: true);
-            Dialogs.Confirm(_owner, $"Listo: «{service}» arrancó con las variables nuevas.\n\n" + string.Join("\n\n", notes), true);
         }
     }
 
