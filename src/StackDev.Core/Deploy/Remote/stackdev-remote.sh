@@ -211,11 +211,63 @@ wait_healthy() {
 
 show_journal() { journalctl -u "$1" -n 25 --no-pager 2>/dev/null | sed 's/^/    | /' || true; }
 
-# Settings the app complained about ("'Section:Key' is not set"), as environment variable names, comma separated.
-missing_settings() {
-    journalctl -u "$1" -n 60 --no-pager 2>/dev/null \
-        | grep -oE "('[A-Za-z][A-Za-z0-9_]*(:[A-Za-z0-9_]+)*' (is|are) (not set|not configured|missing|required)|[Cc]onnection string '[A-Za-z0-9_.-]+' (is|was) (not configured|not found|missing))" \
+# Settings the app complained about ("'Section:Key' is not set", "Connection string 'X' is not configured") read from stdin,
+# as environment variable names, comma separated.
+scan_missing() {
+    grep -oE "('[A-Za-z][A-Za-z0-9_]*(:[A-Za-z0-9_]+)*' (is|are) (not set|not configured|missing|required)|[Cc]onnection string '[A-Za-z0-9_.-]+' (is|was) (not configured|not found|missing))" \
         | sed -E "s/^[Cc]onnection string '([^']+)'.*/ConnectionStrings:\1/; s/^'([^']+)'.*/\1/; s/:/__/g" | sort -u | paste -sd, - || true
+}
+
+missing_settings() { journalctl -u "$1" -n 60 --no-pager 2>/dev/null | scan_missing; }
+
+# Runs the app found in $1 for a few seconds with the real settings of the service, on a spare port, as the service user.
+# 0 = it stayed up (or it cannot be tried); 1 = it stopped by itself. Output is in $CANARY_LOG.
+CANARY_LOG=""
+canary() {
+    local src="$1" d port owner cdir line key val limit i pid code
+    d="$(dotnet_bin)"; [ -n "$d" ] || return 0
+    [ -f "$src/$DLL" ] || return 1
+    limit="${CANARY_WAIT:-15}"
+    port=5300; while port_taken "$port" && [ "$port" -lt 5400 ]; do port=$((port + 1)); done
+    owner="$(service_user "$SVC")"
+    cdir="$(mktemp -d "${TMPDIR:-/var/tmp}/stackdev-canary.XXXXXX")" || return 0
+    CANARY_LOG="$cdir.log"
+    cp -a "$src/." "$cdir/" && chown -R "$owner" "$cdir" 2>/dev/null || true
+    local envargs=("ASPNETCORE_URLS=http://127.0.0.1:$port" "HOME=$cdir" "DOTNET_CLI_TELEMETRY_OPTOUT=1")
+    if [ -r "$ENV_FILE" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+            key="${line%%=*}"; val="${line#*=}"
+            [ "$key" = ASPNETCORE_URLS ] && continue
+            if [[ "$val" == \"*\" && ${#val} -ge 2 ]]; then val="${val:1:${#val}-2}"; val="${val//\\\"/\"}"; val="${val//\\\\/\\}"
+            elif [[ "$val" == \'*\' && ${#val} -ge 2 ]]; then val="${val:1:${#val}-2}"; fi
+            envargs+=("$key=$val")
+        done < "$ENV_FILE"
+    fi
+    ( cd "$cdir" && exec timeout -k 2 $((limit + 10)) runuser -u "${owner%%:*}" -- env -i PATH="$PATH" "${envargs[@]}" "$d" "$cdir/$DLL" ) >"$CANARY_LOG" 2>&1 &
+    pid=$!
+    code=0
+    for ((i = 0; i < limit * 5; i++)); do
+        command -p sleep 0.2
+        if ! kill -0 "$pid" 2>/dev/null; then code=1; break; fi
+        if command -v curl >/dev/null 2>&1; then
+            val="$(curl -s -o /dev/null -m 1 -w '%{http_code}' "http://127.0.0.1:$port/" 2>/dev/null || true)"
+            if [ -n "$val" ] && [ "$val" != "000" ]; then break; fi
+        fi
+    done
+    kill "$pid" 2>/dev/null || true
+    pkill -f "$cdir/$DLL" >/dev/null 2>&1 || true
+    wait "$pid" 2>/dev/null || true
+    rm -rf "$cdir"
+    return "$code"
+}
+
+canary_report() {
+    [ -f "$CANARY_LOG" ] || return 0
+    tail -n 12 "$CANARY_LOG" | sed 's/^/    | /'
+    local missing; missing="$(scan_missing < "$CANARY_LOG")"
+    [ -z "$missing" ] || kv missing "$missing"
+    rm -f "$CANARY_LOG"
 }
 
 # Backup ids (YYYYMMDD-HHMMSS) of a service, newest first.
@@ -391,6 +443,22 @@ cmd_db_create() {
     echo "##DONE"
 }
 
+# ---------------------------------------------------------------- check: would the installed app start?
+cmd_check() {
+    STEP_TOTAL=1
+    [ -n "$SVC" ] && [ -n "$DLL" ] || fail 10 "Missing arguments"
+    service_exists "$SVC" || fail 11 "The service '$SVC' does not exist on this server. Provision it first."
+    step "Trying the app with its current settings"
+    [ -f "$APP_DIR/$DLL" ] || fail 24 "There is no application in $APP_DIR yet. Upload it first."
+    if ! canary "$APP_DIR"; then
+        warn "The application does not start with the current settings"
+        canary_report
+        fail 24 "The application does not start with the current settings."
+    fi
+    rm -f "$CANARY_LOG"
+    echo "##DONE"
+}
+
 # ---------------------------------------------------------------- discover: dotnet services already installed
 cmd_discover() {
     local f name dir user dll state exe
@@ -432,6 +500,15 @@ cmd_deploy() {
     need=$(( $(size_kb "$new") / 1024 * 3 + $(size_kb "$APP_DIR") / 1024 + 50 ))
     have="$(free_mb "$APPS")"
     if [ -n "$have" ] && [ "$have" -lt "$need" ]; then fail 11 "Not enough disk space (need about ${need} MB, ${have} MB free)"; fi
+
+    info "Trying the new version with the current settings before replacing anything"
+    if ! canary "$new"; then
+        warn "The new version does not start with the current settings"
+        canary_report
+        rm -rf "$RUN_DIR/new"
+        fail 24 "The new version does not start with the current settings. Nothing was changed; the current version keeps running."
+    fi
+    rm -f "$CANARY_LOG"
 
     step "Backing up the running version"
     local ts; ts="$(new_backup_id "$SVC")"
@@ -760,5 +837,6 @@ case "$CMD" in
     env-write)  cmd_env_write ;;
     provision)  cmd_provision ;;
     db-create)  cmd_db_create ;;
+    check)      cmd_check ;;
     *) fail 10 "Unknown command: ${CMD:-<none>}" ;;
 esac

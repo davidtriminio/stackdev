@@ -22,6 +22,8 @@ public enum DeployOutcome
     NeedsProvision,
     /// <summary>First upload: the files are on the server but the service did not start, and there was no earlier version to go back to.</summary>
     StartFailed,
+    /// <summary>The new version was tried before replacing anything and does not start with the current settings: nothing changed.</summary>
+    NotReady,
 }
 
 public sealed record DeployResult(DeployOutcome Outcome, string Message, string? BackupId = null, ApiStatus? Status = null, IReadOnlyList<string>? Missing = null)

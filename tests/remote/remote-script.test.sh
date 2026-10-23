@@ -51,7 +51,15 @@ S
 printf '#!/bin/sh\necho "/usr/bin/dotnet"\n' > "$STUBS/dotnet_unused"
 cat > "$STUBS/dotnet" <<'S'
 #!/bin/sh
-[ "$1" = "--list-runtimes" ] && echo "Microsoft.AspNetCore.App 9.0.1 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]"
+case "$1" in
+  --list-runtimes) echo "Microsoft.AspNetCore.App 9.0.1 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]"; exit 0 ;;
+  *.dll)
+    if [ -e "$(dirname "$1")/NOSTART" ]; then
+      echo "Unhandled exception. System.InvalidOperationException: Insecure configuration: 'Identity:Jwt:SigningKey' is not set; 'Payments:WebhookSecret' is not set." >&2
+      exit 134
+    fi
+    exec /bin/sleep 30 ;;
+esac
 exit 0
 S
 printf '#!/bin/sh\nshift 3\nexec "$@"\n' > "$STUBS/runuser"
@@ -143,6 +151,22 @@ printf "bad'; DROP\n" > "$RUN/db2.pw"
 o="$(R db-create --svc shop-api --run-dir "$RUN" --pw-file "$RUN/db2.pw")"; eq "$(code "$o")" 10 "unsafe password rejected"
 o="$(R db-create --svc shop-api --run-dir "$RUN" --pw-file /etc/passwd)"; eq "$(code "$o")" 10 "password file outside run dir"
 rm -f "$SD_ROOT/.psql.log"
+
+echo "== a new version that cannot start is caught before anything is replaced"
+mkdir -p "$T/b5" && echo v9 > "$T/b5/Demo.Api.dll" && touch "$T/b5/NOSTART" && tar -czf "$RUN/b5.tgz" -C "$T/b5" .
+before="$(find "$SD_ROOT/var/backups/stackdev/$svc" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/b5.tgz" --sha256 "$(sha "$RUN/b5.tgz")" --wait 8)"
+eq "$(code "$o")" 24 "canary exit"; has "$o" "##FAIL 24" "canary fail line"
+has "$o" "##KV missing=Identity__Jwt__SigningKey,Payments__WebhookSecret" "canary names the missing settings"
+eq "$(cat "$SD_ROOT/var/www/$svc/Demo.Api.dll")" v2 "current version untouched by the canary"
+eq "$(cat "$SD_ROOT/.state/$svc.state")" active "service never stopped"
+eq "$(find "$SD_ROOT/var/backups/stackdev/$svc" -mindepth 1 -maxdepth 1 -type d | wc -l)" "$before" "no backup made when the canary fails"
+
+echo "== check: would the installed app start?"
+o="$(R check --svc $svc --dll Demo.Api.dll)"; eq "$(code "$o")" 0 "check ok exit"; has "$o" "##DONE" "check done"
+touch "$SD_ROOT/var/www/$svc/NOSTART"
+o="$(R check --svc $svc --dll Demo.Api.dll)"; eq "$(code "$o")" 24 "check fail exit"; has "$o" "##KV missing=" "check names the missing settings"
+rm -f "$SD_ROOT/var/www/$svc/NOSTART"
 
 echo "== prune keeps N"
 for i in 1 2 3 4; do /bin/sleep 1.1; echo "v$i" > "$T/b1/Demo.Api.dll"; tar -czf "$RUN/p.tgz" -C "$T/b1" .

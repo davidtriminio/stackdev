@@ -222,9 +222,9 @@ public sealed class ServerView : ScrollViewer
         buttons.Children.Add(Button("Variables (.env)", () => _ = EditVariablesAsync(sv, svc)));
         buttons.Children.Add(Button("Versiones anteriores", () => _ = VersionsAsync(sv, svc)));
         buttons.Children.Add(Button("Actualizar estado", () => _ = QueryStatusAsync(force: true)));
-        buttons.Children.Add(Button("Reiniciar", () => _ = ActionAsync(sv, svc, "restart", "reiniciar")));
+        buttons.Children.Add(Button("Reiniciar", () => _ = GuardedStartAsync(sv, depl, "restart", "reiniciar")));
         buttons.Children.Add(Button("Detener", () => _ = ActionAsync(sv, svc, "stop", "detener")));
-        buttons.Children.Add(Button("Iniciar", () => _ = ActionAsync(sv, svc, "start", "iniciar")));
+        buttons.Children.Add(Button("Iniciar", () => _ = GuardedStartAsync(sv, depl, "start", "iniciar")));
         buttons.Children.Add(Button("Cambiar de API o servidor", () => _ = GuidedSetupAsync(servers, depl)));
         buttons.Children.Add(Button("Editar a mano", () => ConfigureDeployment(servers, depl)));
         body.Children.Add(buttons);
@@ -336,6 +336,36 @@ public sealed class ServerView : ScrollViewer
         _trusted[sv.Id] = false;
         _probes.Remove(sv.Id);
         Draw();
+    }
+
+    /// <summary>
+    /// Start and restart only go ahead after the application was tried with its real settings; otherwise the missing pieces are
+    /// fixed first, instead of leaving the service crash-looping.
+    /// </summary>
+    private async Task GuardedStartAsync(Server sv, DeploymentConfig depl, string action, string verb)
+    {
+        var service = depl.Service ?? "";
+        if (string.IsNullOrEmpty(depl.Dll))
+        {
+            await ActionAsync(sv, service, action, verb);
+            return;
+        }
+        _log($"Probando que {service} arranca antes de {verb}la…", Level.Info);
+        var check = await Task.Run(() => DeployService.Check(sv, service, depl.Dll!));
+        if (check.Ok) { await ActionAsync(sv, service, action, verb); return; }
+        _log("⚠ " + check.Message, Level.Warning);
+        if (check.Outcome == DeployOutcome.NotReady && check.Missing is { Count: > 0 } missing)
+        {
+            await FixMissingSettingsAsync(sv, depl, missing, DeployOutcome.StartFailed);
+            return;
+        }
+        if (check.Outcome == DeployOutcome.NotReady && check.Message.Contains("Todavía no hay una API", StringComparison.Ordinal))
+        {
+            Dialogs.Confirm(_owner, "Todavía no hay una API subida a este servicio. Pulsa «Subir API» primero.", true);
+            return;
+        }
+        var did = verb == "iniciar" ? "inicié" : "reinicié";
+        Dialogs.Confirm(_owner, $"No {did} «{service}» porque no arranca con su configuración actual.\n\n{check.Message}\n\nAbre «Variables (.env)» o mira «Logs en vivo» para ver el motivo.", true);
     }
 
     private async Task ActionAsync(Server sv, string service, string action, string verb)
@@ -523,6 +553,7 @@ public sealed class ServerView : ScrollViewer
         DeployOutcome.RolledBack => "↩ " + r.Message,
         DeployOutcome.RollbackFailed => "‼ " + r.Message,
         DeployOutcome.StartFailed => "⚠ " + r.Message,
+        DeployOutcome.NotReady => "⚠ " + r.Message,
         DeployOutcome.NeedsProvision => r.Message,
         DeployOutcome.Cancelled => "Cancelado: " + r.Message,
         _ => r.Message,
@@ -569,13 +600,18 @@ public sealed class ServerView : ScrollViewer
             (win, report, ct) => DeployService.Deploy(req, new DeployDialogs.GuiDecisions(win), report, ct),
             r => (r.Ok, Describe(r)));
         if (result is null) return;
-        _log(Describe(result), result.Ok ? Level.Ok : result.Outcome is DeployOutcome.Cancelled or DeployOutcome.RolledBack or DeployOutcome.StartFailed ? Level.Warning : Level.Error);
+        _log(Describe(result), result.Ok ? Level.Ok : result.Outcome is DeployOutcome.Cancelled or DeployOutcome.RolledBack or DeployOutcome.StartFailed or DeployOutcome.NotReady ? Level.Warning : Level.Error);
         _state = null;
         await QueryStatusAsync(force: true);
 
-        if (result.Missing is { Count: > 0 } missing && result.Outcome is DeployOutcome.StartFailed or DeployOutcome.RolledBack or DeployOutcome.RollbackFailed)
+        if (result.Missing is { Count: > 0 } missing && result.Outcome is DeployOutcome.StartFailed or DeployOutcome.RolledBack or DeployOutcome.RollbackFailed or DeployOutcome.NotReady)
         {
             await FixMissingSettingsAsync(sv, depl, missing, result.Outcome);
+            return;
+        }
+        if (result.Outcome == DeployOutcome.NotReady)
+        {
+            Dialogs.Confirm(_owner, "La versión nueva no arranca con la configuración actual del servidor, y no pude saber qué falta.\n\nNo se cambió nada: la versión que estaba sigue como estaba.\nRevisa el registro de la operación (las líneas con «|» son lo que dijo la API) o abre «Variables (.env)».", true);
             return;
         }
         if (result.Outcome == DeployOutcome.StartFailed)
@@ -613,7 +649,7 @@ public sealed class ServerView : ScrollViewer
     private async Task FixMissingSettingsAsync(Server sv, DeploymentConfig depl, IReadOnlyList<string> missing, DeployOutcome outcome)
     {
         var service = depl.Service!;
-        var undone = outcome is DeployOutcome.RolledBack or DeployOutcome.RollbackFailed;
+        var undone = outcome is DeployOutcome.RolledBack or DeployOutcome.RollbackFailed or DeployOutcome.NotReady;
         var s = _session();
         var pgProject = s is not null && !string.IsNullOrEmpty(depl.Project)
             && ProjectHints.DetectDatabase(Paths.Resolve(s.Root, depl.Project)).Kind == DatabaseKind.Postgres;
