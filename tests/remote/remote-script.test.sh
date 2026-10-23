@@ -150,6 +150,22 @@ has "$(cat "$SD_ROOT/etc/nginx/conf.d/blog-api.conf")" "map \$http_upgrade \$con
 printf 'ASPNETCORE_URLS=http://127.0.0.1:5050\n' > "$RUN/p3.env"
 o="$(R provision --svc other-api --dll O.dll --domain other.example.com --port 5050 --web apache --run-dir "$RUN" --env-file "$RUN/p3.env")"; eq "$(code "$o")" 11 "port conflict refused"
 
+echo "== prepare (install what is missing)"
+printf '#!/bin/sh\necho "dnf $*"\necho "$*" >> "$SD_ROOT/.pkgs"\nexit 0\n' > "$STUBS/dnf"; chmod +x "$STUBS/dnf"
+o="$(R preflight --svc $svc)"; has "$o" "##KV pkg=dnf" "preflight reports the package manager"
+rm -f "$SD_ROOT/.pkgs"
+o="$(R prepare --install web-apache,rsync,certbot --web apache)"
+eq "$(code "$o")" 0 "prepare exit"; has "$o" "##STEP 3/3" "prepare steps"; has "$o" "##DONE" "prepare done"
+has "$(cat "$SD_ROOT/.pkgs")" "httpd mod_ssl" "apache packages"; has "$(cat "$SD_ROOT/.pkgs")" "rsync" "rsync package"; has "$(cat "$SD_ROOT/.pkgs")" "certbot python3-certbot-apache" "certbot plugin for the web server"
+rm -f "$SD_ROOT/.pkgs"
+o="$(R prepare --install web-nginx --web nginx)"; eq "$(code "$o")" 0 "prepare nginx exit"; has "$(cat "$SD_ROOT/.pkgs")" "nginx" "nginx package"
+o="$(R prepare --install runtime --runtime 9)"; eq "$(code "$o")" 0 "runtime 9 (already visible) installs fine"
+o="$(R prepare --install runtime,rsync --runtime 10)"; eq "$(code "$o")" 31 "runtime that does not appear is reported"; has "$o" "##KV failed=runtime" "failed list"; has "$o" "##STEP 2/2" "later items are still tried"
+o="$(R prepare --install runtime)"; eq "$(code "$o")" 31 "runtime without a version fails"
+o="$(R prepare --install 'web;rm')"; eq "$(code "$o")" 10 "install list is validated"
+o="$(R prepare)"; eq "$(code "$o")" 10 "nothing to install"
+o="$(R prepare --install bogus)"; eq "$(code "$o")" 31 "unknown item fails"
+
 echo; echo "$PASS passed, $FAIL failed"
 rm -rf "$T"
 [ "$FAIL" = 0 ]
