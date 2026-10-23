@@ -111,3 +111,27 @@ src/StackDev.Cli    comandos y pantalla de consola (Spectre.Console)
 src/StackDev.Gui    ventana (WPF)
 tests/StackDev.Core.Tests   xUnit
 ```
+
+## Servidores y despliegue de la API
+
+Sección **Servidor** de la ventana. Todo corre por SSH desde tu PC y no depende de scripts instalados en el servidor.
+
+| Acción | Qué hace |
+|---|---|
+| **Verificar y probar** | La primera vez muestra la huella SSH del servidor para que la compares; desde ahí solo se conecta si coincide (`known_hosts` propio, `StrictHostKeyChecking=yes`). |
+| **Subir API** | Publica el proyecto web que detecta en la solución, revisa que no lleve archivos sensibles (`.env`, `appsettings.Development.json`, `.pdb`, claves, bases locales), pide confirmación escribiendo el nombre del servicio, sube un paquete con SHA-256, guarda una copia de la versión actual, reemplaza, espera a que el servicio esté sano y, si no lo está, vuelve solo a la versión anterior. |
+| **Aprovisionar API nueva** | Crea usuario, carpetas, `.env` con secretos generados, servicio systemd, sitio de Apache o Nginx, firewall, SELinux y certificado HTTPS. |
+| **Variables (.env)** | Edita el `.env` del servidor con los secretos ocultos; guarda copia y, si el servicio no arranca con los valores nuevos, restaura el anterior. |
+| **Versiones anteriores** | Vuelve a cualquiera de las últimas versiones guardadas (se conservan 5). |
+
+Requisitos en el servidor: el usuario SSH con `sudo` sin contraseña, `rsync` (recomendado) y el runtime de ASP.NET Core de la versión del proyecto.
+
+En `dev-menu.json` el proyecto se enlaza con una sección `deployment`:
+
+```json
+"deployment": { "server": "a1b2c3d4", "service": "mi-api", "dll": "Mi.Api.dll", "domain": "mi-api.midominio.com", "project": "src/Mi.Api/Mi.Api.csproj" }
+```
+
+La lista de servidores se guarda cifrada (DPAPI) en `%APPDATA%\stackdev`, nunca en el repositorio. Los secretos no se escriben en ningún registro.
+
+Prueba del script remoto (Linux, WSL o Git Bash): `bash tests/remote/remote-script.test.sh`.
