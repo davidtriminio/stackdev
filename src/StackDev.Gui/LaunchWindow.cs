@@ -37,7 +37,7 @@ public sealed class LaunchWindow : Window
     private readonly TextBlock _result = new() { FontSize = 13, TextWrapping = TextWrapping.Wrap };
     private readonly Border _banner = new() { BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 14, 0, 0), Visibility = Visibility.Collapsed };
     private readonly Button _copy = new() { Content = "Copiar registro", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0) };
-    private readonly Button _open = new() { Content = "Abrir en el navegador", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0), Visibility = Visibility.Collapsed };
+    private readonly Button _open = new() { Content = "Abrir en el navegador ▾", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0), Visibility = Visibility.Collapsed };
     private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Visibility = Visibility.Collapsed };
     private readonly StringBuilder _text = new();
     private readonly CancellationTokenSource _cts = new();
@@ -126,11 +126,7 @@ public sealed class LaunchWindow : Window
 
         _close.Click += (_, _) => Close();
         _copy.Click += (_, _) => { try { Clipboard.SetText(_text.ToString()); } catch (System.Runtime.InteropServices.COMException) { } };
-        _open.Click += (_, _) =>
-        {
-            if (_url is null) return;
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_url) { UseShellExecute = true }); } catch (System.ComponentModel.Win32Exception) { }
-        };
+        _open.Click += async (_, _) => { if (_url is not null) await BrowserMenu.ShowAsync(_open, _url); };
         Closing += (_, e) => { if (_running) e.Cancel = true; };
     }
 
