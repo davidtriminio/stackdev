@@ -254,3 +254,31 @@ public class ApiFormTests
         finally { try { Directory.Delete(root, true); } catch (IOException) { } }
     }
 }
+
+public class ApiSaveRoundTripTests
+{
+    [Fact]
+    public void Saved_address_survives_the_store_and_shows_as_configured()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sd-rt-" + Guid.NewGuid().ToString("N")[..8]);
+        var ext = Path.Combine(Path.GetTempPath(), "sd-rt-ext-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(root, "src", "Properties"));
+        File.WriteAllText(Path.Combine(root, "src", "Web.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Web\"></Project>");
+        File.WriteAllText(Path.Combine(root, "src", "Properties", "launchSettings.json"), "{\"profiles\":{\"x\":{\"applicationUrl\":\"http://localhost:5227\"}}}");
+        try
+        {
+            var store = new StackDev.Core.Config.ConfigStore(root, ext);
+            store.Load();
+            var found = StackDev.Core.Detection.Detector.Detect(root);
+            Assert.False(ApiCatalog.Build(store.Context, null, null, null, found).Single(e => e.Component == StackDev.Core.Config.ProjectComponent.Api).Configured);
+            store.Replace(ApiCatalog.ApplyLocal(store.Config, StackDev.Core.Config.ProjectComponent.Api, "http://localhost:5227", found));
+            var after = ApiCatalog.Build(store.Context, null, null, null, found).Single(e => e.Component == StackDev.Core.Config.ProjectComponent.Api);
+            Assert.True(after.Configured);
+            Assert.Equal("http://localhost:5227", after.Url);
+            var again = new StackDev.Core.Config.ConfigStore(root, ext);
+            again.Load();
+            Assert.Equal("http://localhost:5227", again.Config.Api?.Url);
+        }
+        finally { try { Directory.Delete(root, true); Directory.Delete(ext, true); } catch (IOException) { } }
+    }
+}

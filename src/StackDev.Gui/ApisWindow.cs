@@ -19,6 +19,7 @@ public static class ApisWindow
         var w = ServerDialogs.Base(owner, "Direcciones y pruebas", 760);
         var root = new StackPanel { Margin = new Thickness(22) };
 
+        string? notice = null;
         void Build()
         {
             root.Children.Clear();
@@ -29,6 +30,8 @@ public static class ApisWindow
                 Text = "«Probar» consulta la dirección ahora y dice qué responde y en cuánto tiempo. «Abrir» te deja elegir entre las páginas que existen. Lo que falte se completa aquí mismo.",
                 FontSize = 11.5, Foreground = ServerDialogs.P("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
             });
+            if (notice is not null)
+                root.Children.Add(new TextBlock { Text = notice, FontSize = 12.5, Foreground = ServerDialogs.P("OkBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6) });
             foreach (var scope in new[] { ApiScope.Local, ApiScope.Server })
             {
                 root.Children.Add(new TextBlock
@@ -37,9 +40,10 @@ public static class ApisWindow
                     FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = ServerDialogs.P("AccentBrush"), Margin = new Thickness(0, 10, 0, 6),
                 });
                 foreach (var e in entries.Where(x => x.Scope == scope))
-                    root.Children.Add(e.Configured ? Card(e) : FormCard(e, w, save, Build, setupServer));
+                    root.Children.Add(e.Configured ? Card(e) : FormCard(e, w, save, Build, setupServer, text => notice = text));
             }
             var close = ServerDialogs.Button("Cerrar", true);
+            close.IsDefault = false;   // Enter inside a form must not close the window
             close.Click += (_, _) => w.Close();
             root.Children.Add(ServerDialogs.ButtonRow(close));
         }
@@ -51,7 +55,7 @@ public static class ApisWindow
     }
 
     /// <summary>What is not configured yet, as a small form (or a button for the server) instead of a file to edit.</summary>
-    private static Border FormCard(ApiEntry e, Window w, Func<ApiEntry, string, string?, string?, string?> save, Action rebuild, Action setupServer)
+    private static Border FormCard(ApiEntry e, Window w, Func<ApiEntry, string, string?, string?, string?> save, Action rebuild, Action setupServer, Action<string> saved)
     {
         var stack = new StackPanel();
         stack.Children.Add(new TextBlock { Text = e.Name, FontSize = 13.5, FontWeight = FontWeights.SemiBold });
@@ -80,10 +84,14 @@ public static class ApisWindow
             ok.Style = ServerDialogs.GetStyle("BtnPrimary");
             ok.Click += (_, _) =>
             {
-                var problem = save(e, url.Text, folder?.Text, start?.Text);
+                string? problem;
+                try { problem = save(e, url.Text, folder?.Text, start?.Text); }
+                catch (Exception ex) { problem = "No se pudo guardar: " + ex.Message; }
                 if (problem is not null) { error.Text = problem; error.Visibility = Visibility.Visible; return; }
+                saved($"✔ Guardé «{e.Name}»: {url.Text.Trim().TrimEnd('/')}");
                 rebuild();
             };
+            url.KeyDown += (_, key) => { if (key.Key == System.Windows.Input.Key.Enter) ok.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); };
             stack.Children.Add(ok);
         }
         return new Border
