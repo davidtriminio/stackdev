@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Exercises stackdev-remote.sh in a scratch root with fake system commands. Run on Linux, WSL or Git Bash: bash tests/remote/remote-script.test.sh
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT="$HERE/../../src/StackDev.Core/Deploy/Remote/stackdev-remote.sh"
+T="$(mktemp -d)"
+export SD_ROOT="$T/root"
+STUBS="$T/stubs"; mkdir -p "$STUBS" "$SD_ROOT/var/www" "$SD_ROOT/etc/systemd/system" "$SD_ROOT/var/lib" "$SD_ROOT/etc"
+PASS=0; FAIL=0
+ok()  { PASS=$((PASS+1)); }
+bad() { FAIL=$((FAIL+1)); echo "FAIL: $*"; }
+eq()  { [ "$1" = "$2" ] && ok || bad "$3 (expected '$2', got '$1')"; }
+has() { grep -q -- "$2" <<<"$1" && ok || bad "$3 (missing '$2')"; }
+hasnt(){ grep -q -- "$2" <<<"$1" && bad "$3 (found '$2')" || ok; }
+
+# ---- fake commands
+cat > "$STUBS/systemctl" <<'S'
+#!/usr/bin/env bash
+ST="$SD_ROOT/.state"; mkdir -p "$ST"
+cmd="$1"; shift
+case "$cmd" in
+  stop) echo inactive > "$ST/$1.state" ;;
+  start|restart)
+    svc="$1"
+    if [ -e "$SD_ROOT/var/www/$svc/BROKEN" ] || grep -qs '^BREAK=1' "$SD_ROOT/etc/$svc/$svc.env"; then echo failed > "$ST/$svc.state"; else echo active > "$ST/$svc.state"; fi ;;
+  is-active) q=0; [ "$1" = "--quiet" ] && { q=1; shift; }; s="$(cat "$ST/$1.state" 2>/dev/null || echo inactive)"; [ $q = 0 ] && echo "$s"; [ "$s" = active ]; exit $? ;;
+  show) svc="$1"; shift; case "$1" in -p) p="$2";; esac
+        case "$p" in User) echo "$svc";; Group) echo "$svc";; NRestarts) echo 0;; *) echo "";; esac ;;
+  cat) [ -f "$SD_ROOT/etc/systemd/system/$1.service" ]; exit $? ;;
+  reload|daemon-reload|enable) ;;
+esac
+exit 0
+S
+cat > "$STUBS/curl" <<'S'
+#!/usr/bin/env bash
+if ls "$SD_ROOT"/var/www/*/BROKEN >/dev/null 2>&1; then echo 000; else echo 200; fi
+S
+for n in chown restorecon useradd setsebool firewall-cmd a2enmod a2ensite sleep; do printf '#!/bin/sh\nexit 0\n' > "$STUBS/$n"; done
+printf '#!/bin/sh\nexit 0\n' > "$STUBS/httpd"; printf '#!/bin/sh\nexit 0\n' > "$STUBS/nginx"
+printf '#!/bin/sh\necho "line 1 of the journal"\n' > "$STUBS/journalctl"
+printf '#!/bin/sh\necho Enforcing\n' > "$STUBS/getenforce"
+cat > "$STUBS/id" <<'S'
+#!/bin/sh
+case "$1" in -u) /usr/bin/id -u ;; -gn) echo "$2" ;; *) exit 0 ;; esac
+S
+printf '#!/bin/sh\necho "/usr/bin/dotnet"\n' > "$STUBS/dotnet_unused"
+cat > "$STUBS/dotnet" <<'S'
+#!/bin/sh
+[ "$1" = "--list-runtimes" ] && echo "Microsoft.AspNetCore.App 9.0.1 [/usr/share/dotnet/shared/Microsoft.AspNetCore.App]"
+exit 0
+S
+chmod +x "$STUBS"/*
+export PATH="$STUBS:$PATH"
+
+R() { bash "$SCRIPT" "$@" 2>&1; echo "EXIT=$?"; }
+code() { grep -o 'EXIT=[0-9]*' <<<"$1" | cut -d= -f2; }
+
+svc=demo-api
+mkapp() { mkdir -p "$SD_ROOT/var/www/$svc/wwwroot/uploads" "$SD_ROOT/etc/$svc"; echo v1 > "$SD_ROOT/var/www/$svc/Demo.Api.dll"; echo keep > "$SD_ROOT/var/www/$svc/wwwroot/uploads/a.png"; echo old > "$SD_ROOT/var/www/$svc/old.txt"
+  echo "[Service]" > "$SD_ROOT/etc/systemd/system/$svc.service"; echo "ASPNETCORE_URLS=http://127.0.0.1:5001" > "$SD_ROOT/etc/$svc/$svc.env"; echo active > "$SD_ROOT/.state/$svc.state" 2>/dev/null || { mkdir -p "$SD_ROOT/.state"; echo active > "$SD_ROOT/.state/$svc.state"; }; }
+mkbundle() { # $1 name, rest: files
+  local d="$T/b-$1"; rm -rf "$d"; mkdir -p "$d"; shift 2>/dev/null; echo "$1" > "$d/Demo.Api.dll"; shift; for f in "$@"; do touch "$d/$f"; done
+  tar -czf "$T/$(basename "$d").tgz" -C "$d" . ; echo "$T/$(basename "$d").tgz"; }
+RUN="$T/run"; mkdir -p "$RUN"
+sha() { sha256sum "$1" | cut -d' ' -f1; }
+mkapp
+
+echo "== preflight / discover"
+o="$(R preflight --svc $svc)"; has "$o" "##KV service_exists=yes" "preflight service"; has "$o" "##KV runtimes=9" "preflight runtimes"; has "$o" "##KV port=5001" "preflight port"; eq "$(code "$o")" 0 "preflight exit"
+o="$(R discover)"; eq "$(code "$o")" 0 "discover exit"
+
+echo "== deploy ok"
+mkdir -p "$T/b1" && echo v2 > "$T/b1/Demo.Api.dll" && echo n > "$T/b1/new.txt" && tar -czf "$RUN/bundle.tgz" -C "$T/b1" .
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/bundle.tgz" --sha256 "$(sha "$RUN/bundle.tgz")" --runtime 9 --wait 12)"
+eq "$(code "$o")" 0 "deploy exit"; has "$o" "##DONE" "deploy done"; has "$o" "##STEP 6/6" "step 6"
+eq "$(cat "$SD_ROOT/var/www/$svc/Demo.Api.dll")" v2 "new dll"
+[ ! -e "$SD_ROOT/var/www/$svc/old.txt" ] && ok || bad "old file should be removed"
+eq "$(cat "$SD_ROOT/var/www/$svc/wwwroot/uploads/a.png")" keep "uploads kept"
+eq "$(find "$SD_ROOT/var/backups/stackdev/$svc" -mindepth 1 -maxdepth 1 -type d | wc -l)" 1 "one backup"
+eq "$(cat "$SD_ROOT/.state/$svc.state")" active "service active"
+
+echo "== deploy: wrong checksum changes nothing"
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/bundle.tgz" --sha256 0000000000000000000000000000000000000000000000000000000000000000 --wait 12)"
+eq "$(code "$o")" 12 "bad sha exit"; eq "$(cat "$SD_ROOT/var/www/$svc/Demo.Api.dll")" v2 "unchanged after bad sha"
+
+echo "== deploy: dll missing from upload"
+mkdir -p "$T/b2" && echo x > "$T/b2/Other.dll" && tar -czf "$RUN/b2.tgz" -C "$T/b2" .
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/b2.tgz" --sha256 "$(sha "$RUN/b2.tgz")" --wait 12)"
+eq "$(code "$o")" 12 "missing dll exit"; eq "$(cat "$SD_ROOT/var/www/$svc/Demo.Api.dll")" v2 "unchanged after missing dll"
+eq "$(cat "$SD_ROOT/.state/$svc.state")" active "service untouched by a failed upload check"
+
+echo "== deploy: broken version rolls back"
+systemctl start $svc
+mkdir -p "$T/b3" && echo v3 > "$T/b3/Demo.Api.dll" && touch "$T/b3/BROKEN" && tar -czf "$RUN/b3.tgz" -C "$T/b3" .
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/b3.tgz" --sha256 "$(sha "$RUN/b3.tgz")" --wait 8)"
+eq "$(code "$o")" 20 "rollback exit"; has "$o" "##FAIL 20" "fail line"; has "$o" "##STEP 7/7" "rollback step"
+eq "$(cat "$SD_ROOT/var/www/$svc/Demo.Api.dll")" v2 "previous version restored"
+[ ! -e "$SD_ROOT/var/www/$svc/BROKEN" ] && ok || bad "broken marker should be gone"
+eq "$(cat "$SD_ROOT/.state/$svc.state")" active "service active after rollback"
+eq "$(cat "$SD_ROOT/var/www/$svc/wwwroot/uploads/a.png")" keep "uploads kept after rollback"
+
+echo "== manual rollback and backups listing"
+o="$(R backups --svc $svc)"; has "$o" "##BACKUP " "backups listed"
+echo v-extra > "$SD_ROOT/var/www/$svc/Demo.Api.dll"
+o="$(R rollback --svc $svc --wait 8)"; eq "$(code "$o")" 0 "manual rollback exit"; has "$o" "##KV restored=" "restored kv"
+
+echo "== prune keeps N"
+for i in 1 2 3 4; do /bin/sleep 1.1; echo "v$i" > "$T/b1/Demo.Api.dll"; tar -czf "$RUN/p.tgz" -C "$T/b1" .
+  R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/p.tgz" --sha256 "$(sha "$RUN/p.tgz")" --keep 2 --wait 12 >/dev/null; done
+n="$(find "$SD_ROOT/var/backups/stackdev/$svc" -mindepth 1 -maxdepth 1 -type d | wc -l)"; eq "$n" 2 "only 2 backups kept"
+
+echo "== input validation (injection)"
+for a in "--svc a;rm" "--svc ../x" "--svc UPPER" "--dll x.exe" "--port 80" "--domain a_b.com" "--sha256 zz" "--keep x"; do
+  o="$(R preflight $a)"; eq "$(code "$o")" 10 "reject: $a"; done
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle /etc/passwd --sha256 "$(sha /etc/passwd)")"; eq "$(code "$o")" 10 "bundle outside run dir"
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/../x.tgz" --sha256 "$(sha /etc/passwd)")"; eq "$(code "$o")" 10 "bundle with .."
+o="$(R nonsense)"; eq "$(code "$o")" 10 "unknown command"
+
+echo "== env read / write"
+o="$(R env-read --svc $svc)"; has "$o" "##ENV-BEGIN" "env begin"; has "$o" "ASPNETCORE_URLS" "env content"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5001\nJwt__Key=newsecret\n# c\n' > "$RUN/new.env"
+o="$(R env-write --svc $svc --run-dir "$RUN" --env-file "$RUN/new.env")"; eq "$(code "$o")" 0 "env write exit"; has "$(cat "$SD_ROOT/etc/$svc/$svc.env")" "Jwt__Key=newsecret" "env installed"
+[ ! -e "$RUN/new.env" ] && ok || bad "uploaded env should be shredded"
+ls "$SD_ROOT/var/backups/stackdev/$svc"/env-* >/dev/null 2>&1 && ok || bad "env backup missing"
+printf 'THIS IS NOT VALID\n' > "$RUN/bad.env"
+o="$(R env-write --svc $svc --run-dir "$RUN" --env-file "$RUN/bad.env")"; eq "$(code "$o")" 40 "invalid env rejected"; has "$(cat "$SD_ROOT/etc/$svc/$svc.env")" "Jwt__Key=newsecret" "env untouched"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5001\nBREAK=1\n' > "$RUN/break.env"
+o="$(R env-write --svc $svc --run-dir "$RUN" --env-file "$RUN/break.env" --restart --wait 8)"
+[ -n "${DEBUG:-}" ] && echo "$o"; eq "$(code "$o")" 20 "env that breaks the service rolls back"; hasnt "$(cat "$SD_ROOT/etc/$svc/$svc.env")" "BREAK=1" "previous env restored"
+eq "$(cat "$SD_ROOT/.state/$svc.state")" active "service active after env rollback"
+
+echo "== provision (apache and nginx)"; DEBUGP=1
+mkdir -p "$SD_ROOT/etc/httpd/conf.d" "$SD_ROOT/etc/nginx/conf.d"
+printf 'ASPNETCORE_ENVIRONMENT=Production\nASPNETCORE_URLS=http://127.0.0.1:5050\nJwt__Key=abc\n' > "$RUN/p.env"
+o="$(R provision --svc shop-api --dll Shop.Api.dll --domain shop.example.com --port 5050 --web apache --run-dir "$RUN" --env-file "$RUN/p.env" --runtime 9)"; [ -n "${DEBUG:-}" ] && echo "$o"
+eq "$(code "$o")" 0 "provision apache exit"; has "$o" "##STEP 8/8" "provision steps"
+has "$(cat "$SD_ROOT/etc/systemd/system/shop-api.service")" "ExecStart=.* /var/www/shop-api/Shop.Api.dll" "unit ExecStart"
+has "$(cat "$SD_ROOT/etc/systemd/system/shop-api.service")" "EnvironmentFile=/etc/shop-api/shop-api.env" "unit EnvironmentFile"
+has "$(cat "$SD_ROOT/etc/httpd/conf.d/shop-api.conf")" "ServerName shop.example.com" "apache vhost"
+has "$(cat "$SD_ROOT/etc/httpd/conf.d/shop-api.conf")" "127.0.0.1:5050" "apache port"
+has "$(cat "$SD_ROOT/etc/shop-api/shop-api.env")" "Jwt__Key=abc" "env installed by provision"
+eq "$(stat -c %a "$SD_ROOT/etc/shop-api/shop-api.env")" 640 "env mode"
+[ ! -e "$RUN/p.env" ] && ok || bad "provision env should be shredded"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5051\n' > "$RUN/p.env"
+o="$(R provision --svc shop-api --dll Shop.Api.dll --domain shop.example.com --port 5051 --web apache --run-dir "$RUN" --env-file "$RUN/p.env")"; eq "$(code "$o")" 11 "re-provision refused without --force"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5060\n' > "$RUN/p2.env"
+o="$(R provision --svc blog-api --dll Blog.Api.dll --domain blog.example.com --port 5060 --web nginx --run-dir "$RUN" --env-file "$RUN/p2.env")"
+eq "$(code "$o")" 0 "provision nginx exit"; has "$(cat "$SD_ROOT/etc/nginx/conf.d/blog-api.conf")" "proxy_pass http://127.0.0.1:5060" "nginx proxy"
+has "$(cat "$SD_ROOT/etc/nginx/conf.d/blog-api.conf")" "map \$http_upgrade \$conn_blog_api" "nginx unique map"
+printf 'ASPNETCORE_URLS=http://127.0.0.1:5050\n' > "$RUN/p3.env"
+o="$(R provision --svc other-api --dll O.dll --domain other.example.com --port 5050 --web apache --run-dir "$RUN" --env-file "$RUN/p3.env")"; eq "$(code "$o")" 11 "port conflict refused"
+
+echo; echo "$PASS passed, $FAIL failed"
+rm -rf "$T"
+[ "$FAIL" = 0 ]
