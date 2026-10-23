@@ -462,7 +462,7 @@ public sealed class ServerView : ScrollViewer
         var api = PickApi(s, current?.Project);
         if (api is null)
         {
-            Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta, así que no hay una API que subir. Revisa la sección «api» de dev-menu.json.", true);
+            Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta, así que no hay una API que subir. Abre la carpeta del proyecto que contiene la API.", true);
             return;
         }
 
@@ -549,15 +549,37 @@ public sealed class ServerView : ScrollViewer
         _ => r.Message,
     };
 
-    /// <summary>The addresses of the project (this computer and the server) with Open, Test and Copy, in one window.</summary>
-    private void ShowAddresses()
+    /// <summary>The addresses of the project (this computer and the server) with Open, Test and Copy; what is missing is filled in with forms.</summary>
+    private async void ShowAddresses()
     {
-        var s = _session();
-        if (s is null) return;
-        var depl = s.Ctx.Config.Deployment;
-        var sv = _store.Search(depl?.Server);
-        ApiStatus? status = _state;
-        ApisWindow.Show(_owner, ApiCatalog.Build(s.Ctx, sv, depl, status));
+        var s0 = _session();
+        if (s0 is null) return;
+        var detected = await Task.Run(() => StackDev.Core.Detection.Detector.Detect(s0.Root));
+        IReadOnlyList<ApiEntry> Load()
+        {
+            var s = _session();
+            if (s is null) return new List<ApiEntry>();
+            var depl = s.Ctx.Config.Deployment;
+            return ApiCatalog.Build(s.Ctx, _store.Search(depl?.Server), depl, _state, detected);
+        }
+        string? Save(ApiEntry entry, string url, string? folder, string? start)
+        {
+            var s = _session();
+            if (s is null || entry.Component is not { } component) return "No hay un proyecto abierto.";
+            if (ApiCatalog.CheckUrl(url) is { } bad) return bad;
+            if (entry.NeedsFolder && (string.IsNullOrWhiteSpace(folder) || string.IsNullOrWhiteSpace(start))) return "Escribe la carpeta y el comando para iniciarla.";
+            try
+            {
+                s.ApplyConfig(ApiCatalog.ApplyLocal(s.Ctx.Config, component, url, detected, folder, start));
+                _log($"Guardé la dirección de {entry.Name}: {url.Trim()}", Level.Ok);
+                return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return "No pude guardar: " + ex.Message; }
+        }
+        var wantSetup = false;
+        ApisWindow.Show(_owner, Load, Save, () => wantSetup = true);
+        Update();
+        if (wantSetup) await GuidedSetupAsync(_store.Read(), _session()?.Ctx.Config.Deployment);
     }
 
     private Task DeployApiAsync(Server sv, DeploymentConfig depl) => LaunchAsync(sv, depl, LaunchMode.Deploy);
@@ -578,7 +600,7 @@ public sealed class ServerView : ScrollViewer
             var api = PickApi(s, depl.Project);
             if (api is null)
             {
-                Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta. Revisa la sección «api» de dev-menu.json.", true);
+                Dialogs.Confirm(_owner, "No encontré un proyecto web (ASP.NET Core) en esta carpeta. Abre la carpeta del proyecto que contiene la API.", true);
                 return;
             }
             var project = Paths.Relative(s.Root, api.ProjectPath);

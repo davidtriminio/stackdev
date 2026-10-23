@@ -176,7 +176,7 @@ public class ApiCatalogTests
         var sv = new StackDev.Core.Servers.Server { Id = "1", Name = "VPS", Host = "1.2.3.4", User = "u" };
         var depl = new StackDev.Core.Config.DeploymentConfig { Server = "1", Service = "shop-api", Domain = "shop.1-2-3-4.sslip.io" };
         var list = ApiCatalog.Build(ctx, sv, depl, new StackDev.Core.Servers.ApiStatus(true, "active", "", "", 200, null, null));
-        var e = Assert.Single(list);
+        var e = list.Single(x => x.Scope == ApiScope.Server);
         Assert.Equal(ApiScope.Server, e.Scope);
         Assert.Equal("https://shop.1-2-3-4.sslip.io", e.Url);
         Assert.True(e.Running == true);
@@ -192,5 +192,65 @@ public class ApiCatalogTests
         Assert.Contains("⚠ /health", lines[1]);
         Assert.Contains("Documentación", lines[2]);
         Assert.Contains("No responde", ApiCatalog.Describe(Array.Empty<ApiEndpoint>())[0]);
+    }
+}
+
+public class ApiFormTests
+{
+    [Fact]
+    public void Url_check_explains_the_problem()
+    {
+        Assert.NotNull(ApiCatalog.CheckUrl(""));
+        Assert.NotNull(ApiCatalog.CheckUrl("localhost:5000"));
+        Assert.NotNull(ApiCatalog.CheckUrl("ftp://x.com"));
+        Assert.Null(ApiCatalog.CheckUrl("http://localhost:5000"));
+        Assert.Null(ApiCatalog.CheckUrl("https://mi-api.com"));
+    }
+
+    [Fact]
+    public void Unconfigured_api_is_offered_with_the_detected_address_and_is_saved_from_the_form()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sd-api-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(Path.Combine(root, "src", "Props"));
+        File.WriteAllText(Path.Combine(root, "src", "Web.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk.Web\"></Project>");
+        Directory.CreateDirectory(Path.Combine(root, "src", "Properties"));
+        File.WriteAllText(Path.Combine(root, "src", "Properties", "launchSettings.json"), "{\"profiles\":{\"x\":{\"applicationUrl\":\"http://localhost:5227\"}}}");
+        try
+        {
+            var found = StackDev.Core.Detection.Detector.Detect(root);
+            var config = new StackDev.Core.Config.ProjectConfig { Name = "p" };
+            var ctx = new StackDev.Core.Config.ProjectContext(root, config);
+            var list = ApiCatalog.Build(ctx, null, null, null, found);
+            var api = list.Single(e => e.Component == StackDev.Core.Config.ProjectComponent.Api);
+            Assert.False(api.Configured);
+            Assert.Equal("http://localhost:5227", api.Suggestion);
+            Assert.False(api.NeedsFolder);
+            Assert.False(list.Single(e => e.Scope == ApiScope.Server).Configured);
+
+            var saved = ApiCatalog.ApplyLocal(config, StackDev.Core.Config.ProjectComponent.Api, "http://localhost:5227/", found);
+            Assert.Equal("http://localhost:5227", saved.Api!.Url);
+            Assert.False(string.IsNullOrEmpty(saved.Api.Start));
+            Assert.Null(config.Api);
+        }
+        finally { try { Directory.Delete(root, true); } catch (IOException) { } }
+    }
+
+    [Fact]
+    public void Nothing_detected_asks_for_the_folder_and_the_command()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "sd-empty-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+        try
+        {
+            var found = StackDev.Core.Detection.Detector.Detect(root);
+            var ctx = new StackDev.Core.Config.ProjectContext(root, new StackDev.Core.Config.ProjectConfig());
+            var api = ApiCatalog.Build(ctx, null, null, null, found).Single(e => e.Component == StackDev.Core.Config.ProjectComponent.Api);
+            Assert.True(api.NeedsFolder);
+            Assert.DoesNotContain(ApiCatalog.Build(ctx, null, null, null, found), e => e.Component == StackDev.Core.Config.ProjectComponent.Web);
+            var saved = ApiCatalog.ApplyLocal(new StackDev.Core.Config.ProjectConfig(), StackDev.Core.Config.ProjectComponent.Api, "http://localhost:6000", found, "backend", "dotnet run");
+            Assert.Equal("backend", saved.Api!.Folder);
+            Assert.Equal("dotnet run", saved.Api.Start);
+        }
+        finally { try { Directory.Delete(root, true); } catch (IOException) { } }
     }
 }

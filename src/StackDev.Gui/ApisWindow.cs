@@ -11,43 +11,86 @@ namespace StackDev.Gui;
 /// <summary>Every address of the project in one place: the APIs on this computer and the one on the server, each with Open, Test and Copy.</summary>
 public static class ApisWindow
 {
-    public static void Show(Window? owner, IReadOnlyList<ApiEntry> entries)
+    /// <param name="load">Builds the list again (it is called after every save).</param>
+    /// <param name="save">Saves the address (and, if asked, the folder and start command) of a local app. Returns an error text, or null when saved.</param>
+    /// <param name="setupServer">Opens the assistant that picks the server and the API (the window closes first).</param>
+    public static void Show(Window? owner, Func<IReadOnlyList<ApiEntry>> load, Func<ApiEntry, string, string?, string?, string?> save, Action setupServer)
     {
         var w = ServerDialogs.Base(owner, "Direcciones y pruebas", 760);
         var root = new StackPanel { Margin = new Thickness(22) };
-        root.Children.Add(new TextBlock { Text = "Direcciones de este proyecto", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
-        root.Children.Add(new TextBlock
-        {
-            Text = "«Probar» consulta la dirección ahora y dice qué responde y en cuánto tiempo. «Abrir» te deja elegir entre las páginas que existen.",
-            FontSize = 11.5, Foreground = ServerDialogs.P("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
-        });
 
-        foreach (var scope in new[] { ApiScope.Local, ApiScope.Server })
+        void Build()
         {
-            var group = entries.Where(e => e.Scope == scope).ToList();
+            root.Children.Clear();
+            var entries = load();
+            root.Children.Add(new TextBlock { Text = "Direcciones de este proyecto", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
             root.Children.Add(new TextBlock
             {
-                Text = scope == ApiScope.Local ? "EN ESTE EQUIPO (desarrollo)" : "EN EL SERVIDOR",
-                FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = ServerDialogs.P("AccentBrush"), Margin = new Thickness(0, 10, 0, 6),
+                Text = "«Probar» consulta la dirección ahora y dice qué responde y en cuánto tiempo. «Abrir» te deja elegir entre las páginas que existen. Lo que falte se completa aquí mismo.",
+                FontSize = 11.5, Foreground = ServerDialogs.P("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10),
             });
-            if (group.Count == 0)
+            foreach (var scope in new[] { ApiScope.Local, ApiScope.Server })
             {
                 root.Children.Add(new TextBlock
                 {
-                    Text = scope == ApiScope.Local ? "Este proyecto no tiene API ni web local configuradas en dev-menu.json." : "Este proyecto todavía no sube a ningún servidor.",
-                    FontSize = 12, Foreground = ServerDialogs.P("MutedBrush"), TextWrapping = TextWrapping.Wrap,
+                    Text = scope == ApiScope.Local ? "EN ESTE EQUIPO (desarrollo)" : "EN EL SERVIDOR",
+                    FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = ServerDialogs.P("AccentBrush"), Margin = new Thickness(0, 10, 0, 6),
                 });
-                continue;
+                foreach (var e in entries.Where(x => x.Scope == scope))
+                    root.Children.Add(e.Configured ? Card(e) : FormCard(e, w, save, Build, setupServer));
             }
-            foreach (var e in group) root.Children.Add(Card(e));
+            var close = ServerDialogs.Button("Cerrar", true);
+            close.Click += (_, _) => w.Close();
+            root.Children.Add(ServerDialogs.ButtonRow(close));
         }
 
-        var close = ServerDialogs.Button("Cerrar", true);
-        close.Click += (_, _) => w.Close();
-        root.Children.Add(ServerDialogs.ButtonRow(close));
+        Build();
         w.Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         w.MaxHeight = SystemParameters.WorkArea.Height - 60;
         w.ShowDialog();
+    }
+
+    /// <summary>What is not configured yet, as a small form (or a button for the server) instead of a file to edit.</summary>
+    private static Border FormCard(ApiEntry e, Window w, Func<ApiEntry, string, string?, string?, string?> save, Action rebuild, Action setupServer)
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock { Text = e.Name, FontSize = 13.5, FontWeight = FontWeights.SemiBold });
+        stack.Children.Add(new TextBlock { Text = "○ sin configurar", FontSize = 12, Foreground = ServerDialogs.P("WarnBrush"), Margin = new Thickness(0, 2, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = e.Detail, FontSize = 11.5, Foreground = ServerDialogs.P("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 8) });
+
+        if (e.Scope == ApiScope.Server)
+        {
+            var go = new Button { Content = "Elegir servidor y API (asistente)", Padding = new Thickness(14, 6, 14, 6), HorizontalAlignment = HorizontalAlignment.Left };
+            go.Style = ServerDialogs.GetStyle("BtnPrimary");
+            go.Click += (_, _) => { w.Close(); setupServer(); };
+            stack.Children.Add(go);
+        }
+        else
+        {
+            var url = ServerDialogs.Field(stack, "Dirección con la que se abre (URL)", e.Suggestion ?? "", e.Suggestion is null ? "Por ejemplo http://localhost:5000" : "Sugerida a partir de tu proyecto. Cámbiala si es otra.", 200);
+            TextBox? folder = null, start = null;
+            if (e.NeedsFolder)
+            {
+                folder = ServerDialogs.Field(stack, "Carpeta donde está (relativa al proyecto)", "", "Por ejemplo backend", 200);
+                start = ServerDialogs.Field(stack, "Comando para iniciarla", "", "Por ejemplo dotnet run --project src/Api", 300);
+            }
+            var error = ServerDialogs.Error();
+            stack.Children.Add(error);
+            var ok = new Button { Content = "Guardar", Padding = new Thickness(14, 6, 14, 6), HorizontalAlignment = HorizontalAlignment.Left };
+            ok.Style = ServerDialogs.GetStyle("BtnPrimary");
+            ok.Click += (_, _) =>
+            {
+                var problem = save(e, url.Text, folder?.Text, start?.Text);
+                if (problem is not null) { error.Text = problem; error.Visibility = Visibility.Visible; return; }
+                rebuild();
+            };
+            stack.Children.Add(ok);
+        }
+        return new Border
+        {
+            Background = ServerDialogs.P("Surface2Brush"), BorderBrush = ServerDialogs.P("WarnBrush"), BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(14, 10, 14, 12), Margin = new Thickness(0, 0, 0, 8), Child = stack,
+        };
     }
 
     private static Border Card(ApiEntry e)
@@ -68,7 +111,7 @@ public static class ApisWindow
         };
         if (string.IsNullOrEmpty(e.Url))
         {
-            stack.Children.Add(new TextBlock { Text = "Sin dirección definida. Defínela en la configuración del proyecto (dev-menu.json) o al crear la API en el servidor.", FontSize = 12, Foreground = ServerDialogs.P("WarnBrush"), TextWrapping = TextWrapping.Wrap });
+            stack.Children.Add(new TextBlock { Text = "Sin dirección todavía.", FontSize = 12, Foreground = ServerDialogs.P("WarnBrush") });
         }
         else
         {
