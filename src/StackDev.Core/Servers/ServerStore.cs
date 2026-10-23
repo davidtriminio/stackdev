@@ -25,7 +25,10 @@ public sealed class ServerStore
         {
             var text = Protection.Decrypt(File.ReadAllText(_path, Encoding.UTF8).Trim());
             if (string.IsNullOrWhiteSpace(text)) return new();
-            return JsonSerializer.Deserialize<List<Server>>(text, Options) ?? new();
+            text = Config.LegacyKeys.Upgrade(text, Config.LegacyKeys.Server, out var upgraded);
+            var list = JsonSerializer.Deserialize<List<Server>>(text, Options) ?? new();
+            if (upgraded && list.Count > 0) Save(list);   // rewrite once with the current keys
+            return list;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
