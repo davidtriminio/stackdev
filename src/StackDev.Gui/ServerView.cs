@@ -278,10 +278,9 @@ public sealed class ServerView : ScrollViewer
             var url = "https://" + deplNow!.Domain;
             var where = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
             where.Children.Add(Text("Corriendo en  " + url, 12.5, P("TextBrush")));
-            where.Children.Add(Button("Abrir", () =>
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch (System.ComponentModel.Win32Exception) { }
-            }));
+            var openButton = Button("Abrir ▾", () => { });
+            openButton.Click += async (sender, _) => await BrowserMenu.ShowAsync((FrameworkElement)sender, url);
+            where.Children.Add(openButton);
             stack.Children.Add(where);
         }
         if (!string.IsNullOrWhiteSpace(e.Errors))

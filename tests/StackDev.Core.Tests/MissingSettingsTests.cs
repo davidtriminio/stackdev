@@ -110,3 +110,59 @@ public class ConnectionStringHintTests
         Assert.False(MissingSettings.CanCreateDatabase("Smtp__Host", true));
     }
 }
+
+public class ApiEndpointsTests
+{
+    private static async Task<IReadOnlyList<ApiEndpoint>> Probe(Func<string, int> status)
+    {
+        int port;
+        using (var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)) { l.Start(); port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port; }
+        using var listener = new System.Net.HttpListener();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        var cts = new CancellationTokenSource();
+        var loop = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                System.Net.HttpListenerContext c;
+                try { c = await listener.GetContextAsync(); } catch (Exception) { return; }
+                c.Response.StatusCode = status(c.Request.Url!.AbsolutePath);
+                c.Response.Close();
+            }
+        });
+        try { return await ApiEndpoints.ProbeAsync($"http://127.0.0.1:{port}"); }
+        finally { cts.Cancel(); listener.Stop(); }
+    }
+
+    [Fact]
+    public async Task Lists_only_what_answers()
+    {
+        var found = await Probe(p => p is "/" or "/health/ready" or "/health/live" ? 200 : 404);
+        Assert.Equal(new[] { "/", "/health/ready", "/health/live" }, found.Select(f => f.Path).ToArray());
+        Assert.DoesNotContain(found, f => f.Kind == EndpointKind.Docs);
+    }
+
+    [Fact]
+    public async Task Finds_documentation_when_it_is_published()
+    {
+        var found = await Probe(p => p is "/" or "/swagger" or "/swagger/index.html" or "/openapi/v1.json" ? 200 : 404);
+        Assert.Contains(found, f => f.Path == "/swagger" && f.Kind == EndpointKind.Docs);
+        Assert.Equal(1, found.Count(f => f.Label == "Documentación (Swagger)"));
+        Assert.Contains(found, f => f.Path == "/openapi/v1.json");
+    }
+
+    [Fact]
+    public async Task A_web_app_that_answers_everything_only_lists_the_home_page()
+    {
+        var found = await Probe(_ => 200);
+        Assert.Equal(new[] { "/" }, found.Select(f => f.Path).ToArray());
+    }
+
+    [Fact]
+    public async Task Protected_pages_count_as_existing()
+    {
+        var found = await Probe(p => p == "/" ? 200 : p == "/swagger" ? 401 : 404);
+        Assert.True(found.Single(f => f.Path == "/swagger").Protected);
+    }
+}
