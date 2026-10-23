@@ -37,6 +37,9 @@ public sealed class LaunchFlow
         _mode = mode; _request = request; _saveCredentials = saveCredentials;
     }
 
+    /// <summary>The public domain the server's web configuration has for this API (empty when none was found).</summary>
+    public string? FoundDomain { get; private set; }
+
     /// <summary>Runs the flow; whatever goes wrong (an exception, a server that stops answering) ends in a failed step and a message, never a spinner.</summary>
     public LaunchOutcome Run(LaunchWindow win, CancellationToken ct)
     {
@@ -74,6 +77,7 @@ public sealed class LaunchFlow
             win.Step(0, StepState.Failed, why);
             return new(false, "No pude revisar el servidor: " + why);
         }
+        if (pre.Value("domain").Length > 0) FoundDomain = pre.Value("domain");
         if (pre.Value("service_exists") != "yes")
         {
             win.Step(0, StepState.Warning, $"«{_service}» todavía no existe en este servidor");
