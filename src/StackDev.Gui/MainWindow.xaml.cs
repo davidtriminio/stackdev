@@ -1340,11 +1340,15 @@ public partial class MainWindow : Window
                 Icon = info is null ? null : new System.Drawing.Icon(info.Stream),
                 Visible = true,
             };
-            var menu = new System.Windows.Forms.ContextMenuStrip();
-            menu.Items.Add("Abrir stackdev", null, (_, _) => Dispatcher.Invoke(ShowFromTray));
-            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-            menu.Items.Add("Salir", null, (_, _) => Dispatcher.Invoke(Exit));
-            _tray.ContextMenuStrip = menu;
+            _tray.MouseUp += (_, ev) =>
+            {
+                if (ev.Button != System.Windows.Forms.MouseButtons.Right) return;
+                var at = System.Windows.Forms.Cursor.Position;
+                Dispatcher.Invoke(() => TrayMenu.Open(at.X, at.Y, new (string, Action?)[]
+                {
+                    ("Abrir stackdev", ShowFromTray), ("", null), ("Salir", Exit),
+                }));
+            };
             _tray.MouseClick += (_, ev) =>
             {
                 if (ev.Button == System.Windows.Forms.MouseButtons.Left) Dispatcher.Invoke(ShowFromTray);
