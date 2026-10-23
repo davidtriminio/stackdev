@@ -23,7 +23,8 @@ public static class ServerReadiness
         int? RuntimeMajor,           // what the project needs
         string? Domain,
         string? DnsProblem,          // null when the domain points at the server
-        bool WantHttps);
+        bool WantHttps,
+        string? PortsProblem = null);   // null when ports 80 and 443 answer (or were not checked)
 
     public static string Fact(IReadOnlyDictionary<string, string> facts, string key) => facts.TryGetValue(key, out var v) ? v : "";
 
@@ -94,6 +95,9 @@ public static class ServerReadiness
             list.Add(new("dns", CheckLevel.Ok, "Dominio", $"{i.Domain} apunta a este servidor."));
         else
             list.Add(new("dns", CheckLevel.Warn, "Dominio", i.DnsProblem));
+
+        if (i.WantHttps && i.PortsProblem is not null)
+            list.Add(new("ports", CheckLevel.Warn, "Puertos 80 y 443", i.PortsProblem));
 
         // rsync, disk, name
         if (Fact(f, "rsync") != "yes")
