@@ -128,8 +128,9 @@ public static class DeployService
                     return new(DeployOutcome.Success, "Despliegue terminado.", result.Value("backup"), status);
                 }
                 case 20: return new(DeployOutcome.RolledBack, result.FailMessage ?? "La versión nueva falló; volvió la anterior.", Missing: MissingSettings.Parse(result.Value("missing")));
+                case 24: return new(DeployOutcome.NotReady, result.FailMessage ?? "La versión nueva no arranca con la configuración actual. No se cambió nada.", Missing: MissingSettings.Parse(result.Value("missing")));
                 case 22: return new(DeployOutcome.StartFailed, result.FailMessage ?? "Los archivos están en el servidor pero el servicio no arrancó.", Missing: MissingSettings.Parse(result.Value("missing")));
-                case 21: return new(DeployOutcome.RollbackFailed, result.FailMessage ?? "La versión nueva falló y no se pudo volver a la anterior.");
+                case 21: return new(DeployOutcome.RollbackFailed, result.FailMessage ?? "La versión nueva falló y no se pudo volver a la anterior.", Missing: MissingSettings.Parse(result.Value("missing")));
                 case 12: return new(DeployOutcome.Failed, (result.FailMessage ?? "La subida llegó dañada.") + " No se cambió nada.");
                 default:
                     return new(DeployOutcome.Failed, result.LaunchError ?? result.FailMessage ?? $"El servidor terminó con el código {result.ExitCode}.");
@@ -175,6 +176,21 @@ public static class DeployService
         using var session = new RemoteSession(server);
         if (session.Open(ct) is { } e) return new RemoteResult { LaunchError = e };
         return session.Execute("preflight", new[] { "--svc", service }, null, ct);
+    }
+
+    /// <summary>Starts the installed application for a few seconds with the real settings, to know whether it would start. Changes nothing.</summary>
+    public static DeployResult Check(Server server, string service, string dll, CancellationToken ct = default)
+    {
+        if (!Sh.Service.IsMatch(service) || !Sh.Dll.IsMatch(dll)) return new(DeployOutcome.Failed, "Nombre de servicio o .dll no válido.");
+        if (!HostKeys.IsTrusted(server)) return new(DeployOutcome.Failed, "El servidor aún no está verificado.");
+        using var session = new RemoteSession(server);
+        if (session.Open(ct) is { } e) return new(DeployOutcome.Failed, e);
+        var r = session.Execute("check", new[] { "--svc", service, "--dll", dll }, null, ct);
+        if (r.Ok) return new(DeployOutcome.Success, "La API arranca con su configuración actual.");
+        var missing = MissingSettings.Parse(r.Value("missing"));
+        return r.ExitCode == 24
+            ? new(DeployOutcome.NotReady, r.FailMessage ?? "La API no arranca con su configuración actual.", Missing: missing)
+            : new(DeployOutcome.Failed, r.LaunchError ?? r.FailMessage ?? $"El servidor terminó con el código {r.ExitCode}.");
     }
 
     /// <summary>API services already installed on the server (to pick the right one instead of remembering its name).</summary>

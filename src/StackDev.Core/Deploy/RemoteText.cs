@@ -70,6 +70,13 @@ public static class RemoteText
         E("ufw: ports 80 and 443 allowed", "ufw: puertos 80 y 443 permitidos");
 
         E("The values were saved, but the service still does not start.", "Se guardaron los valores, pero el servicio todavía no arranca.");
+        E("Trying the new version with the current settings before replacing anything", "Probando la versión nueva con la configuración actual antes de reemplazar nada");
+        E("Trying the app with its current settings", "Probando la API con su configuración actual");
+        E("The new version does not start with the current settings", "La versión nueva no arranca con la configuración actual");
+        E("The application does not start with the current settings", "La API no arranca con la configuración actual");
+        E("The new version does not start with the current settings. Nothing was changed; the current version keeps running.", "La versión nueva no arranca con la configuración actual. No se cambió nada; la versión actual sigue en marcha.");
+        E("The application does not start with the current settings.", "La API no arranca con la configuración actual.");
+        R(@"There is no application in (.+) yet\. Upload it first\.", "Todavía no hay una API en $1. Súbela primero.");
         E("Checking PostgreSQL", "Revisando PostgreSQL");
         R(@"Creating the user (\S+)", "Creando el usuario de base de datos $1");
         R(@"Creating the database (\S+)", "Creando la base de datos $1");
