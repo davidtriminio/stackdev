@@ -151,25 +151,92 @@ public static class DeployDialogs
 
     // ------------------------------------------------------------ provision
 
-    /// <summary>Asks what a new API needs. Null when cancelled.</summary>
+    public enum ReadinessChoice { Cancel, Install, Continue }
+
+    /// <summary>
+    /// The server check before creating an API: one line per thing looked at (✔ fine, ⚠ worth knowing, ✘ blocks).
+    /// Install installs what StackDev can (web server, runtime, certbot, rsync); Continue goes on to the form.
+    /// </summary>
+    public static ReadinessChoice Readiness(Window? owner, Server server, IReadOnlyList<CheckItem> items)
+    {
+        var w = ServerDialogs.Base(owner, "Revisión del servidor", 660);
+        var root = new StackPanel { Margin = new Thickness(22) };
+        var errors = items.Count(c => c.Level == CheckLevel.Error);
+        var warns = items.Count(c => c.Level == CheckLevel.Warn);
+        root.Children.Add(Body(errors > 0 ? $"Antes de crear la API hay {errors} cosa(s) que resolver en «{server.Name}»"
+            : warns > 0 ? $"«{server.Name}» está casi listo: {warns} aviso(s)"
+            : $"«{server.Name}» está listo para una API nueva", 15));
+
+        var card = new Border { Style = ServerDialogs.GetStyle("Card"), Margin = new Thickness(0, 2, 0, 12) };
+        var rows = new StackPanel();
+        foreach (var c in items)
+        {
+            var (icon, brush) = c.Level switch
+            {
+                CheckLevel.Ok => ("✔", P("OkBrush")),
+                CheckLevel.Warn => ("⚠", P("WarnBrush")),
+                _ => ("✘", P("ErrBrush")),
+            };
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.Children.Add(new TextBlock { Text = icon, Foreground = brush, FontSize = 14, VerticalAlignment = VerticalAlignment.Top });
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock { Text = c.Title, FontWeight = FontWeights.SemiBold, Foreground = P("TextBrush") });
+            text.Children.Add(new TextBlock { Text = c.Detail, Foreground = c.Level == CheckLevel.Ok ? P("MutedBrush") : brush, FontSize = 12, TextWrapping = TextWrapping.Wrap });
+            if (c.Level != CheckLevel.Ok && c.Manual is not null)
+                text.Children.Add(new TextBlock { Text = (c.Fix != CheckFix.None ? "También a mano: " : "Cómo resolverlo: ") + c.Manual, Foreground = P("MutedBrush"), FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
+            Grid.SetColumn(text, 1);
+            row.Children.Add(text);
+            rows.Children.Add(row);
+        }
+        card.Child = rows;
+        root.Children.Add(card);
+
+        var fixes = ServerReadiness.Fixable(items);
+        var canContinue = ServerReadiness.CanContinue(items);
+        if (fixes.Count > 0)
+            root.Children.Add(Muted("«Instalar lo que falta» usa el gestor de paquetes del servidor (dnf, yum o apt). No cambia nada más. Tarda uno o dos minutos."));
+        if (!canContinue && fixes.Count == 0)
+            root.Children.Add(Muted("Hay un problema que no puedo resolver desde aquí. Arréglalo en el servidor y vuelve a abrir esta revisión."));
+
+        var cancel = ServerDialogs.Button("Cancelar", false);
+        var install = ServerDialogs.Button(fixes.Count > 0 ? $"Instalar lo que falta ({fixes.Count})" : "Instalar", fixes.Count > 0 && !canContinue || fixes.Count > 0 && errors > 0);
+        install.Visibility = fixes.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var go = ServerDialogs.Button("Continuar", fixes.Count == 0 || canContinue);
+        go.IsEnabled = canContinue;
+        install.IsCancel = false;
+        go.IsCancel = false;
+        var choice = ReadinessChoice.Cancel;
+        install.Click += (_, _) => { choice = ReadinessChoice.Install; w.Close(); };
+        go.Click += (_, _) => { choice = ReadinessChoice.Continue; w.Close(); };
+        cancel.Click += (_, _) => w.Close();
+        root.Children.Add(ServerDialogs.ButtonRow(cancel, install, go));
+        w.Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        w.SizeToContent = SizeToContent.Manual;
+        w.Height = Math.Min(680, SystemParameters.WorkArea.Height - 60);
+        w.ResizeMode = ResizeMode.CanResize;
+        w.ShowDialog();
+        return choice;
+    }
+
+    /// <summary>Asks what a new API needs: the essentials first, the rest under «Opciones avanzadas». Null when cancelled.</summary>
     public static ProvisionRequest? ProvisionForm(Window? owner, Server server, string service, string dll, string domain, int port, int? runtime)
     {
-        var w = ServerDialogs.Base(owner, "Aprovisionar una API nueva", 600);
+        var w = ServerDialogs.Base(owner, "Crear una API nueva", 600);
         var root = new StackPanel { Margin = new Thickness(22) };
-        root.Children.Add(Muted($"Prepara «{server.Name}» para una API nueva: usuario, carpetas, secretos, servicio, sitio de {server.WebName}, firewall y HTTPS. No sube código: eso es «Subir API»."));
+        root.Children.Add(Muted($"Se prepara «{server.Name}» para esta API: usuario, carpetas, secretos, servicio, sitio de {server.WebName}, firewall y HTTPS. No sube código; eso lo hace «Subir API»."));
 
-        var svc = ServerDialogs.Field(root, "Nombre del servicio", service, "Minúsculas, números y guiones. Es el servicio systemd y la carpeta en /var/www.");
-        var dllBox = ServerDialogs.Field(root, "Archivo .dll que arranca la API", dll);
-        var dom = ServerDialogs.Field(root, "Dominio público", domain, "Ej. mi-api.midominio.com. Su registro A debe apuntar a " + server.Host + " (sin proxy si usas Cloudflare).");
-        var portBox = ServerDialogs.Field(root, "Puerto local (solo el proxy lo ve)", port.ToString(), "Sugerido porque nada lo usa en el servidor.");
+        var svc = ServerDialogs.Field(root, "Nombre del servicio", service, "Minúsculas, números y guiones, hasta 40 caracteres (ej. mi-api).", 40);
+        var dom = ServerDialogs.Field(root, "Dominio público de la API", domain, "Ej. mi-api.midominio.com, sin https://. Su registro A debe apuntar a " + server.Host + " (sin proxy si usas Cloudflare).", 253);
 
         var kinds = new[] { DatabaseKind.Sqlite, DatabaseKind.Postgres, DatabaseKind.None };
         var names = new[] { "SQLite (archivo en el servidor)", "PostgreSQL (cadena de conexión)", "Ninguna / la configuro después" };
         var kind = 0;
-        root.Children.Add(new TextBlock { Text = "Base de datos", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
+        root.Children.Add(new TextBlock { Text = "Base de datos (clic para cambiar)", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
         var dbButton = Toggle("");
         var pgPanel = new StackPanel { Visibility = Visibility.Collapsed };
-        var pg = ServerDialogs.Field(pgPanel, "Cadena de conexión de PostgreSQL", "Host=localhost;Database=" + service + ";Username=postgres;Password=");
+        var pg = ServerDialogs.Field(pgPanel, "Cadena de conexión de PostgreSQL", "Host=localhost;Database=" + service + ";Username=postgres;Password=", null, 500);
         void SetDb()
         {
             dbButton.Content = names[kind] + "   ▾";
@@ -180,29 +247,66 @@ public static class DeployDialogs
         root.Children.Add(dbButton);
         root.Children.Add(pgPanel);
 
-        var origin = ServerDialogs.Field(root, "Origen del frontend para CORS (opcional)", "", "Ej. https://mi-app.vercel.app. Se puede añadir o cambiar después en «Variables».");
-
         var https = true;
         var httpsButton = Toggle("");
-        void SetHttps() => httpsButton.Content = (https ? "Pedir certificado HTTPS (Let's Encrypt): Sí" : "Pedir certificado HTTPS: No, lo hago después") + "   ▾";
+        var emailPanel = new StackPanel();
+        var email = ServerDialogs.Field(emailPanel, "Correo para el certificado", "", "Let's Encrypt lo usa para avisarte si va a vencer.", 120);
+        void SetHttps()
+        {
+            httpsButton.Content = (https ? "HTTPS con certificado gratis (Let's Encrypt): Sí" : "HTTPS: No, lo hago después") + "   ▾";
+            emailPanel.Visibility = https ? Visibility.Visible : Visibility.Collapsed;
+        }
         SetHttps();
         httpsButton.Click += (_, _) => { https = !https; SetHttps(); };
         root.Children.Add(httpsButton);
-        var email = ServerDialogs.Field(root, "Correo para el certificado", "", "Let's Encrypt lo usa para avisarte si va a vencer.");
+        root.Children.Add(emailPanel);
 
-        root.Children.Add(new TextBlock { Text = "Contraseña del administrador de la API (opcional)", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
-        var admin = new PasswordBox { Margin = new Thickness(0, 0, 0, 2) };
-        root.Children.Add(admin);
-        root.Children.Add(Muted("Vacía = se genera una fuerte y te la muestro una sola vez. La clave JWT se genera siempre."));
+        // advanced: what is almost always fine as suggested
+        var advanced = new StackPanel { Visibility = Visibility.Collapsed };
+        var dllBox = ServerDialogs.Field(advanced, "Archivo .dll que arranca la API", dll, "Termina en .dll. Se detecta solo desde tu proyecto.", 100);
+        var portBox = ServerDialogs.Field(advanced, "Puerto local (1024 a 65535)", port.ToString(), "Solo lo ve el proxy. Sugerido porque nada lo usa en el servidor.", 5, digitsOnly: true);
+        var origin = ServerDialogs.Field(advanced, "Origen del frontend para CORS", "", "Ej. https://mi-app.vercel.app. Se puede añadir o cambiar después en «Variables».", 200);
+        advanced.Children.Add(new TextBlock { Text = "Contraseña del administrador de la API", FontSize = 11, Foreground = P("MutedBrush"), Margin = new Thickness(0, 0, 0, 3) });
+        var admin = new PasswordBox { Margin = new Thickness(0, 0, 0, 2), MaxLength = 100 };
+        advanced.Children.Add(admin);
+        advanced.Children.Add(Muted("Vacía = se genera una fuerte y te la muestro una sola vez. La clave JWT se genera siempre."));
+        var more = new Button { Content = "Opciones avanzadas  ▸", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 10), Padding = new Thickness(12, 6, 12, 6) };
+        more.Click += (_, _) =>
+        {
+            var show = advanced.Visibility != Visibility.Visible;
+            advanced.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            more.Content = "Opciones avanzadas  " + (show ? "▾" : "▸");
+        };
+        root.Children.Add(more);
+        root.Children.Add(advanced);
 
         var error = ServerDialogs.Error();
         root.Children.Add(error);
-        var ok = ServerDialogs.Button("Aprovisionar", true);
+        var ok = ServerDialogs.Button("Crear API", true);
         var cancel = ServerDialogs.Button("Cancelar", false);
         ProvisionRequest? result = null;
+        void Problem(string message, TextBox? box, bool openAdvanced = false)
+        {
+            error.Text = message;
+            error.Visibility = Visibility.Visible;
+            if (openAdvanced && advanced.Visibility != Visibility.Visible) more.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            box?.Focus();
+            box?.SelectAll();
+        }
         ok.Click += (_, _) =>
         {
-            if (!int.TryParse(portBox.Text.Trim(), out var p)) { error.Text = "El puerto debe ser un número."; error.Visibility = Visibility.Visible; return; }
+            if (ServerValidation.CheckDeployment(svc.Text, dllBox.Text, dom.Text) is { } bad)
+            {
+                if (bad.Field == "service") Problem(bad.Message, svc);
+                else if (bad.Field == "dll") Problem(bad.Message, dllBox, true);
+                else Problem(bad.Message, dom);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(ServerService.CleanDomain(dom.Text))) { Problem("Escribe el dominio de la API (ej. mi-api.midominio.com).", dom); return; }
+            if (dllBox.Text.Trim().Length == 0) { Problem("Escribe el archivo .dll que arranca la API (ej. MiApi.dll).", dllBox, true); return; }
+            if (ServerValidation.CheckPort(portBox.Text, out var p) is { } portProblem) { Problem(portProblem.Message, portBox, true); return; }
+            if (!Sh.ValidPort(p)) { Problem("El puerto debe estar entre 1024 y 65535.", portBox, true); return; }
+            if (https && email.Text.Trim().Length == 0) { Problem("Escribe un correo para el certificado, o elige no pedirlo ahora.", email); return; }
             var req = new ProvisionRequest
             {
                 Server = server,
@@ -218,8 +322,7 @@ public static class DeployDialogs
                 CertificateEmail = email.Text.Trim(),
                 RuntimeMajor = runtime,
             };
-            if (ProvisionService.Validate(req) is { } problem) { error.Text = problem; error.Visibility = Visibility.Visible; return; }
-            if (https && req.CertificateEmail?.Length == 0) { error.Text = "Escribe un correo para el certificado, o elige no pedirlo ahora."; error.Visibility = Visibility.Visible; return; }
+            if (ProvisionService.Validate(req) is { } problem) { Problem(problem, null); return; }
             result = req;
             w.Close();
         };
@@ -227,7 +330,7 @@ public static class DeployDialogs
         root.Children.Add(ServerDialogs.ButtonRow(cancel, ok));
         w.Content = new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         w.SizeToContent = SizeToContent.Manual;
-        w.Height = Math.Min(760, SystemParameters.WorkArea.Height - 60);
+        w.Height = Math.Min(700, SystemParameters.WorkArea.Height - 60);
         w.ResizeMode = ResizeMode.CanResize;
         w.Loaded += (_, _) => svc.Focus();
         w.ShowDialog();
