@@ -77,6 +77,7 @@ public static class RemoteText
         E("The new version does not start with the current settings. Nothing was changed; the current version keeps running.", "La versión nueva no arranca con la configuración actual. No se cambió nada; la versión actual sigue en marcha.");
         E("The application does not start with the current settings.", "La API no arranca con la configuración actual.");
         R(@"There is no application in (.+) yet\. Upload it first\.", "Todavía no hay una API en $1. Súbela primero.");
+        E("Invalid content hash", "La huella del contenido no es válida");
         E("Checking PostgreSQL", "Revisando PostgreSQL");
         R(@"Creating the user (\S+)", "Creando el usuario de base de datos $1");
         R(@"Creating the database (\S+)", "Creando la base de datos $1");

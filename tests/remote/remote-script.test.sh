@@ -152,6 +152,15 @@ o="$(R db-create --svc commerce-hub-api --run-dir "$RUN" --pw-file "$RUN/db2.pw"
 o="$(R db-create --svc commerce-hub-api --run-dir "$RUN" --pw-file /etc/passwd)"; eq "$(code "$o")" 10 "password file outside run dir"
 rm -f "$SD_ROOT/.psql.log"
 
+echo "== the deployed content is remembered so the same build is not uploaded again"
+h1=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+mkdir -p "$T/b6" && echo v6 > "$T/b6/Demo.Api.dll" && tar -czf "$RUN/b6.tgz" -C "$T/b6" .
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/b6.tgz" --sha256 "$(sha "$RUN/b6.tgz")" --content $h1 --wait 12)"; eq "$(code "$o")" 0 "deploy with content exit"
+o="$(R preflight --svc $svc)"; has "$o" "##KV deployed_content=$h1" "preflight reports the deployed content"
+o="$(R deploy --svc $svc --dll Demo.Api.dll --run-dir "$RUN" --bundle "$RUN/b6.tgz" --sha256 "$(sha "$RUN/b6.tgz")" --content notahash --wait 12)"; eq "$(code "$o")" 10 "bad content hash rejected"
+o="$(R rollback --svc $svc --wait 8)"; eq "$(code "$o")" 0 "rollback after content deploy"
+o="$(R preflight --svc $svc)"; hasnt "$o" "deployed_content=$h1" "rollback forgets the content"
+
 echo "== a new version that cannot start is caught before anything is replaced"
 mkdir -p "$T/b5" && echo v9 > "$T/b5/Demo.Api.dll" && touch "$T/b5/NOSTART" && tar -czf "$RUN/b5.tgz" -C "$T/b5" .
 before="$(find "$SD_ROOT/var/backups/stackdev/$svc" -mindepth 1 -maxdepth 1 -type d | wc -l)"

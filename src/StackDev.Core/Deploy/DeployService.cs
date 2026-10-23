@@ -90,6 +90,15 @@ public static class DeployService
             if (runtime is int rt && known.Count > 0 && !known.Contains(rt))
                 return new(DeployOutcome.Failed, $"El servidor tiene el runtime de ASP.NET Core {string.Join(", ", known)} pero la API necesita el {rt}. Instálalo en el servidor (por ejemplo: sudo dnf install -y aspnetcore-runtime-{rt}.0).");
             P("Servidor", "Servicio encontrado y servidor listo.", Level.Ok, 45);
+            var content = ContentHash(outDir);
+            if (!req.Force && content.Length > 0 && string.Equals(pre.Value("deployed_content"), content, StringComparison.OrdinalIgnoreCase))
+            {
+                var running = pre.Value("active") == "active";
+                P("Servidor", "Esta misma versión ya está subida: no hace falta volver a subirla.", Level.Ok, 100);
+                return new(DeployOutcome.AlreadyDeployed, running
+                    ? $"Esta versión ya está subida y activa en {req.Server.Name}. No se volvió a subir."
+                    : $"Esta versión ya está subida en {req.Server.Name}, pero el servicio está detenido. No se volvió a subir.");
+            }
 
             // ---- 4) confirmation
             var plan = new DeployPlan(req.Server, req.Service, req.Dll, req.Domain, Path.GetFileNameWithoutExtension(req.Project),
@@ -111,7 +120,7 @@ public static class DeployService
             var args = new List<string>
             {
                 "--svc", req.Service, "--dll", req.Dll, "--run-dir", session.RunDir!, "--bundle", session.RunDir + "/bundle.tgz",
-                "--sha256", sha, "--keep", req.Keep.ToString(), "--wait", req.HealthWaitSeconds.ToString(),
+                "--sha256", sha, "--content", content, "--keep", req.Keep.ToString(), "--wait", req.HealthWaitSeconds.ToString(),
             };
             if (runtime is int major) { args.Add("--runtime"); args.Add(major.ToString()); }
             var result = session.Execute("deploy", args, e => Relay(e, 63, 35, progress), CancellationToken.None);
@@ -176,6 +185,24 @@ public static class DeployService
         using var session = new RemoteSession(server);
         if (session.Open(ct) is { } e) return new RemoteResult { LaunchError = e };
         return session.Execute("preflight", new[] { "--svc", service }, null, ct);
+    }
+
+    /// <summary>
+    /// A fingerprint of what is about to be uploaded: the names and contents of the files, ignoring dates and the order of the archive,
+    /// so building the same code twice gives the same value.
+    /// </summary>
+    public static string ContentHash(string dir)
+    {
+        if (!Directory.Exists(dir)) return "";
+        var lines = new List<string>();
+        foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        {
+            using var fs = File.OpenRead(f);
+            var h = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs)).ToLowerInvariant();
+            lines.Add(Path.GetRelativePath(dir, f).Replace('\\', '/') + "\0" + h);
+        }
+        lines.Sort(StringComparer.Ordinal);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join("\n", lines)))).ToLowerInvariant();
     }
 
     /// <summary>Starts the installed application for a few seconds with the real settings, to know whether it would start. Changes nothing.</summary>

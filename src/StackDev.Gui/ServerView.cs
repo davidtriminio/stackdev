@@ -226,6 +226,7 @@ public sealed class ServerView : ScrollViewer
         buttons.Children.Add(Button("Direcciones y pruebas", ShowAddresses));
         buttons.Children.Add(Button("Logs en vivo", () => _terminal($"logs {svc}", Ssh.TerminalLine(sv, $"sudo journalctl -u {svc} -f -n 100 --no-pager"))));
         var extra = new WrapPanel { Margin = new Thickness(0, 4, 0, 0), Visibility = _showMore ? Visibility.Visible : Visibility.Collapsed };
+        extra.Children.Add(Button("Subir de todos modos", () => _ = DeployAgainAsync(sv, depl)));
         extra.Children.Add(Button("Variables (.env)", () => _ = EditVariablesAsync(sv, svc)));
         extra.Children.Add(Button("Versiones anteriores", () => _ = VersionsAsync(sv, svc)));
         extra.Children.Add(Button("Actualizar estado", () => _ = QueryStatusAsync(force: true)));
@@ -584,10 +585,12 @@ public sealed class ServerView : ScrollViewer
 
     private Task DeployApiAsync(Server sv, DeploymentConfig depl) => LaunchAsync(sv, depl, LaunchMode.Deploy);
 
+    private Task DeployAgainAsync(Server sv, DeploymentConfig depl) => LaunchAsync(sv, depl, LaunchMode.Deploy, force: true);
+
     /// <summary>
     /// Check, fix and start (or upload) in one window: the steps, the log and every question appear together while the screen behind is blurred.
     /// </summary>
-    private async Task LaunchAsync(Server sv, DeploymentConfig depl, LaunchMode mode)
+    private async Task LaunchAsync(Server sv, DeploymentConfig depl, LaunchMode mode, bool force = false)
     {
         var s = _session();
         if (s is null || string.IsNullOrEmpty(depl.Service)) return;
@@ -611,7 +614,7 @@ public sealed class ServerView : ScrollViewer
                 depl.Dll = dll;
                 _saveDeployment(depl);
             }
-            req = new DeployRequest { Server = sv, Project = api.ProjectPath, Service = depl.Service!, Dll = dll, Domain = depl.Domain };
+            req = new DeployRequest { Server = sv, Project = api.ProjectPath, Service = depl.Service!, Dll = dll, Domain = depl.Domain, Force = force };
         }
         else if (string.IsNullOrEmpty(dll))
         {
