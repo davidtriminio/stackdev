@@ -54,8 +54,10 @@ public static class RemoteText
         rules.Add((new Regex(@"^(web-apache|web-nginx|certbot|rsync|runtime) installed$"), m => Item(m.Groups[1].Value) + " instalado"));
         R(@"Backup (.+) saved", "Copia $1 guardada");
         E("Certificate issued and HTTP now redirects to HTTPS", "Certificado emitido; HTTP ahora redirige a HTTPS");
+        E("HTTPS skipped", "HTTPS omitido");
+        E("certbot is not installed", "certbot no está instalado");
+        E("The certificate could not be issued", "No se pudo emitir el certificado");
         E("Checksum OK", "Suma de verificación correcta");
-        R(@"HTTPS skipped\. Later: (.+)", "HTTPS omitido. Después: $1");
         R(@"Kestrel answers on (\S+) \(HTTP (\S+)\)", "La API responde en $1 (HTTP $2)");
         E("No local firewall detected", "No se detectó un firewall local");
         E("SELinux: the web server may reach the API", "SELinux: el servidor web puede llegar a la API");
@@ -74,10 +76,7 @@ public static class RemoteText
         E("Could not set httpd_can_network_connect", "No se pudo activar httpd_can_network_connect");
         R(@"Deployment failed: (.+)", "La subida falló: $1");
         E("In your cloud (Oracle, AWS...) the network rules must also allow ports 80 and 443.", "En tu nube (Oracle, AWS…) las reglas de red también deben permitir los puertos 80 y 443.");
-        R(@"No email given for the certificate\. Run: (.+)", "No se dio un correo para el certificado. Ejecuta: $1");
-        R(@"The certificate could not be issued \(is the DNS record for (\S+) pointing here, and not proxied\?\)\. Retry later: (.+)", "No se pudo emitir el certificado (¿el registro DNS de $1 apunta aquí, sin proxy?). Reintenta después: $2");
         E("The service is not healthy with the new values", "El servicio no funciona bien con los valores nuevos");
-        R(@"certbot is not installed\. Install it and run: (.+)", "certbot no está instalado. Instálalo y ejecuta: $1");
         E("dotnet was not found on the server", "No encontré dotnet en el servidor");
 
         // ---- failures
