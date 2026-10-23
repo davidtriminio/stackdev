@@ -37,15 +37,40 @@ public sealed class LaunchFlow
         _mode = mode; _request = request; _saveCredentials = saveCredentials;
     }
 
+    /// <summary>Runs the flow; whatever goes wrong (an exception, a server that stops answering) ends in a failed step and a message, never a spinner.</summary>
     public LaunchOutcome Run(LaunchWindow win, CancellationToken ct)
+    {
+        try { return RunSteps(win, ct); }
+        catch (OperationCanceledException)
+        {
+            win.FailRunningSteps("Cancelado");
+            return new(false, "Cancelado.");
+        }
+        catch (Exception ex)
+        {
+            win.Info("Error inesperado: " + ex.Message, Level.Error);
+            win.FailRunningSteps(ex.Message);
+            return new(false, "Error inesperado: " + ex.Message);
+        }
+    }
+
+    private LaunchOutcome RunSteps(LaunchWindow win, CancellationToken ct)
     {
         // ---- 1) the server and the service
         win.Step(0, StepState.Running);
         win.Info("Revisando el servidor…", Level.Title);
-        var pre = DeployService.Preflight(_sv, _service, ct);
+        win.Info($"Conectando con {_sv.User}@{_sv.Host}:{(_sv.Port is > 0 ? _sv.Port : 22)} por SSH (máximo {DeployService.PreflightLimitSec} s)…", Level.Muted);
+        // The facts come one by one; showing them tells which one the server is stuck on if it ever stops answering.
+        var pre = DeployService.Preflight(_sv, _service, ct, e =>
+        {
+            if (e.Kind == RemoteEventKind.Kv && e.Key is not (null or "deployed_content")) win.Info($"  {e.Key} = {e.Text}", Level.Muted);
+            else DeployService.Relay(e, 0, 0, win.Report);
+        });
+        if (ct.IsCancellationRequested) { win.Step(0, StepState.Failed, "Cancelado"); return new(false, "Cancelado."); }
         if (!pre.Ok)
         {
             var why = pre.LaunchError ?? pre.FailMessage ?? "No se pudo consultar el servidor.";
+            win.Info(why, Level.Error);
             win.Step(0, StepState.Failed, why);
             return new(false, "No pude revisar el servidor: " + why);
         }
@@ -60,7 +85,8 @@ public sealed class LaunchFlow
         // ---- 2) the settings of the API
         win.Step(1, StepState.Running);
         win.Info("Probando la API con su configuración real…", Level.Title);
-        var check = DeployService.Check(_sv, _service, _dll, ct);
+        var check = DeployService.Check(_sv, _service, _dll, ct, e => DeployService.Relay(e, 0, 0, win.Report));
+        if (ct.IsCancellationRequested) { win.Step(1, StepState.Failed, "Cancelado"); return new(false, "Cancelado."); }
         if (check.Ok) win.Step(1, StepState.Ok, "La API arranca con su configuración actual");
         else if (check.Outcome == DeployOutcome.NotReady && check.Message.Contains("Todavía no hay una API", StringComparison.Ordinal))
         {

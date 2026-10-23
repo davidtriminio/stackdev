@@ -151,7 +151,7 @@ pkg_install() {
     esac
 }
 
-free_mb() { df -Pm "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
+free_mb() { timeout 10 df -Pm "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
 
 size_kb() { du -sk "$1" 2>/dev/null | awk '{print $1}'; }
 
@@ -313,14 +313,14 @@ cmd_preflight() {
     kv os "$( (. "$ROOT/etc/os-release" 2>/dev/null && echo "${PRETTY_NAME:-unknown}") || echo unknown)"
     kv service_exists "$(service_exists "$SVC" && echo yes || echo no)"
     kv app_dir "$([ -d "$APP_DIR" ] && echo yes || echo no)"
-    kv active "$(systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
+    kv active "$(timeout 15 systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
     kv env_file "$([ -f "$ENV_FILE" ] && echo yes || echo no)"
     kv port "$(env_port)"
     kv deployed_content "$(head -n1 "$BACKUP_DIR/current.content" 2>/dev/null || true)"
     kv postgres "$(command -v psql >/dev/null 2>&1 && echo yes || echo no)"
     kv rsync "$(command -v rsync >/dev/null 2>&1 && echo yes || echo no)"
     kv dotnet "$(dotnet_bin | head -n1)"
-    kv runtimes "$( ( "$(dotnet_bin)" --list-runtimes 2>/dev/null | awk '$1=="Microsoft.AspNetCore.App"{print $2}' | cut -d. -f1 | sort -un | paste -sd, - ) 2>/dev/null || true)"
+    kv runtimes "$( ( timeout 15 "$(dotnet_bin)" --list-runtimes 2>/dev/null | awk '$1=="Microsoft.AspNetCore.App"{print $2}' | cut -d. -f1 | sort -un | paste -sd, - ) 2>/dev/null || true)"
     kv web "$(if command -v httpd >/dev/null 2>&1 || command -v apache2 >/dev/null 2>&1; then echo apache; elif command -v nginx >/dev/null 2>&1; then echo nginx; else echo none; fi)"
     kv certbot "$(command -v certbot >/dev/null 2>&1 && echo yes || echo no)"
     kv pkg "$(pkg_manager)"
@@ -572,7 +572,7 @@ cmd_deploy() {
     rm -rf "$RUN_DIR/new"
     if [ -n "$CONTENT" ]; then echo "$CONTENT" > "$BACKUP_DIR/current.content" 2>/dev/null || true; else rm -f "$BACKUP_DIR/current.content"; fi
     kv backup "$ts"
-    kv active "$(systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
+    kv active "$(timeout 15 systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
     echo "##DONE"
 }
 

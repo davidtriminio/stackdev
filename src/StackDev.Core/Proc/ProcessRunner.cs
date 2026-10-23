@@ -15,6 +15,9 @@ public sealed record ProcResult(int Code, string Output, string Error, bool Time
 /// </summary>
 public static class ProcessRunner
 {
+    /// <summary>Exit code <see cref="RunCapturing"/> returns when it had to stop a process that ran too long or went silent (same value as timeout(1)).</summary>
+    public const int TimedOut = 124;
+
     private static ProcessStartInfo Psi(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env)
     {
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
@@ -151,11 +154,12 @@ public static class ProcessRunner
     /// que no tiene consola). Devuelve 130 si se cancela.
     /// </summary>
     public static int RunCapturing(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env,
-        CancellationToken ct, Action<string> line)
+        CancellationToken ct, Action<string> line, int timeoutSec = 0, int idleSec = 0, bool closeStdin = false)
     {
         var psi = Psi(exe, args, cwd, env);
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
+        psi.RedirectStandardInput = closeStdin;   // closed right away: a child (ssh) never waits for a keyboard that does not exist
         psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
         psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
         Process p;
@@ -167,15 +171,25 @@ public static class ProcessRunner
         }
         using (p)
         {
-            p.OutputDataReceived += (_, e) => { if (e.Data is not null) line(e.Data); };
-            p.ErrorDataReceived += (_, e) => { if (e.Data is not null) line(e.Data); };
+            var lastOutput = Environment.TickCount64;
+            p.OutputDataReceived += (_, e) => { if (e.Data is null) return; Volatile.Write(ref lastOutput, Environment.TickCount64); line(e.Data); };
+            p.ErrorDataReceived += (_, e) => { if (e.Data is null) return; Volatile.Write(ref lastOutput, Environment.TickCount64); line(e.Data); };
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
+            if (closeStdin) { try { p.StandardInput.Close(); } catch (IOException) { } }
+            var started = Environment.TickCount64;
             while (!p.WaitForExit(150))
             {
                 if (ct.IsCancellationRequested) { KillTree(p); p.WaitForExit(3000); return 130; }
+                var now = Environment.TickCount64;
+                if ((timeoutSec > 0 && now - started > timeoutSec * 1000L) || (idleSec > 0 && now - Volatile.Read(ref lastOutput) > idleSec * 1000L))
+                {
+                    KillTree(p); p.WaitForExit(3000);
+                    return TimedOut;
+                }
             }
-            p.WaitForExit();   // vacía los últimos eventos de salida
+            // Drains the last output events; bounded, because a grandchild that kept the pipes open would block this forever.
+            if (!p.WaitForExit(10000)) { KillTree(p); return TimedOut; }
             return p.ExitCode;
         }
     }
