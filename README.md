@@ -161,3 +161,7 @@ Para no depender de la consola: la dirección pública viene resuelta con una di
 ### Comprobar y poner en marcha
 
 El botón principal de la tarjeta del servidor abre **una sola ventana** (la pantalla de atrás se desenfoca) con los pasos: servidor, configuración de la API, arranque y comprobación final. Si falta algo, las preguntas salen dentro de la misma ventana: las claves y la base de datos se crean solas, y los valores que solo tú sabes se escriben ahí mismo. Al terminar muestra dónde corre la API (dirección y servidor) y la tarjeta lo deja visible. «Subir API» usa la misma ventana. El resto de acciones (variables, versiones anteriores, detener…) están en «Más acciones».
+
+### Direcciones y pruebas
+
+El botón «Direcciones y pruebas» muestra en una sola ventana todas las direcciones del proyecto: la API y la web locales (las de `dev-menu.json`, con su estado) y la API del servidor (`https://…`). Cada una tiene **Abrir** (elige entre las páginas que existen: documentación, salud, principal), **Probar** (qué responde, con código y tiempo) y **Copiar dirección**.

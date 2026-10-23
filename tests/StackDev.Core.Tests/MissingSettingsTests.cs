@@ -166,3 +166,31 @@ public class ApiEndpointsTests
         Assert.True(found.Single(f => f.Path == "/swagger").Protected);
     }
 }
+
+public class ApiCatalogTests
+{
+    [Fact]
+    public void Server_entry_uses_the_domain_and_status()
+    {
+        var ctx = new StackDev.Core.Config.ProjectContext("x", new StackDev.Core.Config.ProjectConfig());
+        var sv = new StackDev.Core.Servers.Server { Id = "1", Name = "VPS", Host = "1.2.3.4", User = "u" };
+        var depl = new StackDev.Core.Config.DeploymentConfig { Server = "1", Service = "shop-api", Domain = "shop.1-2-3-4.sslip.io" };
+        var list = ApiCatalog.Build(ctx, sv, depl, new StackDev.Core.Servers.ApiStatus(true, "active", "", "", 200, null, null));
+        var e = Assert.Single(list);
+        Assert.Equal(ApiScope.Server, e.Scope);
+        Assert.Equal("https://shop.1-2-3-4.sslip.io", e.Url);
+        Assert.True(e.Running == true);
+        Assert.Contains("VPS", e.Detail);
+        Assert.Contains("HTTPS 200", e.Detail);
+    }
+
+    [Fact]
+    public void Describe_marks_each_page_and_says_when_there_is_no_documentation()
+    {
+        var lines = ApiCatalog.Describe(new[] { new ApiEndpoint(EndpointKind.Home, "Página principal", "/", 200, 40), new ApiEndpoint(EndpointKind.Health, "Estado de salud", "/health", 503, 12) });
+        Assert.Contains("✔ /", lines[0]);
+        Assert.Contains("⚠ /health", lines[1]);
+        Assert.Contains("Documentación", lines[2]);
+        Assert.Contains("No responde", ApiCatalog.Describe(Array.Empty<ApiEndpoint>())[0]);
+    }
+}
