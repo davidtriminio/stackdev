@@ -326,6 +326,8 @@ public class RemoteProtocolTests
         var b = RemoteBackup.Parse("20261022-101500|2026-10-22 10:15:00|2048");
         Assert.Equal("20261022-101500", b!.Id);
         Assert.Equal(2048L, b.SizeKb);
+        Assert.Equal("", api.Domain);
+        Assert.Equal("api.midominio.com", RemoteApi.Parse("a|A.dll|/var/www/a|a|active|api.midominio.com")!.Domain);
         Assert.Null(RemoteApi.Parse("broken"));
     }
 }

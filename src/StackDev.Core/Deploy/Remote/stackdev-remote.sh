@@ -316,6 +316,7 @@ cmd_preflight() {
     kv active "$(timeout 15 systemctl is-active "$SVC" 2>/dev/null || echo unknown)"
     kv env_file "$([ -f "$ENV_FILE" ] && echo yes || echo no)"
     kv port "$(env_port)"
+    kv domain "$(site_domain "$SVC")"
     kv deployed_content "$(head -n1 "$BACKUP_DIR/current.content" 2>/dev/null || true)"
     kv postgres "$(command -v psql >/dev/null 2>&1 && echo yes || echo no)"
     kv rsync "$(command -v rsync >/dev/null 2>&1 && echo yes || echo no)"
@@ -462,6 +463,23 @@ cmd_check() {
     echo "##DONE"
 }
 
+# The public domain a service answers on, read from the web server's sites (the one named after the service, or the one that proxies its port).
+site_domain() {
+    local name="$1" port files f d
+    port="$(grep -oE 'ASPNETCORE_URLS=.*127\.0\.0\.1:[0-9]+' "$CONF/$name/$name.env" 2>/dev/null | grep -oE '[0-9]+$' | head -n1 || true)"
+    files="$(ls "$ROOT/etc/nginx/conf.d/$name.conf" "$ROOT/etc/nginx/sites-enabled/$name" "$ROOT/etc/apache2/sites-available/$name.conf" "$ROOT/etc/httpd/conf.d/$name.conf" 2>/dev/null || true)"
+    if [ -n "$port" ]; then
+        files="$files
+$(grep -rlsE "127\.0\.0\.1:$port([^0-9]|\$)" "$ROOT/etc/nginx" "$ROOT/etc/apache2/sites-available" "$ROOT/etc/httpd/conf.d" 2>/dev/null | grep -v '\.bak$' || true)"
+    fi
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        d="$(grep -hE '^[[:space:]]*(server_name|ServerName)[[:space:]]' "$f" 2>/dev/null | sed -E 's/^[[:space:]]*(server_name|ServerName)[[:space:]]+//; s/;.*$//' | tr ' ' '\n' | grep -E '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$' | grep -viE '^localhost$' | head -n1 || true)"
+        if [ -n "$d" ]; then echo "$d"; return 0; fi
+    done <<< "$files"
+    return 0
+}
+
 # ---------------------------------------------------------------- discover: dotnet services already installed
 cmd_discover() {
     local f name dir user dll state exe
@@ -474,7 +492,7 @@ cmd_discover() {
         dir="$(grep -E '^WorkingDirectory=' "$f" | head -n1 | cut -d= -f2- || true)"
         user="$(grep -E '^User=' "$f" | head -n1 | cut -d= -f2- || true)"
         state="$(systemctl is-active "$name" 2>/dev/null || echo unknown)"
-        echo "##API $name|$dll|$dir|$user|$state"
+        echo "##API $name|$dll|$dir|$user|$state|$(site_domain "$name")"
     done
     echo "##DONE"
 }
