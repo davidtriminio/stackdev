@@ -12,7 +12,7 @@ public sealed record ApiStatus(bool Active, string State, string From, string Er
 /// <summary>Consultas y acciones sobre un servidor por SSH: probar la conexión, estado de un servicio, reiniciar.</summary>
 public static class ServerService
 {
-    public static readonly Regex ServiceName = new("^[a-z][a-z0-9-]*$");
+    public static readonly Regex ServiceName = Deploy.Sh.Service;
 
     /// <summary>Deja solo el host: quita http(s)://, rutas y la barra final.</summary>
     public static string? CleanDomain(string? s)
