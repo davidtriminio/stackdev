@@ -37,7 +37,12 @@ if ls "$SD_ROOT"/var/www/*/BROKEN >/dev/null 2>&1; then echo 000; else echo 200;
 S
 for n in chown restorecon useradd setsebool firewall-cmd a2enmod a2ensite sleep; do printf '#!/bin/sh\nexit 0\n' > "$STUBS/$n"; done
 printf '#!/bin/sh\nexit 0\n' > "$STUBS/httpd"; printf '#!/bin/sh\nexit 0\n' > "$STUBS/nginx"
-printf '#!/bin/sh\necho "line 1 of the journal"\n' > "$STUBS/journalctl"
+cat > "$STUBS/journalctl" <<'S'
+#!/bin/sh
+echo "line 1 of the journal"
+[ -f "$SD_ROOT/.journal" ] && cat "$SD_ROOT/.journal"
+exit 0
+S
 printf '#!/bin/sh\necho Enforcing\n' > "$STUBS/getenforce"
 cat > "$STUBS/id" <<'S'
 #!/bin/sh
@@ -103,6 +108,21 @@ echo "== manual rollback and backups listing"
 o="$(R backups --svc $svc)"; has "$o" "##BACKUP " "backups listed"
 echo v-extra > "$SD_ROOT/var/www/$svc/Demo.Api.dll"
 o="$(R rollback --svc $svc --wait 8)"; eq "$(code "$o")" 0 "manual rollback exit"; has "$o" "##KV restored=" "restored kv"
+
+echo "== first upload that does not start keeps the files, stops the service and names the missing settings"
+fs=first-api
+mkdir -p "$SD_ROOT/var/www/$fs" "$SD_ROOT/etc/$fs"; echo "[Service]" > "$SD_ROOT/etc/systemd/system/$fs.service"
+echo "ASPNETCORE_URLS=http://127.0.0.1:5002" > "$SD_ROOT/etc/$fs/$fs.env"; echo inactive > "$SD_ROOT/.state/$fs.state"
+cat > "$SD_ROOT/.journal" <<'J'
+System.InvalidOperationException: Insecure configuration: 'Identity:Jwt:SigningKey' is not set; 'Payments:WebhookSecret' is not set.
+J
+mkdir -p "$T/b4" && echo f1 > "$T/b4/First.Api.dll" && touch "$T/b4/BROKEN" && tar -czf "$RUN/b4.tgz" -C "$T/b4" .
+o="$(R deploy --svc $fs --dll First.Api.dll --run-dir "$RUN" --bundle "$RUN/b4.tgz" --sha256 "$(sha "$RUN/b4.tgz")" --wait 6)"
+eq "$(code "$o")" 22 "first deploy exit"; has "$o" "##FAIL 22" "first deploy fail line"
+has "$o" "##KV missing=Identity__Jwt__SigningKey,Payments__WebhookSecret" "missing settings listed"
+eq "$(cat "$SD_ROOT/var/www/$fs/First.Api.dll")" f1 "uploaded files kept on a first deploy"
+eq "$(cat "$SD_ROOT/.state/$fs.state")" inactive "service stopped, no crash loop"
+rm -f "$SD_ROOT/.journal" "$SD_ROOT/var/www/$fs/BROKEN"
 
 echo "== prune keeps N"
 for i in 1 2 3 4; do /bin/sleep 1.1; echo "v$i" > "$T/b1/Demo.Api.dll"; tar -czf "$RUN/p.tgz" -C "$T/b1" .
