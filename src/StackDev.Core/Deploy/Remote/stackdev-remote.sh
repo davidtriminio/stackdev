@@ -2,13 +2,13 @@
 # stackdev-remote.sh - runs ON THE SERVER, as root (StackDev calls it through sudo).
 # StackDev uploads a fresh copy for every operation and removes it afterwards; do not edit it by hand.
 #
-# Subcommands: preflight | discover | deploy | rollback | backups | provision | env-read | env-write
+# Subcommands: preflight | discover | prepare | deploy | rollback | backups | provision | env-read | env-write
 # Output protocol (one item per line, everything else is plain log):
 #   ##STEP n/total title      ##INFO text      ##WARN text      ##FAIL code text
 #   ##KV key=value            ##API svc|dll|dir|user|state         ##BACKUP ts|date|size_kb
 #   ##ENV-BEGIN ... ##ENV-END (the env file, only for env-read)    ##DONE
 # Exit codes: 0 ok | 10 bad arguments | 11 preflight failed (nothing changed) | 12 bad upload (nothing changed)
-#             20 failed and rolled back | 21 failed and rollback failed | 30 provisioning failed | 40 env change failed
+#             20 failed and rolled back | 21 failed and rollback failed | 30 provisioning failed | 31 install failed | 40 env change failed
 
 set -uo pipefail
 
@@ -47,7 +47,7 @@ valid_dir()    { [[ "$1" =~ ^/[A-Za-z0-9._/-]+$ ]] && [[ "$1" != *..* ]]; }
 inside_run_dir() { case "$1" in "$RUN_DIR"/*) [[ "$1" != *..* ]] ;; *) return 1 ;; esac; }
 
 SVC="" DLL="" RUN_DIR="" BUNDLE="" SHA="" KEEP=5 WAIT=30 RUNTIME="" TO="last"
-DOMAIN="" PORT="" WEB="apache" EMAIL="" HTTPS="no" FORCE="no" ENV_FILE_IN="" RESTART="no" DB=""
+DOMAIN="" PORT="" WEB="apache" EMAIL="" HTTPS="no" FORCE="no" ENV_FILE_IN="" RESTART="no" DB="" INSTALL=""
 
 CMD="${1:-}"; shift || true
 while [ $# -gt 0 ]; do
@@ -70,6 +70,7 @@ while [ $# -gt 0 ]; do
         --env-file) ENV_FILE_IN="${2:-}"; shift 2 ;;
         --restart)  RESTART="yes"; shift ;;
         --db)       DB="${2:-}"; shift 2 ;;
+        --install)  INSTALL="${2:-}"; shift 2 ;;
         *) fail 10 "Unknown argument: $1" ;;
     esac
 done
@@ -87,6 +88,7 @@ valid_num "$WAIT" || fail 10 "Invalid --wait"
 [[ "$WEB" =~ ^(apache|nginx)$ ]] || fail 10 "Invalid web server"
 [[ "$HTTPS" =~ ^(yes|no)$ ]] || fail 10 "Invalid --https"
 [[ "$DB" =~ ^(|sqlite|postgres|none)$ ]] || fail 10 "Invalid --db"
+[[ "$INSTALL" =~ ^[a-z,-]*$ ]] || fail 10 "Invalid --install"
 [ "$TO" = "last" ] || valid_ts "$TO" || fail 10 "Invalid backup id"
 
 if [ "$(id -u)" -ne 0 ] && [ -z "${SD_ROOT:-}" ]; then fail 11 "Must run as root (use sudo)"; fi
@@ -127,6 +129,23 @@ runtime_hint() {
     if command -v dnf >/dev/null 2>&1; then echo "sudo dnf install -y aspnetcore-runtime-$1.0"
     elif command -v apt-get >/dev/null 2>&1; then echo "sudo apt-get install -y aspnetcore-runtime-$1.0"
     else echo "install the ASP.NET Core $1.0 runtime"; fi
+}
+
+
+pkg_manager() {
+    if command -v dnf >/dev/null 2>&1; then echo dnf
+    elif command -v yum >/dev/null 2>&1; then echo yum
+    elif command -v apt-get >/dev/null 2>&1; then echo apt
+    else echo none; fi
+}
+
+pkg_install() {
+    case "$(pkg_manager)" in
+        dnf) dnf install -y "$@" 2>&1 ;;
+        yum) yum install -y "$@" 2>&1 ;;
+        apt) DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" 2>&1 ;;
+        *) return 1 ;;
+    esac
 }
 
 free_mb() { df -Pm "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
@@ -240,9 +259,47 @@ cmd_preflight() {
     kv runtimes "$( ( "$(dotnet_bin)" --list-runtimes 2>/dev/null | awk '$1=="Microsoft.AspNetCore.App"{print $2}' | cut -d. -f1 | sort -un | paste -sd, - ) 2>/dev/null || true)"
     kv web "$(if command -v httpd >/dev/null 2>&1 || command -v apache2 >/dev/null 2>&1; then echo apache; elif command -v nginx >/dev/null 2>&1; then echo nginx; else echo none; fi)"
     kv certbot "$(command -v certbot >/dev/null 2>&1 && echo yes || echo no)"
+    kv pkg "$(pkg_manager)"
     kv suggested_port "$(suggest_port)"
     kv free_mb "$(free_mb "$([ -d "$APPS" ] && echo "$APPS" || echo "$ROOT/")")"
     kv backups "$(backup_ids "$SVC" | wc -l)"
+    echo "##DONE"
+}
+
+# ---------------------------------------------------------------- prepare: install what a new API needs
+# --install is a comma list of: web-apache, web-nginx, certbot, rsync, runtime (uses --runtime N and --web).
+# Every item is tried even if an earlier one fails, and what failed is reported at the end. Only distro packages are used.
+install_item() {
+    case "$1" in
+        web-apache)
+            if [ "$(pkg_manager)" = apt ]; then pkg_install apache2 || return 1; command -v a2enmod >/dev/null 2>&1 && a2enmod proxy proxy_http headers ssl rewrite >/dev/null 2>&1 || true; systemctl enable --now apache2 >/dev/null 2>&1 || true
+            else pkg_install httpd mod_ssl || return 1; systemctl enable --now httpd >/dev/null 2>&1 || true; fi ;;
+        web-nginx) pkg_install nginx || return 1; systemctl enable --now nginx >/dev/null 2>&1 || true ;;
+        certbot) pkg_install certbot "python3-certbot-$WEB" || return 1 ;;
+        rsync) pkg_install rsync || return 1 ;;
+        runtime)
+            [ -n "$RUNTIME" ] || return 1
+            pkg_install "aspnetcore-runtime-$RUNTIME.0" || return 1
+            has_runtime "$RUNTIME" || return 1 ;;
+        *) return 1 ;;
+    esac
+}
+
+cmd_prepare() {
+    local items=() item failed=()
+    IFS=',' read -ra items <<< "$INSTALL"
+    [ "${#items[@]}" -gt 0 ] && [ -n "${items[0]}" ] || fail 10 "Nothing to install"
+    STEP_TOTAL="${#items[@]}"
+    [ "$(pkg_manager)" != none ] || fail 31 "No supported package manager (dnf, yum or apt-get) was found"
+    if [ "$(pkg_manager)" = apt ]; then info "Updating the package lists"; apt-get update 2>&1 | tail -n 3 || true; fi
+    for item in "${items[@]}"; do
+        step "Installing $item"
+        if install_item "$item"; then info "$item installed"; else warn "Could not install $item"; failed+=("$item"); fi
+    done
+    if [ "${#failed[@]}" -gt 0 ]; then
+        kv failed "$(IFS=,; echo "${failed[*]}")"
+        fail 31 "Could not install: $(IFS=,; echo "${failed[*]}")"
+    fi
     echo "##DONE"
 }
 
@@ -593,6 +650,7 @@ NGINX_EOF
 case "$CMD" in
     preflight)  cmd_preflight ;;
     discover)   cmd_discover ;;
+    prepare)    cmd_prepare ;;
     deploy)     cmd_deploy ;;
     rollback)   cmd_rollback ;;
     backups)    cmd_backups ;;

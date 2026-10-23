@@ -137,4 +137,29 @@ public static class ProvisionService
             try { File.Delete(local); } catch (IOException) { }
         }
     }
+
+    /// <summary>Installs what the checklist found missing (web server, runtime, certbot, rsync) with the server's package manager.</summary>
+    public static ProvisionResult Prepare(Server server, IReadOnlyCollection<CheckFix> fixes, string web, int? runtimeMajor, Action<ProgressEvent> progress, CancellationToken ct)
+    {
+        var list = ServerReadiness.InstallList(fixes);
+        if (list.Length == 0) return new(true, "No hay nada que instalar.");
+        if (!HostKeys.IsTrusted(server)) return new(false, "El servidor aún no está verificado: prueba la conexión y confirma su huella.");
+        if (fixes.Contains(CheckFix.Runtime) && runtimeMajor is null) return new(false, "No sé qué versión de ASP.NET Core instalar.");
+
+        progress(new ProgressEvent("Preparar", "Conectando con el servidor…", Level.Title, 5));
+        using var session = new RemoteSession(server);
+        if (session.Open(ct) is { } openError) return new(false, openError);
+        var args = new List<string> { "--install", list, "--web", web };
+        if (runtimeMajor is int m) { args.Add("--runtime"); args.Add(m.ToString()); }
+        var result = session.Execute("prepare", args, e => DeployService.Relay(e, 10, 85, progress), CancellationToken.None);
+        if (result.LaunchError is not null) return new(false, result.LaunchError);
+        if (!result.Ok)
+        {
+            var failed = result.Value("failed");
+            var hint = failed.Contains("runtime") ? " Si tu distribución no trae ese runtime, instálalo con las instrucciones de https://learn.microsoft.com/dotnet/core/install/linux y vuelve a revisar." : "";
+            return new(false, (result.FailMessage ?? $"El servidor terminó con el código {result.ExitCode}.") + hint);
+        }
+        progress(new ProgressEvent("Preparar", "Listo.", Level.Ok, 100));
+        return new(true, "Servidor preparado.");
+    }
 }
