@@ -38,6 +38,7 @@ public sealed class LaunchWindow : Window
     private readonly Border _banner = new() { BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(6), Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 14, 0, 0), Visibility = Visibility.Collapsed };
     private readonly Button _copy = new() { Content = "Copiar registro", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0) };
     private readonly Button _open = new() { Content = "Abrir en el navegador ▾", Padding = new Thickness(14, 8, 14, 8), Margin = new Thickness(0, 0, 8, 0), Visibility = Visibility.Collapsed };
+    private readonly Button _cancel = new() { Content = "Cancelar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8) };
     private readonly Button _close = new() { Content = "Cerrar", MinWidth = 90, Padding = new Thickness(16, 8, 16, 8), Visibility = Visibility.Collapsed };
     private readonly StringBuilder _text = new();
     private readonly CancellationTokenSource _cts = new();
@@ -103,6 +104,7 @@ public sealed class LaunchWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
         buttons.Children.Add(_copy);
         buttons.Children.Add(_open);
+        buttons.Children.Add(_cancel);
         buttons.Children.Add(_close);
 
         var head = new StackPanel();
@@ -125,6 +127,13 @@ public sealed class LaunchWindow : Window
         Content = grid;
 
         _close.Click += (_, _) => Close();
+        _cancel.Click += (_, _) =>
+        {
+            _cancel.IsEnabled = false;
+            _cancel.Content = "Cancelando…";
+            AddLine(new ProgressEvent("", "Cancelando: detengo la conexión con el servidor…", Level.Warning));
+            _cts.Cancel();
+        };
         _copy.Click += (_, _) => { try { Clipboard.SetText(_text.ToString()); } catch (System.Runtime.InteropServices.COMException) { } };
         _open.Click += async (_, _) => { if (_url is not null) await BrowserMenu.ShowAsync(_open, _url); };
         Closing += (_, e) => { if (_running) e.Cancel = true; };
@@ -181,6 +190,23 @@ public sealed class LaunchWindow : Window
         }));
     }
 
+    /// <summary>Marks every step still in progress as failed, so nothing is left spinning after an error or a cancel.</summary>
+    public void FailRunningSteps(string detail)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            foreach (var (icon, _, text) in _rows)
+            {
+                if (icon.Text != "▶") continue;
+                icon.Text = "✘";
+                icon.Foreground = ServerDialogs.P("ErrBrush");
+                text.Text = detail;
+                text.Foreground = ServerDialogs.P("ErrBrush");
+                text.Visibility = Visibility.Visible;
+            }
+        }));
+    }
+
     public void Report(ProgressEvent e)
     {
         Dispatcher.BeginInvoke(new Action(() => AddLine(e)));
@@ -192,6 +218,7 @@ public sealed class LaunchWindow : Window
     public int Ask(string text, params string[] options)
     {
         var done = new TaskCompletionSource<int>();
+        using var _ = _cts.Token.Register(() => done.TrySetResult(-1));   // cancelling the window also answers any open question
         Dispatcher.Invoke(() =>
         {
             _questionBody.Children.Clear();
@@ -208,6 +235,7 @@ public sealed class LaunchWindow : Window
     public Dictionary<string, string>? AskValues(string text, IReadOnlyList<string> names, Func<string, string> hint, string okText, string cancelText)
     {
         var done = new TaskCompletionSource<Dictionary<string, string>?>();
+        using var _ = _cts.Token.Register(() => done.TrySetResult(null));
         Dispatcher.Invoke(() =>
         {
             _questionBody.Children.Clear();
@@ -286,6 +314,8 @@ public sealed class LaunchWindow : Window
     private void Finish(LaunchOutcome outcome)
     {
         _running = false;
+        FailRunningSteps(outcome.Ok ? "" : outcome.Text);
+        _cancel.Visibility = Visibility.Collapsed;
         _question.Visibility = Visibility.Collapsed;
         _close.Visibility = Visibility.Visible;
         var color = outcome.Ok ? ServerDialogs.P("OkBrush") : ServerDialogs.P("ErrBrush");
