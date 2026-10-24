@@ -21,13 +21,13 @@ public class ApiDetectorTests
     public void FindsTheWebProjectAndSuggestsServiceAndDll()
     {
         using var t = new TempFolder();
-        Write(t, "src/Vitrine.Api/Vitrine.Api.csproj", WebProject);
-        Write(t, "src/Vitrine.Domain/Vitrine.Domain.csproj", LibraryProject);
+        Write(t, "src/Demo.Api/Demo.Api.csproj", WebProject);
+        Write(t, "src/Demo.Domain/Demo.Domain.csproj", LibraryProject);
         var found = ApiDetector.Find(t.FilePath);
         var api = Assert.Single(found);
-        Assert.Equal("Vitrine.Api", api.ProjectName);
-        Assert.Equal("Vitrine.Api.dll", api.Dll);
-        Assert.Equal("vitrine-api", api.SuggestedService);
+        Assert.Equal("Demo.Api", api.ProjectName);
+        Assert.Equal("Demo.Api.dll", api.Dll);
+        Assert.Equal("demo-api", api.SuggestedService);
         Assert.Equal(9, api.RuntimeMajor);
     }
 
@@ -75,7 +75,7 @@ public class ApiDetectorTests
 
     [Theory]
     [InlineData("MiEmpresa.Api", "mi-empresa-api")]
-    [InlineData("Vitrine.Api", "vitrine-api")]
+    [InlineData("Demo.Api", "demo-api")]
     [InlineData("shop", "shop")]
     [InlineData("123.Api", "api-123-api")]
     [InlineData("...", "api")]
@@ -320,9 +320,9 @@ public class RemoteProtocolTests
     [Fact]
     public void ParsesApisAndBackups()
     {
-        var api = RemoteApi.Parse("vitrine-api|Vitrine.Api.dll|/var/www/vitrine-api|vitrine-api|active");
+        var api = RemoteApi.Parse("demo-api|Demo.Api.dll|/var/www/demo-api|demo-api|active");
         Assert.NotNull(api);
-        Assert.Equal("Vitrine.Api.dll", api!.Dll);
+        Assert.Equal("Demo.Api.dll", api!.Dll);
         var b = RemoteBackup.Parse("20261022-101500|2026-10-22 10:15:00|2048");
         Assert.Equal("20261022-101500", b!.Id);
         Assert.Equal(2048L, b.SizeKb);

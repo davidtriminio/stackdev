@@ -17,12 +17,12 @@ public class DetectionTests
         Assert.Equal("api", api!.Folder);
         Assert.Equal("http://localhost:5109", api.Url);   // el primer http://, no el https
         Assert.Equal("/scalar", api.Open);
-        Assert.Equal("dotnet run --project src/Pulperia.Api", api.Start);
+        Assert.Equal("dotnet run --project src/Shop.Api", api.Start);
         Assert.Equal("dotnet test --artifacts-path .art", api.Test);
         Assert.Equal("dotnet build --artifacts-path .art", api.Build);
         Assert.Empty(api.Env!);
         Assert.True(d.ApiUsesNpgsql);
-        Assert.Equal("Pulperia", d.ConnectionName);
+        Assert.Equal("Shop", d.ConnectionName);
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public class DetectionTests
     {
         using var t = new ShopTree();
         var d = Detector.Detect(t.Root);
-        Assert.Equal("dotnet run --project src/Pulperia.Api", d.Config.Api!.Start);
+        Assert.Equal("dotnet run --project src/Shop.Api", d.Config.Api!.Start);
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public class DetectionTests
 
         Assert.Equal("EF: aplicar migraciones", tasks[0].Name);
         Assert.Equal("api", tasks[0].Folder);
-        Assert.Equal("dotnet ef database update --project src/Pulperia.Infrastructure --startup-project src/Pulperia.Api", tasks[0].Command);
-        Assert.Equal("dotnet ef migrations add {?Nombre de la migracion} --project src/Pulperia.Infrastructure --startup-project src/Pulperia.Api", tasks[1].Command);
+        Assert.Equal("dotnet ef database update --project src/Shop.Infrastructure --startup-project src/Shop.Api", tasks[0].Command);
+        Assert.Equal("dotnet ef migrations add {?Nombre de la migracion} --project src/Shop.Infrastructure --startup-project src/Shop.Api", tasks[1].Command);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class DetectionTests
 
         Assert.Equal(new[] { "api", "web", "emulador" }, cfg.StartAll);
         Assert.Contains(cfg.Tasks!, x => x.Name == "Flutter: compilar APK (release)" && x.Folder == "mobile");
-        Assert.Equal("pulperia", cfg.Name);
+        Assert.Equal("shop", cfg.Name);
     }
 
     [Fact]
@@ -141,14 +141,14 @@ public class DetectionTests
         var d = Detector.Detect(t.Root);
         var pg = new PostgresConfig
         {
-            Container = "pulperia-pg", Image = "postgres:17-alpine", Port = 5440,
-            User = "pulperia", Password = "dev", Database = "pulperia", Volume = "",
+            Container = "shop-pg", Image = "postgres:17-alpine", Port = 5440,
+            User = "shop", Password = "dev", Database = "shop", Volume = "",
         };
 
         Detector.ApplyPostgres(d.Config, pg, d.ConnectionName!);
 
-        Assert.Equal("Host=127.0.0.1;Port=5440;Database=pulperia;Username=pulperia;Password=dev",
-            d.Config.Api!.Env!["ConnectionStrings__Pulperia"]);
+        Assert.Equal("Host=127.0.0.1;Port=5440;Database=shop;Username=shop;Password=dev",
+            d.Config.Api!.Env!["ConnectionStrings__Shop"]);
         Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, d.Config.StartAll);
     }
 
@@ -170,10 +170,10 @@ public class DetectionTests
     public void TheFolderOfTheSolutionIsTheFirstTowardAboveWithSln()
     {
         using var t = new ShopTree();
-        var dirApi = t.FilePath("api/src/Pulperia.Api");
+        var dirApi = t.FilePath("api/src/Shop.Api");
         Assert.Equal(t.FilePath("api"), Detector.SolutionFolder(t.Root, dirApi));
 
-        File.Delete(t.FilePath("api/Pulperia.sln"));   // sin .sln: la primera carpeta bajo la raíz
+        File.Delete(t.FilePath("api/Shop.sln"));   // sin .sln: la primera carpeta bajo la raíz
         Assert.Equal(t.FilePath("api"), Detector.SolutionFolder(t.Root, dirApi));
     }
 
@@ -181,9 +181,9 @@ public class DetectionTests
     public void SwaggerYesTheApiUsesSwashbuckleYLocalhost5000YesNoHasLaunchSettings()
     {
         using var t = new ShopTree();
-        t.Write("api/src/Pulperia.Api/Pulperia.Api.csproj",
+        t.Write("api/src/Shop.Api/Shop.Api.csproj",
             "<Project Sdk=\"Microsoft.NET.Sdk.Web\"><ItemGroup><PackageReference Include=\"Swashbuckle.AspNetCore\" /></ItemGroup></Project>");
-        File.Delete(t.FilePath("api/src/Pulperia.Api/Properties/launchSettings.json"));
+        File.Delete(t.FilePath("api/src/Shop.Api/Properties/launchSettings.json"));
 
         var api = Detector.Detect(t.Root).Config.Api!;
         Assert.Equal("/swagger", api.Open);
@@ -194,7 +194,7 @@ public class DetectionTests
     public void TheNameOfTheConnectionExitsOfAppsettingsBeforeThatOfCode()
     {
         using var t = new ShopTree();
-        t.Write("api/src/Pulperia.Api/appsettings.json", "{ \"ConnectionStrings\": { \"Principal\": \"\" } }");
+        t.Write("api/src/Shop.Api/appsettings.json", "{ \"ConnectionStrings\": { \"Principal\": \"\" } }");
         Assert.Equal("Principal", Detector.Detect(t.Root).ConnectionName);
     }
 }

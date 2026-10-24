@@ -160,7 +160,7 @@ public class AutomaticSetupTests : IDisposable
     [Fact]
     public void Auto_domain_points_at_the_server_ip()
     {
-        Assert.Equal("commerce-hub-api.129-213-10-144.sslip.io", ProvisionService.AutoDomain("commerce-hub-api", "129.213.10.144"));
+        Assert.Equal("shop-api.203-0-113-10.sslip.io", ProvisionService.AutoDomain("shop-api", "203.0.113.10"));
         Assert.Null(ProvisionService.AutoDomain("api", "servidor.midominio.com"));
         Assert.Null(ProvisionService.AutoDomain("Bad_Name", "1.2.3.4"));
         Assert.Matches(Sh.Domain.ToString(), ProvisionService.AutoDomain("shop", "10.0.0.5")!);

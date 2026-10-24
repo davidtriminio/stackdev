@@ -5,11 +5,11 @@ namespace StackDev.Core.Tests;
 
 public class ApiDiagnosisTests
 {
-    private const string Domain = "commerce-hub-api.example.dev";
+    private const string Domain = "shop-api.example.dev";
 
     private static DiagnosisInput Input(bool? active = true, string? ports = null, string? dns = null, string[]? names = null,
         DateTime? expires = null, string? tlsError = null, int? http = 200)
-        => new(Domain, "129.213.10.144", active, ports, dns, names, expires ?? DateTime.UtcNow.AddDays(60), tlsError, http);
+        => new(Domain, "203.0.113.10", active, ports, dns, names, expires ?? DateTime.UtcNow.AddDays(60), tlsError, http);
 
     [Theory]
     [InlineData("api.example.com", "api.example.com", true)]
@@ -17,7 +17,7 @@ public class ApiDiagnosisTests
     [InlineData("*.example.com", "api.example.com", true)]
     [InlineData("*.example.com", "a.b.example.com", false)]
     [InlineData("*.example.com", "example.com", false)]
-    [InlineData("vitrine-api.example.dev", "commerce-hub-api.example.dev", false)]
+    [InlineData("demo-api.example.dev", "shop-api.example.dev", false)]
     public void CoversDomain_follows_certificate_name_rules(string name, string domain, bool expected)
         => Assert.Equal(expected, ApiDiagnosis.CoversDomain(new[] { name }, domain));
 
@@ -37,11 +37,11 @@ public class ApiDiagnosisTests
     public void A_certificate_for_another_name_means_no_site_and_can_be_repaired()
     {
         // what the real server did: DNS fine, ports fine, but the certificate belonged to another API and every path gave 404
-        var d = ApiDiagnosis.Decide(Input(names: new[] { "vitrine-api.example.dev" }, http: 404));
+        var d = ApiDiagnosis.Decide(Input(names: new[] { "demo-api.example.dev" }, http: 404));
         var issue = Assert.Single(d.Issues);
         Assert.Equal(IssueKind.NoSiteForDomain, issue.Kind);
         Assert.True(issue.Fixable);
-        Assert.Contains("vitrine-api.example.dev", issue.Detail);
+        Assert.Contains("demo-api.example.dev", issue.Detail);
     }
 
     [Fact]

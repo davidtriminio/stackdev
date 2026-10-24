@@ -20,8 +20,8 @@ public class ArgsTests
     [Fact]
     public void JoinJoinsWithSpacesYEscapesEachArgument()
     {
-        Assert.Equal("exec -it pulperia-pg psql -U \"mi usuario\"",
-            Args.Join(new[] { "exec", "-it", "pulperia-pg", "psql", "-U", "mi usuario" }));
+        Assert.Equal("exec -it shop-pg psql -U \"mi usuario\"",
+            Args.Join(new[] { "exec", "-it", "shop-pg", "psql", "-U", "mi usuario" }));
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class ArgsTests
     }
 
     [Theory]
-    [InlineData("dotnet run --project src/Pulperia.Api", new[] { "dotnet", "run", "--project", "src/Pulperia.Api" })]
+    [InlineData("dotnet run --project src/Shop.Api", new[] { "dotnet", "run", "--project", "src/Shop.Api" })]
     [InlineData("a  \"b c\"   d", new[] { "a", "b c", "d" })]
     [InlineData("x \"\" y", new[] { "x", "", "y" })]
     [InlineData("say \\\"hi\\\"", new[] { "say", "\"hi\"" })]
@@ -97,7 +97,7 @@ public class PathsTests
         Assert.Equal(".", Paths.Relative(Root, Root));
         Assert.Equal(".", Paths.Relative(Root, Root + Path.DirectorySeparatorChar));
         Assert.Equal("api", Paths.Relative(Root, P("api")));
-        Assert.Equal("api/src/Pulperia.Api", Paths.Relative(Root, P("api", "src", "Pulperia.Api")));
+        Assert.Equal("api/src/Shop.Api", Paths.Relative(Root, P("api", "src", "Shop.Api")));
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class PathsTests
     public void SlugLeavesLettersNumbersYHyphens()
     {
         Assert.Equal("mi-proyecto", Paths.Slug("Mi Proyecto"));
-        Assert.Equal("pulperia", Paths.Slug("Pulperia"));
+        Assert.Equal("shop", Paths.Slug("Shop"));
         Assert.Equal("app_v2-x", Paths.Slug("app_v2.x"));
     }
 }
@@ -149,19 +149,19 @@ public class EnvPerFolderTests
     [Fact]
     public void TheStringOfConnectionAppliesInTheFolderOfTheApiYInItsSubfolders()
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "shop"));
         var ctx = Ctx(root);
 
         var inApi = ctx.EnvForFolder(Path.Combine(root, "api"));
         Assert.NotNull(inApi);
-        Assert.True(inApi!.ContainsKey("ConnectionStrings__Pulperia"));
-        Assert.NotNull(ctx.EnvForFolder(Path.Combine(root, "api", "src", "Pulperia.Api")));
+        Assert.True(inApi!.ContainsKey("ConnectionStrings__Shop"));
+        Assert.NotNull(ctx.EnvForFolder(Path.Combine(root, "api", "src", "Shop.Api")));
     }
 
     [Fact]
     public void NoAppliesInOtherFoldersNorInAThatOnlyStartsSame()
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "shop"));
         var ctx = Ctx(root);
 
         Assert.Null(ctx.EnvForFolder(root));
@@ -179,7 +179,7 @@ public class EnvPerFolderTests
     [Fact]
     public void FoldersPortsYUrlForOpenExitOfTheSettings()
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "pulperia"));
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "shop"));
         var ctx = Ctx(root);
 
         Assert.Equal(Path.Combine(root, "api"), ctx.Folder(ProjectComponent.Api));

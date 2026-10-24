@@ -24,10 +24,14 @@ public class ProcessRunnerTests
     [Fact]
     public void RunCapturing_stops_a_process_that_goes_silent()
     {
-        if (!OperatingSystem.IsWindows()) return;   // the silence is only measured between lines; ping prints one per second
+        // One line, then nothing for a long time: the silence is what must stop it.
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("cmd", new[] { "/c", "echo hi & ping -n 30 127.0.0.1 >nul" })
+            : ("sh", new[] { "-c", "echo hi; sleep 30" });
         var lines = new List<string>();
-        var code = ProcessRunner.RunCapturing("ping", new[] { "-n", "30", "-w", "10000", "10.255.255.1" }, null, null, CancellationToken.None, lines.Add, idleSec: 2);
+        var code = ProcessRunner.RunCapturing(exe, args, null, null, CancellationToken.None, lines.Add, idleSec: 2, closeStdin: true);
         Assert.Equal(ProcessRunner.TimedOut, code);
+        Assert.Contains(lines, l => l.Trim() == "hi");
     }
 
     [Fact]

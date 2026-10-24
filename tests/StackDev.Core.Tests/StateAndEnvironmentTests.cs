@@ -19,63 +19,21 @@ public class StateStoreTests
     public void TheKeyOfProjectIsStableYNoDistinguishesUppercase()
     {
         // La parte del hash sale de la ruta en minúsculas; el nombre conserva las mayúsculas de la carpeta.
-        var a = StateStore.Key(Path.Combine(Path.GetTempPath(), "dev", "Pulperia"));
-        var b = StateStore.Key(Path.Combine(Path.GetTempPath(), "DEV", "pulperia"));
+        var a = StateStore.Key(Path.Combine(Path.GetTempPath(), "dev", "Shop"));
+        var b = StateStore.Key(Path.Combine(Path.GetTempPath(), "DEV", "shop"));
         Assert.Equal(a[(a.LastIndexOf('-') + 1)..], b[(b.LastIndexOf('-') + 1)..]);
         Assert.NotEqual(a, StateStore.Key(Path.Combine(Path.GetTempPath(), "dev", "otro")));
-        Assert.Matches(@"^Pulperia-[0-9a-f]{8}$", a);
+        Assert.Matches(@"^Shop-[0-9a-f]{8}$", a);
     }
 
     [Fact]
-    public void MigratesFromFlutterDevWithoutDeleteTheOriginNorOverwriteItThatAlreadyHas()
-    {
-        using var t = new TempFolder();
-        var appData = t.FilePath;
-        var old = StateStore.DirPrevious(appData);
-        Directory.CreateDirectory(Path.Combine(old, "respaldos", "pulperia-abcd1234"));
-        File.WriteAllText(Path.Combine(old, "ultimo-proyecto.txt"), @"V:\dev\pulperia");
-        File.WriteAllText(Path.Combine(old, "ultimo-avd.txt"), "Resizable_Experimental");
-        File.WriteAllText(Path.Combine(old, "respaldos", "pulperia-abcd1234", "pulperia-20260101-120000.sql"), "-- sql");
-
-        var s = StateStore.Open(appData);
-
-        Assert.Equal(@"V:\dev\pulperia", s.LastProject);
-        Assert.Equal("Resizable_Experimental", s.GlobalLastAvd);
-        Assert.True(File.Exists(Path.Combine(s.Dir, "respaldos", "pulperia-abcd1234", "pulperia-20260101-120000.sql")));
-        Assert.True(File.Exists(Path.Combine(old, "ultimo-proyecto.txt")));   // el script viejo sigue funcionando
-        Assert.EndsWith("stackdev", s.Dir);
-
-        // segunda apertura: no vuelve a migrar ni pisa lo que el usuario ya cambió
-        s.LastProject = @"V:\dev\otro";
-        var s2 = StateStore.Open(appData);
-        Assert.Equal(@"V:\dev\otro", s2.LastProject);
-    }
-
-    [Fact]
-    public void WithoutFolderPreviousSimplyStartsEmpty()
+    public void WithoutSavedStateStartsEmpty()
     {
         using var t = new TempFolder();
         var s = StateStore.Open(t.FilePath);
         Assert.Null(s.LastProject);
         Assert.Null(s.GlobalLastAvd);
         Assert.Empty(s.ReadRecent("x"));
-    }
-
-    [Fact]
-    public void MigrateForcedBringsOnlyItThatIsMoreNew()
-    {
-        using var t = new TempFolder();
-        var old = t.In("viejo"); var fresh = new StateStore(t.In("nuevo"));
-        Directory.CreateDirectory(old);
-        File.WriteAllText(Path.Combine(old, "ultimo-avd.txt"), "A");
-        fresh.Migrate(old);
-
-        File.WriteAllText(Path.Combine(old, "ultimo-avd.txt"), "B");
-        File.SetLastWriteTimeUtc(Path.Combine(old, "ultimo-avd.txt"), DateTime.UtcNow.AddMinutes(5));
-        var r = fresh.Migrate(old, force: true);
-
-        Assert.Equal(1, r.Copied);
-        Assert.Equal("B", fresh.GlobalLastAvd);
     }
 
     [Fact]
@@ -146,17 +104,17 @@ public class PostgresDockerTests
     [Fact]
     public void FiltersOnlyTheContainersWithImagePostgresOPostgis()
     {
-        var output = "pulperia-pg|postgres:17-alpine\nredis|redis:7\r\ngeo|postgis/postgis:16-3.4\nweb|nginx\n";
+        var output = "shop-pg|postgres:17-alpine\nredis|redis:7\r\ngeo|postgis/postgis:16-3.4\nweb|nginx\n";
         var l = PostgresDocker.FilterContainers(output);
 
-        Assert.Equal(new[] { "pulperia-pg", "geo" }, l.Select(c => c.Name).ToArray());
+        Assert.Equal(new[] { "shop-pg", "geo" }, l.Select(c => c.Name).ToArray());
         Assert.Equal("postgis/postgis:16-3.4", l[1].Image);
     }
 
     private const string Inspect = """
-        { "Name": "/pulperia-pg",
+        { "Name": "/shop-pg",
           "Config": { "Image": "postgres:17-alpine",
-                      "Env": ["POSTGRES_USER=pulperia", "POSTGRES_PASSWORD=dev", "POSTGRES_DB=pulperia", "PATH=/usr/bin"] },
+                      "Env": ["POSTGRES_USER=shop", "POSTGRES_PASSWORD=dev", "POSTGRES_DB=shop", "PATH=/usr/bin"] },
           "HostConfig": { "PortBindings": { "5432/tcp": [ { "HostIp": "", "HostPort": "5440" } ] } },
           "Mounts": [ { "Type": "volume", "Name": "VOLUMEN", "Destination": "/var/lib/postgresql/data" } ] }
         """;
@@ -164,15 +122,15 @@ public class PostgresDockerTests
     [Fact]
     public void ReadsImagePortUserPasswordBaseYVolumeWithName()
     {
-        var pg = PostgresDocker.FromInspect("pulperia-pg", Inspect.Replace("VOLUMEN", "pulperia-data"))!;
+        var pg = PostgresDocker.FromInspect("shop-pg", Inspect.Replace("VOLUMEN", "shop-data"))!;
 
-        Assert.Equal("pulperia-pg", pg.Container);
+        Assert.Equal("shop-pg", pg.Container);
         Assert.Equal("postgres:17-alpine", pg.Image);
         Assert.Equal(5440, pg.Port);
-        Assert.Equal("pulperia", pg.User);
+        Assert.Equal("shop", pg.User);
         Assert.Equal("dev", pg.Password);
-        Assert.Equal("pulperia", pg.Database);
-        Assert.Equal("pulperia-data", pg.Volume);
+        Assert.Equal("shop", pg.Database);
+        Assert.Equal("shop-data", pg.Volume);
     }
 
     [Fact]
@@ -205,8 +163,8 @@ public class AndroidSdkTests
     [Fact]
     public void ReadsAndroidSdkOfFlutterSettingsYConvertsTheBars()
     {
-        Assert.Equal(@"V:\Programas\Android\Sdk",
-            AndroidSdkLocator.FromFlutterSettings("{ \"android-sdk\": \"V:\\\\Programas\\\\Android\\\\Sdk\" }"));
+        Assert.Equal(@"C:\Android\Sdk",
+            AndroidSdkLocator.FromFlutterSettings("{ \"android-sdk\": \"C:\\\\Android\\\\Sdk\" }"));
         Assert.Null(AndroidSdkLocator.FromFlutterSettings("{}"));
     }
 
@@ -228,9 +186,9 @@ public class AndroidSdkTests
     [Fact]
     public void TheVariablesOfSdkAreOnlyForTheProcessesLaunched()
     {
-        var v = AndroidSdkLocator.ProcessVariables(@"V:\Programas\Android\Sdk");
-        Assert.Equal(@"V:\Programas\Android\Sdk", v["ANDROID_SDK_ROOT"]);
-        Assert.Equal(@"V:\Programas\Android\Sdk", v["ANDROID_HOME"]);
+        var v = AndroidSdkLocator.ProcessVariables(@"C:\Android\Sdk");
+        Assert.Equal(@"C:\Android\Sdk", v["ANDROID_SDK_ROOT"]);
+        Assert.Equal(@"C:\Android\Sdk", v["ANDROID_HOME"]);
     }
 }
 

@@ -2,7 +2,7 @@ using StackDev.Core.Config;
 
 namespace StackDev.Core.Tests;
 
-/// <summary>Árbol de carpetas falso con la estructura de "pulperia" en una carpeta temporal.</summary>
+/// <summary>Árbol de carpetas falso con la estructura de "shop" en una carpeta temporal.</summary>
 public sealed class ShopTree : IDisposable
 {
     public string Base { get; }
@@ -11,12 +11,12 @@ public sealed class ShopTree : IDisposable
     public ShopTree(bool withSnapshotInOtherProject = true, string manager = "pnpm-lock.yaml")
     {
         Base = Path.Combine(Path.GetTempPath(), "stackdev-tests-" + Guid.NewGuid().ToString("N"));
-        Root = Path.Combine(Base, "pulperia");
+        Root = Path.Combine(Base, "shop");
         Directory.CreateDirectory(Path.Combine(Root, ".git"));
 
         // API
-        Write("api/Pulperia.sln", "");
-        Write("api/src/Pulperia.Api/Pulperia.Api.csproj", """
+        Write("api/Shop.sln", "");
+        Write("api/src/Shop.Api/Shop.Api.csproj", """
             <Project Sdk="Microsoft.NET.Sdk.Web">
               <ItemGroup>
                 <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.0" />
@@ -24,20 +24,20 @@ public sealed class ShopTree : IDisposable
               </ItemGroup>
             </Project>
             """);
-        Write("api/src/Pulperia.Api/Properties/launchSettings.json", """
+        Write("api/src/Shop.Api/Properties/launchSettings.json", """
             { "profiles": { "https": { "applicationUrl": "https://localhost:7109;http://localhost:5109" } } }
             """);
-        Write("api/src/Pulperia.Infrastructure/Pulperia.Infrastructure.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
-        Write("api/src/Pulperia.Infrastructure/Db.cs", "var c = config.GetConnectionString(\"Pulperia\");");
+        Write("api/src/Shop.Infrastructure/Shop.Infrastructure.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        Write("api/src/Shop.Infrastructure/Db.cs", "var c = config.GetConnectionString(\"Shop\");");
         if (withSnapshotInOtherProject)
-            Write("api/src/Pulperia.Infrastructure/Migrations/PulperiaDbContextModelSnapshot.cs", "// snapshot");
-        Write("api/tests/Pulperia.Api.Tests/Pulperia.Api.Tests.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />");
+            Write("api/src/Shop.Infrastructure/Migrations/ShopDbContextModelSnapshot.cs", "// snapshot");
+        Write("api/tests/Shop.Api.Tests/Shop.Api.Tests.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />");
         // basura que debe ignorarse
-        Write("api/src/Pulperia.Api/bin/Debug/Otro.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />");
+        Write("api/src/Shop.Api/bin/Debug/Otro.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />");
 
         // Móvil
         Write("mobile/pubspec.yaml", """
-            name: pulperia
+            name: shop
             dependencies:
               flutter:
                 sdk: flutter
@@ -68,25 +68,25 @@ public sealed class ShopTree : IDisposable
         try { Directory.Delete(Base, recursive: true); } catch (IOException) { }
     }
 
-    /// <summary>dev-menu.json tal como está hoy en pulperia (copiado del enunciado).</summary>
+    /// <summary>dev-menu.json tal como está hoy en shop (copiado del enunciado).</summary>
     public const string CurrentConfig = """
         {
-          "name": "pulperia",
+          "name": "shop",
           "postgres": {
-            "container": "pulperia-pg",
+            "container": "shop-pg",
             "image": "postgres:17-alpine",
             "port": 5440,
-            "user": "pulperia",
+            "user": "shop",
             "password": "dev",
-            "database": "pulperia",
+            "database": "shop",
             "volume": ""
           },
           "api": {
             "folder": "api",
             "url": "http://localhost:5109",
             "open": "/scalar",
-            "env": { "ConnectionStrings__Pulperia": "Host=127.0.0.1;Port=5440;Database=pulperia;Username=pulperia;Password=dev" },
-            "start": "dotnet run --project src/Pulperia.Api",
+            "env": { "ConnectionStrings__Shop": "Host=127.0.0.1;Port=5440;Database=shop;Username=shop;Password=dev" },
+            "start": "dotnet run --project src/Shop.Api",
             "test": "dotnet test --artifacts-path .art",
             "build": "dotnet build --artifacts-path .art"
           },
@@ -100,7 +100,7 @@ public sealed class ShopTree : IDisposable
           },
           "mobile": {
             "folder": "mobile",
-            "androidSdk": "V:\\Programas\\Android\\Sdk",
+            "androidSdk": "C:\\Android\\Sdk",
             "avd": "",
             "argsRun": "",
             "parse": "flutter analyze",
@@ -110,8 +110,8 @@ public sealed class ShopTree : IDisposable
           },
           "startAll": ["postgres", "api", "web", "emulador"],
           "tasks": [
-            { "name": "EF: aplicar migraciones", "folder": "api", "command": "dotnet ef database update --project src/Pulperia.Infrastructure --startup-project src/Pulperia.Api" },
-            { "name": "EF: nueva migracion", "folder": "api", "command": "dotnet ef migrations add {?Nombre de la migracion} --project src/Pulperia.Infrastructure --startup-project src/Pulperia.Api" },
+            { "name": "EF: aplicar migraciones", "folder": "api", "command": "dotnet ef database update --project src/Shop.Infrastructure --startup-project src/Shop.Api" },
+            { "name": "EF: nueva migracion", "folder": "api", "command": "dotnet ef migrations add {?Nombre de la migracion} --project src/Shop.Infrastructure --startup-project src/Shop.Api" },
             { "name": "Flutter: compilar APK (release)", "folder": "mobile", "command": "flutter build apk --release" }
           ]
         }
