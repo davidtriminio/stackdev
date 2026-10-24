@@ -1,0 +1,422 @@
+<Window x:Class="StackDev.Gui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="stackdev" Icon="Assets/stackdev.ico" Width="1240" Height="800" MinWidth="980" MinHeight="620"
+        WindowStartupLocation="CenterScreen" WindowState="Maximized" StateChanged="Window_StateChanged"
+        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13">
+  <WindowChrome.WindowChrome>
+    <WindowChrome CaptionHeight="42" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+  </WindowChrome.WindowChrome>
+
+  <Grid x:Name="Root">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="42" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- Barra superior propia (estilo app de escritorio) -->
+    <Border Grid.Row="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+          <Button Style="{StaticResource BtnIcon}" ToolTip="Mostrar u ocultar la barra lateral" WindowChrome.IsHitTestVisibleInChrome="True"
+                  FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE700;" Click="Sidebar_Click" />
+          <Button x:Name="BtnBack" Style="{StaticResource BtnIcon}" ToolTip="Ir a Proyectos" WindowChrome.IsHitTestVisibleInChrome="True"
+                  FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE72B;" Click="Back_Click" />
+          <Image x:Name="Logo" Source="pack://application:,,,/Assets/logo.png" Width="24" Height="24" Margin="8,0,8,0"
+                 RenderOptions.BitmapScalingMode="HighQuality" VerticalAlignment="Center" />
+          <TextBlock Text="stackdev" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <Button x:Name="ProjectChip" Grid.Column="1" Style="{StaticResource BtnProjectChip}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Visibility="Collapsed" WindowChrome.IsHitTestVisibleInChrome="True" Click="ChangeBar_Click" />
+        <TextBlock x:Name="TxtWindowTitle" Grid.Column="1" Text="stackdev" Foreground="{StaticResource MutedBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="12,0" />
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal">
+          <Button x:Name="BtnChangeBar" Style="{StaticResource BtnIcon}" Content="&#xE8AB;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Visibility="Collapsed" Margin="0,0,4,0"
+                  ToolTip="Cambiar de proyecto (Ctrl+P)" WindowChrome.IsHitTestVisibleInChrome="True" Click="ChangeBar_Click" />
+          <Button x:Name="BtnBarFavorite" Style="{StaticResource BtnIcon}" Content="☆" Visibility="Collapsed" Margin="0,0,8,0"
+                  ToolTip="Favorito: este proyecto se abrirá al iniciar la aplicación" WindowChrome.IsHitTestVisibleInChrome="True" Click="BarFavorite_Click" />
+          <Button Style="{StaticResource BtnWindow}" Content="&#xE921;" ToolTip="Minimizar" WindowChrome.IsHitTestVisibleInChrome="True" Click="Minimize_Click" />
+          <Button x:Name="BtnMaximize" Style="{StaticResource BtnWindow}" Content="&#xE923;" ToolTip="Maximizar / restaurar" WindowChrome.IsHitTestVisibleInChrome="True" Click="Maximize_Click" />
+          <Button Style="{StaticResource BtnCloseWindow}" Content="&#xE8BB;" ToolTip="Cerrar a segundo plano (Mayús+clic o Ctrl+Q = salir del todo)" WindowChrome.IsHitTestVisibleInChrome="True" Click="Close_Click" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" Background="{StaticResource DotGridBrush}">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition x:Name="ColSidebar" Width="240" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+
+    <!-- Barra lateral -->
+    <Border x:Name="Sidebar" Grid.Column="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
+      <Grid x:Name="SidebarInner" Margin="16">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="0" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+
+        <Border x:Name="ProjectCard" Grid.Row="1" Style="{StaticResource Card}" Padding="12" Margin="0,0,0,16">
+          <StackPanel>
+            <TextBlock Text="PROYECTO" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+            <TextBlock x:Name="TxtProject" Text="Sin proyecto" FontSize="15" FontWeight="SemiBold" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="TxtPath" Text="" FontSize="11" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" />
+            <Button x:Name="BtnChange" Content="Todos los proyectos" Margin="0,10,0,0" Click="ChangeProjectClick" />
+          </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2">
+          <RadioButton x:Name="NavHome" Style="{StaticResource NavButton}" GroupName="nav" IsChecked="True" Content="Proyectos" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavPanel" Style="{StaticResource NavButton}" GroupName="nav" Content="Panel" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavTerminals" Style="{StaticResource NavButton}" GroupName="nav" Content="Terminales" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavDiagnostics" Style="{StaticResource NavButton}" GroupName="nav" Content="Diagnóstico" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavServer" Style="{StaticResource NavButton}" GroupName="nav" Content="Servidor" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavCond" Style="{StaticResource NavButton}" GroupName="nav" Content="Condiciones del dispositivo" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavConsole" Style="{StaticResource NavButton}" GroupName="nav" Content="Consola de comandos" Checked="Nav_Checked" />
+          <RadioButton x:Name="NavConfig" Style="{StaticResource NavButton}" GroupName="nav" Content="Configuración" Checked="Nav_Checked" />
+        </StackPanel>
+
+        <StackPanel x:Name="SidebarFooter" Grid.Row="4">
+          <TextBlock Text="MODO DE BUILD" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+          <Grid Margin="0,2,0,10">
+            <TextBlock x:Name="TxtMode" Text="debug" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Content="Cambiar" HorizontalAlignment="Right" Style="{StaticResource BtnChip}" Margin="0" Click="Mode_Click" />
+          </Grid>
+          <TextBlock Text="EMULADOR" FontSize="10" Foreground="{StaticResource MutedBrush}" />
+          <TextBlock x:Name="TxtAvd" Text="—" FontWeight="SemiBold" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Contenido -->
+    <Grid Grid.Column="1" Margin="24,20,24,16">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="ColMain" Width="*" />
+        <ColumnDefinition x:Name="ColDivider" Width="Auto" />
+        <ColumnDefinition x:Name="ColTerminal" Width="0" />
+      </Grid.ColumnDefinitions>
+      <Grid x:Name="MainArea" Grid.Column="0" Margin="0,0,0,6">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition x:Name="OutputRow" Height="190" MinHeight="90" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <!-- Encabezado -->
+      <Grid Grid.Row="0" Margin="0,0,0,16">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+          <TextBlock x:Name="TxtTitle" Text="Panel" FontSize="34" FontWeight="Light" />
+          <TextBlock x:Name="TxtSubtitle" Text="" Foreground="{StaticResource MutedBrush}" FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="0,4,0,0" />
+        </StackPanel>
+        <WrapPanel x:Name="ActionsPanel" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+          <Button Style="{StaticResource BtnIcon}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE756;" FontSize="16"
+                  ToolTip="Abrir una terminal en la raíz del proyecto" Margin="0,0,8,10" VerticalAlignment="Top" Padding="10,9" Click="RootTerminal_Click" />
+          <Button x:Name="BtnNavQuick" Margin="0,0,8,10" ToolTip="Cambiar de navegador para este proyecto (o para todos)" Click="NavQuick_Click" />
+          <Button x:Name="BtnBrowser" Margin="0,0,8,10" ToolTip="Abrir la web o la API en el navegador elegido" Click="Browser_Click" />
+          <Button x:Name="BtnUp" Content="▶  Levantar todo" Style="{StaticResource BtnPrimary}" Margin="0,0,8,10" Click="Up_Click" />
+          <Button x:Name="BtnCheck" Content="✓  Verificar" Margin="0,0,8,10" Click="Check_Click" />
+          <Button x:Name="BtnDown" Content="■  Detener todo" Style="{StaticResource BtnDanger}" Margin="0,0,0,10" Click="Down_Click" />
+        </WrapPanel>
+      </Grid>
+
+      <!-- Vistas -->
+      <Grid Grid.Row="1">
+        <Grid x:Name="HomeHost">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+            <Button Content="＋  Abrir carpeta…" Style="{StaticResource BtnPrimary}" Click="OpenFolder_Click" />
+          </StackPanel>
+          <ScrollViewer x:Name="HomeScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" SizeChanged="ScrollHome_SizeChanged">
+            <WrapPanel x:Name="HomePanel" />
+          </ScrollViewer>
+        </Grid>
+
+        <ScrollViewer x:Name="PanelHost" Visibility="Collapsed" SizeChanged="PanelHost_SizeChanged" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <WrapPanel x:Name="CardsPanel" />
+        </ScrollViewer>
+
+        <Grid x:Name="DiagnosticsHost" Visibility="Collapsed" />
+        <Grid x:Name="ServerHost" Visibility="Collapsed" />
+
+        <Grid x:Name="CondHost" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <Grid Margin="0,0,0,12">
+            <TextBlock x:Name="TxtActiveConds" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,330,0" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button Content="Restablecer todo" Margin="0,0,8,0" Click="CondReset_Click" />
+              <Button Content="Aplicar selección" Style="{StaticResource BtnPrimary}" Click="CondApply_Click" />
+            </StackPanel>
+          </Grid>
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="CondPanel" />
+          </ScrollViewer>
+        </Grid>
+
+        <Grid x:Name="ConsoleHost" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <WrapPanel Margin="0,0,0,10">
+            <TextBlock x:Name="TxtConsoleDir" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,14,6" />
+            <Button Content="raíz" Style="{StaticResource BtnChip}" Tag="@raiz" Click="Alias_Click" />
+            <Button x:Name="BtnAliasApi" Content="api" Style="{StaticResource BtnChip}" Tag="@api" Click="Alias_Click" />
+            <Button x:Name="BtnAliasWeb" Content="web" Style="{StaticResource BtnChip}" Tag="@web" Click="Alias_Click" />
+            <Button x:Name="BtnAliasMobile" Content="móvil" Style="{StaticResource BtnChip}" Tag="@movil" Click="Alias_Click" />
+            <Button Content="Abrir terminal aquí" Style="{StaticResource BtnChip}" Tag="t" Click="Alias_Click" />
+          </WrapPanel>
+          <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+            <ListBox x:Name="CommandList" Background="Transparent" BorderThickness="0" MouseDoubleClick="CommandList_DoubleClick" />
+          </Border>
+          <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TxtCommand" FontFamily="{StaticResource MonoFont}" KeyDown="TxtCommand_KeyDown" />
+            <Button Grid.Column="1" Content="Ejecutar" Style="{StaticResource BtnPrimary}" Margin="8,0,0,0" Click="RunCommand_Click" />
+            <Button Grid.Column="2" Content="En otra ventana" Margin="8,0,0,0" Click="RunWindow_Click" />
+          </Grid>
+        </Grid>
+
+        <ScrollViewer x:Name="ConfigHost" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" SizeChanged="ConfigHost_SizeChanged">
+          <Grid x:Name="ConfigGrid" Margin="0,4,18,24">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="1.25*" />
+              <ColumnDefinition x:Name="ColCfgGap" Width="16" />
+              <ColumnDefinition x:Name="ColCfgB" Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel x:Name="ColConfigA" Grid.Column="0">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="20,18">
+              <StackPanel>
+                <Grid Margin="0,0,0,16">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                  <Border Style="{StaticResource GlyphTile}" Background="#266EE787" BorderBrush="#556EE787">
+                    <TextBlock Style="{StaticResource Glyph}" Foreground="#6EE787" Text="&#xE713;" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Proyecto" Foreground="#6EE787" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="Cómo se lee dev-menu.json y qué partes tiene este proyecto." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Grid>
+                <StackPanel x:Name="SummaryPanel" Margin="0,0,0,6" />
+                <WrapPanel Margin="0,6,0,0">
+                  <Button Style="{StaticResource BtnPrimary}" Margin="0,0,8,8" Click="CfgComponents_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE713;" /><TextBlock Text="Componentes del proyecto…" /></StackPanel>
+                  </Button>
+                  <Button Margin="0,0,8,8" Click="CfgRedetect_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE721;" /><TextBlock Text="Detectar de nuevo" /></StackPanel>
+                  </Button>
+                  <Button Margin="0,0,8,8" Click="CfgEdit_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE70F;" /><TextBlock Text="Editar dev-menu.json" /></StackPanel>
+                  </Button>
+                  <Button Margin="0,0,8,8" Click="CfgMove_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE8AB;" /><TextBlock Text="Mover fuera del proyecto" /></StackPanel>
+                  </Button>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+            </StackPanel>
+            <StackPanel x:Name="ColConfigB" Grid.Column="2">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="20,18">
+              <StackPanel>
+                <Grid Margin="0,0,0,16">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                  <Border Style="{StaticResource GlyphTile}" Background="#266FA8FF" BorderBrush="#556FA8FF">
+                    <TextBlock Style="{StaticResource Glyph}" Foreground="#6FA8FF" Text="&#xE774;" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Navegador" Foreground="#6FA8FF" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="Con qué navegador se abren la API, la web y los enlaces, sin importar el predeterminado de Windows." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Grid>
+                <Grid Margin="0,0,0,10">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <TextBlock Text="Para todos los proyectos" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                  <Button x:Name="BtnNavGlobal" Grid.Column="1" MinWidth="220" HorizontalContentAlignment="Left" Click="NavGlobal_Click" />
+                </Grid>
+                <Grid Margin="0,0,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <TextBlock Text="Solo para este proyecto" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button x:Name="BtnNavProject" MinWidth="220" HorizontalContentAlignment="Left" Click="NavProject_Click" />
+                    <Button Content="Probar" Margin="8,0,0,0" Click="NavTest_Click" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="20,18">
+              <StackPanel>
+                <Grid Margin="0,0,0,16">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                  <Border Style="{StaticResource GlyphTile}" Background="#26B79CFF" BorderBrush="#55B79CFF">
+                    <TextBlock Style="{StaticResource Glyph}" Foreground="#B79CFF" Text="&#xE790;" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Apariencia" Foreground="#B79CFF" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="El color de acento y qué tan apretadas se ven las tarjetas del panel." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Grid>
+                <Grid Margin="0,0,0,10">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <TextBlock Text="Acento" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                  <Button x:Name="BtnAccent" Grid.Column="1" MinWidth="220" HorizontalContentAlignment="Left" Click="Accent_Click" />
+                </Grid>
+                <Grid Margin="0,0,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <TextBlock Text="Densidad del panel" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+                  <Button x:Name="BtnDensity" Grid.Column="1" MinWidth="220" HorizontalContentAlignment="Left" Click="Density_Click" />
+                </Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="20,18">
+              <StackPanel>
+                <Grid Margin="0,0,0,16">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                  <Border Style="{StaticResource GlyphTile}" Background="#2622D3EE" BorderBrush="#5522D3EE">
+                    <TextBlock Style="{StaticResource Glyph}" Foreground="#22D3EE" Text="&#xE838;" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Carpetas y estado" Foreground="#22D3EE" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="Dónde guarda stackdev los logs y el estado, y cómo traer lo de previous-state." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Grid>
+                <WrapPanel>
+                  <Button Margin="0,0,8,8" Click="CfgSync_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE895;" /><TextBlock Text="Traer estado de previous-state" /></StackPanel>
+                  </Button>
+                  <Button Margin="0,0,8,8" Click="CfgLogs_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE8A5;" /><TextBlock Text="Abrir carpeta de logs" /></StackPanel>
+                  </Button>
+                  <Button Margin="0,0,8,8" Click="CfgStatus_Click">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE838;" /><TextBlock Text="Abrir carpeta del estado" /></StackPanel>
+                  </Button>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="20,18">
+              <StackPanel>
+                <Grid Margin="0,0,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                  <Border Style="{StaticResource GlyphTile}" Background="#26F472B6" BorderBrush="#55F472B6">
+                    <TextBlock Style="{StaticResource Glyph}" Foreground="#F472B6" Text="&#xE72E;" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="Seguridad" Foreground="#F472B6" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock Text="La configuración y las credenciales viven fuera del repositorio y se cifran con tu usuario de Windows (DPAPI). Las contraseñas no se muestran en la salida." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </Border>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </Grid>
+
+      <GridSplitter x:Name="Separator" Grid.Row="2" Height="8" HorizontalAlignment="Stretch" Background="Transparent" ResizeDirection="Rows" />
+
+      <!-- Salida -->
+      <Border x:Name="OutputBlock" Grid.Row="3" Style="{StaticResource Card}" Padding="0">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <Grid Margin="14,8,10,6">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+              <Button x:Name="BtnHideOutput" Style="{StaticResource BtnIcon}" Content="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="11"
+                      Padding="4,2" Margin="-4,0,6,0" ToolTip="Ocultar la salida (se muestra sola al ejecutar algo)" Click="HideOutput_Click" />
+              <TextBlock Text="SALIDA" FontSize="10" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="BtnCancel" Content="Cancelar acción" Style="{StaticResource BtnChip}" Margin="0,0,6,0" IsEnabled="False" Click="Cancel_Click" />
+              <Button Content="Limpiar" Style="{StaticResource BtnChip}" Margin="0" Click="Clear_Click" />
+            </StackPanel>
+          </Grid>
+          <RichTextBox x:Name="Output" Grid.Row="1" IsReadOnly="True" TextChanged="Output_TextChanged" Background="Transparent" BorderThickness="0"
+                       Foreground="{StaticResource TextBrush}" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                       VerticalScrollBarVisibility="Auto" Padding="14,0,14,10">
+            <RichTextBox.Resources>
+              <Style TargetType="Paragraph">
+                <Setter Property="Margin" Value="0" />
+              </Style>
+            </RichTextBox.Resources>
+          </RichTextBox>
+
+          <!-- Línea de comandos siempre visible -->
+          <Border Grid.Row="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,8">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="TxtBarDir" Text="&gt;" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                         Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,10,0" MaxWidth="260" TextTrimming="CharacterEllipsis" />
+              <TextBox x:Name="TxtBar" Grid.Column="1" FontFamily="{StaticResource MonoFont}" FontSize="12" Padding="8,5" IsEnabled="False"
+                       ToolTip="Escribe un comando y pulsa Enter. ↑/↓ = historial · v &lt;comando&gt; = otra ventana · cd, @api, @web, @movil, @raiz, t"
+                       PreviewKeyDown="TxtBar_KeyDown" />
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0" VerticalAlignment="Center">
+                <Button x:Name="BtnHistUp" Style="{StaticResource BtnIcon}" Content="&#xE70E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                        ToolTip="Comando anterior (↑)" Click="HistUp_Click" Focusable="False" />
+                <Button x:Name="BtnHistDown" Style="{StaticResource BtnIcon}" Content="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
+                        ToolTip="Comando siguiente (↓)" Click="HistDown_Click" Focusable="False" />
+              </StackPanel>
+              <Button x:Name="BtnBar" Grid.Column="3" Content="Ejecutar" Style="{StaticResource BtnPrimary}" Padding="14,5" Margin="8,0,0,0"
+                      IsEnabled="False" Click="BarRun_Click" />
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+
+      <!-- Estado de la acción en curso -->
+      <Grid Grid.Row="4" Margin="2,10,2,0">
+        <TextBlock x:Name="TxtBusy" Text="Listo" Foreground="{StaticResource MutedBrush}" FontSize="12" FontFamily="{StaticResource MonoFont}" />
+        <TextBlock x:Name="TxtShortcuts" Text="Ctrl+P proyecto  ·  Ctrl+T terminal  ·  Ctrl+Q salir" Foreground="{StaticResource MutedBrush}" Opacity="0.7" FontSize="11"
+                   FontFamily="{StaticResource MonoFont}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,180,0" />
+        <ProgressBar x:Name="BusyProgress" Width="160" Height="4" HorizontalAlignment="Right" IsIndeterminate="True" Visibility="Collapsed"
+                     Foreground="{StaticResource AccentBrush}" Background="{StaticResource Surface2Brush}" BorderThickness="0" />
+      </Grid>
+      </Grid>
+
+      <!-- Terminales: a la mitad, a pantalla completa o ocultas -->
+      <GridSplitter x:Name="TerminalDivider" Grid.Column="1" Width="10" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                    Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" Visibility="Collapsed" />
+      <Border x:Name="TerminalDock" Grid.Column="2" Visibility="Collapsed" />
+    </Grid>
+    </Grid>
+  </Grid>
+</Window>
