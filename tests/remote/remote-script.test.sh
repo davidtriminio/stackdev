@@ -35,8 +35,8 @@ cat > "$STUBS/curl" <<'S'
 #!/usr/bin/env bash
 if ls "$SD_ROOT"/var/www/*/BROKEN >/dev/null 2>&1; then echo 000; else echo 200; fi
 S
-for n in chown restorecon useradd setsebool firewall-cmd a2enmod a2ensite sleep; do printf '#!/bin/sh\nexit 0\n' > "$STUBS/$n"; done
-printf '#!/bin/sh\nexit 0\n' > "$STUBS/httpd"; printf '#!/bin/sh\nexit 0\n' > "$STUBS/nginx"
+# apachectl and a2dissite are stubbed too: a real one on the host would test the host's configuration, not the sandbox
+for n in chown restorecon useradd setsebool firewall-cmd a2enmod a2ensite a2dissite apachectl httpd nginx sleep; do printf '#!/bin/sh\nexit 0\n' > "$STUBS/$n"; done
 cat > "$STUBS/journalctl" <<'S'
 #!/bin/sh
 echo "line 1 of the journal"
@@ -294,7 +294,9 @@ before="$(cat "$SD_ROOT/etc/httpd/conf.d/shop-api.conf")"
 o="$(R site --svc shop-api --domain shop2.example.com --web apache)"
 eq "$(code "$o")" 30 "rejected configuration fails"; has "$o" "AH00526" "the reason is shown"
 eq "$(cat "$SD_ROOT/etc/httpd/conf.d/shop-api.conf")" "$before" "previous site is put back"
-rm -f "$STUBS/apachectl"
+printf '#!/bin/sh
+exit 0
+' > "$STUBS/apachectl"
 printf 'ASPNETCORE_URLS=http://127.0.0.1:5070\n' > "$RUN/p4.env"
 o="$(R provision --svc mail-api --dll M.dll --domain mail.example.com --port 5070 --web apache --https yes --run-dir "$RUN" --env-file "$RUN/p4.env")"
 eq "$(code "$o")" 0 "provision with https and no email"; has "$o" "##KV https=ok" "provision issues the certificate without an email"
