@@ -26,4 +26,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Shell tests
-        run: DEBUG=1 bash tests/remote/remote-script.test.sh
+        run: bash tests/remote/remote-script.test.sh
