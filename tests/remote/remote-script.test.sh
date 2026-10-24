@@ -230,7 +230,7 @@ printf 'ASPNETCORE_URLS=http://127.0.0.1:5001\n' > "$SD_ROOT/etc/$svc/$svc.env";
 echo "== provision (apache and nginx)"; DEBUGP=1
 mkdir -p "$SD_ROOT/etc/httpd/conf.d" "$SD_ROOT/etc/nginx/conf.d"
 printf 'ASPNETCORE_ENVIRONMENT=Production\nASPNETCORE_URLS=http://127.0.0.1:5050\nJwt__Key=abc\n' > "$RUN/p.env"
-o="$(R provision --svc shop-api --dll Shop.Api.dll --domain shop.example.com --port 5050 --web apache --run-dir "$RUN" --env-file "$RUN/p.env" --runtime 9)"; [ -n "${DEBUG:-}" ] && echo "$o"
+o="$(R provision --svc shop-api --dll Shop.Api.dll --domain shop.example.com --port 5050 --web apache --run-dir "$RUN" --env-file "$RUN/p.env" --runtime 9)"; { [ -n "${DEBUG:-}" ] || [ "$(code "$o")" != 0 ]; } && echo "$o"
 eq "$(code "$o")" 0 "provision apache exit"; has "$o" "##STEP 8/8" "provision steps"
 has "$(cat "$SD_ROOT/etc/systemd/system/shop-api.service")" "ExecStart=.* /var/www/shop-api/Shop.Api.dll" "unit ExecStart"
 has "$(cat "$SD_ROOT/etc/systemd/system/shop-api.service")" "EnvironmentFile=/etc/shop-api/shop-api.env" "unit EnvironmentFile"
