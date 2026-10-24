@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>StackDev.Core</RootNamespace>
+    <AssemblyName>StackDev.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The script that runs on the server travels inside the application. -->
+    <EmbeddedResource Include="Deploy\Remote\stackdev-remote.sh" LogicalName="StackDev.Core.Deploy.Remote.stackdev-remote.sh" />
+  </ItemGroup>
+</Project>
