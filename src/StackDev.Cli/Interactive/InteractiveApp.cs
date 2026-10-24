@@ -331,7 +331,7 @@ public sealed class InteractiveApp
     {
         AnsiConsole.Clear();
         var i = _s.Ui.Choose($"Configuración — {_s.Store.FilePath}",
-            new[] { "Editar dev-menu.json", "Ver cómo se lee (componentes, carpetas, puertos)", "Detectar de nuevo (guarda copia .bak)", "Traer el estado de flutter-dev otra vez" });
+            new[] { "Editar dev-menu.json", "Ver cómo se lee (componentes, carpetas, puertos)", "Detectar de nuevo (guarda copia .bak)" });
         switch (i)
         {
             case 0: _s.OpenConfigEditor(); Pause(); break;
@@ -344,13 +344,6 @@ public sealed class InteractiveApp
                     Pause();
                 }
                 break;
-            case 3:
-            {
-                var r = _s.State.Migrate(StateStore.DirPrevious(), force: true);
-                _s.Ui.Write($"{r.Copied} archivos copiados, {r.Skipped} sin cambios.", Level.Ok);
-                Pause();
-                break;
-            }
         }
     }
 

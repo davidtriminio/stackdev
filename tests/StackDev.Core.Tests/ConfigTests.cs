@@ -11,14 +11,14 @@ public class ConfigTests
     {
         var c = ConfigJson.Read(ShopTree.CurrentConfig);
 
-        Assert.Equal("pulperia", c.Name);
+        Assert.Equal("shop", c.Name);
         Assert.Equal(5440, c.Postgres!.Port);
-        Assert.Equal("pulperia-pg", c.Postgres.Container);
+        Assert.Equal("shop-pg", c.Postgres.Container);
         Assert.Equal("", c.Postgres.Volume);
         Assert.Equal("/scalar", c.Api!.Open);
-        Assert.Equal("Host=127.0.0.1;Port=5440;Database=pulperia;Username=pulperia;Password=dev", c.Api.Env!["ConnectionStrings__Pulperia"]);
+        Assert.Equal("Host=127.0.0.1;Port=5440;Database=shop;Username=shop;Password=dev", c.Api.Env!["ConnectionStrings__Shop"]);
         Assert.Equal("pnpm install", c.Web!.Install);
-        Assert.Equal(@"V:\Programas\Android\Sdk", c.Mobile!.AndroidSdk);
+        Assert.Equal(@"C:\Android\Sdk", c.Mobile!.AndroidSdk);
         Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, c.StartAll);
         Assert.Equal(3, c.Tasks!.Count);
     }
@@ -38,12 +38,12 @@ public class ConfigTests
     {
         var c = new ProjectConfig
         {
-            Name = "pulperia",
+            Name = "shop",
             Tasks = new() { new TaskConfig { Name = "Migración 'nueva'", Folder = "api", Command = "echo \"hola\" && dir" } },
         };
         var text = ConfigJson.Write(c);
 
-        Assert.Contains("\"name\": \"pulperia\"", text);
+        Assert.Contains("\"name\": \"shop\"", text);
         Assert.Contains("Migración 'nueva'", text);            // sin \u0027 ni \u00F3
         Assert.Contains("\\\"hola\\\"", text);                  // las comillas dobles sí se escapan
         Assert.DoesNotContain("\r", text);
@@ -80,9 +80,9 @@ public class ConfigTests
     [Fact]
     public void ValuesEffectiveOfPostgresUseTheSameDefaultsThatTheScript()
     {
-        var pg = new PostgresConfig { User = "pulperia" };
+        var pg = new PostgresConfig { User = "shop" };
         Assert.Equal(5432, pg.EfPort);
-        Assert.Equal("pulperia", pg.EfDatabase);          // sin baseDatos: el usuario
+        Assert.Equal("shop", pg.EfDatabase);          // sin baseDatos: el usuario
         Assert.Equal("postgres:17-alpine", pg.EfImage);
         Assert.Equal("postgres", new PostgresConfig().EfUser);
     }

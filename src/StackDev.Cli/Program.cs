@@ -29,6 +29,6 @@ app.Configure(c =>
     c.AddCommand<ConfigCommand>("config")
         .WithDescription("Muestra cómo se lee dev-menu.json: componentes, carpetas, puertos y variables de entorno.");
     c.AddCommand<StatusBoardCommand>("estado")
-        .WithDescription("Muestra la carpeta del estado personal (%APPDATA%\\stackdev) y la migración desde flutter-dev.");
+        .WithDescription("Muestra la carpeta del estado personal (%APPDATA%\\stackdev) , el último proyecto y el último emulador.");
 });
 return app.Run(args);

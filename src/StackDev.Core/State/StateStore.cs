@@ -5,21 +5,16 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.State;
 
-public sealed record StateMigration(bool Done, int Copied, int Skipped, string? Origin);
-
 /// <summary>
 /// Estado personal (no va en el repo): último proyecto, último AVD, historial de comandos,
-/// condiciones por AVD y respaldos de la base. Vive en %APPDATA%\stackdev y se migra desde
-/// %APPDATA%\flutter-dev. Los archivos tienen el mismo formato que usa dev.ps1/flutter.ps1.
+/// condiciones por AVD y respaldos de la base. Vive en %APPDATA%\stackdev.
 /// </summary>
 public sealed class StateStore
 {
     public const string FolderName = "stackdev";
-    public const string PreviousFolderName = "flutter-dev";
-    private const string Mark = ".migrado";
     public const int MaxRecent = 10;
 
-    // UTF-8 con BOM: así el script de PowerShell 5.1 sigue leyendo bien las rutas con tildes.
+    // UTF-8 con BOM: PowerShell 5.1 y los editores de Windows detectan bien las tildes de las rutas.
     private static readonly UTF8Encoding Utf8Bom = new(true);
 
     public StateStore(string dir)
@@ -32,50 +27,13 @@ public sealed class StateStore
     public static string DefaultDir(string? appData = null) =>
         Path.Combine(appData ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
 
-    public static string DirPrevious(string? appData = null) =>
-        Path.Combine(appData ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), PreviousFolderName);
+    /// <summary>Abre el estado de esta persona (%APPDATA%\stackdev).</summary>
+    public static StateStore Open(string? appData = null) => new(DefaultDir(appData));
 
-    /// <summary>Abre el estado de siempre (%APPDATA%\stackdev), migrando lo que haya en flutter-dev la primera vez.</summary>
-    public static StateStore Open(string? appData = null)
-    {
-        var store = new StateStore(DefaultDir(appData));
-        store.Migrate(DirPrevious(appData));
-        return store;
-    }
-
-    /// <summary>
-    /// Copia lo que falta de la carpeta anterior (no pisa nada y no borra el origen, para que el script viejo siga funcionando).
-    /// Solo corre una vez, salvo con <paramref name="force"/>: entonces trae lo que sea más nuevo en el origen.
-    /// </summary>
-    public StateMigration Migrate(string origin, bool force = false)
-    {
-        Directory.CreateDirectory(Dir);
-        var mark = Path.Combine(Dir, Mark);
-        if (!Directory.Exists(origin)) return new(false, 0, 0, null);
-        if (File.Exists(mark) && !force) return new(false, 0, 0, origin);
-
-        int copied = 0, skipped = 0;
-        foreach (var file in Directory.EnumerateFiles(origin, "*", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(origin, file);
-            var destination = Path.Combine(Dir, rel);
-            var exists = File.Exists(destination);
-            if (exists && !(force && File.GetLastWriteTimeUtc(file) > File.GetLastWriteTimeUtc(destination)))
-            {
-                skipped++;
-                continue;
-            }
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            File.Copy(file, destination, overwrite: true);
-            copied++;
-        }
-        File.WriteAllText(mark, $"Migrado de {origin} el {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n");
-        return new(true, copied, skipped, origin);
-    }
 
     // ---------------------------------------------------------------- Proyecto
 
-    /// <summary>Clave estable de un proyecto: "nombre-xxxxxxxx" (MD5 de la ruta en minúsculas). Igual que en el script.</summary>
+    /// <summary>Clave estable de un proyecto: "nombre-xxxxxxxx" (MD5 de la ruta en minúsculas). Estable entre ejecuciones y entre equipos con la misma ruta.</summary>
     public static string Key(string root)
     {
         var path = root.ToLowerInvariant();

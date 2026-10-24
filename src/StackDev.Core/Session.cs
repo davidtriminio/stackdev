@@ -11,7 +11,7 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core;
 
-/// <summary>Opciones que se pasan al abrir la herramienta (equivalen a los parámetros de flutter.ps1).</summary>
+/// <summary>Opciones que se pasan al abrir la herramienta.</summary>
 public sealed class SessionOptions
 {
     public string? Avd { get; set; }

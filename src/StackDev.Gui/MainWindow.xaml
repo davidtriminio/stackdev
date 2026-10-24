@@ -309,13 +309,10 @@
                   </Border>
                   <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="Carpetas y estado" Foreground="#22D3EE" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock Text="Dónde guarda stackdev los logs y el estado, y cómo traer lo de flutter-dev." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
+                    <TextBlock Text="Dónde guarda stackdev los logs y el estado." Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0" />
                   </StackPanel>
                 </Grid>
                 <WrapPanel>
-                  <Button Margin="0,0,8,8" Click="CfgSync_Click">
-                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE895;" /><TextBlock Text="Traer estado de flutter-dev" /></StackPanel>
-                  </Button>
                   <Button Margin="0,0,8,8" Click="CfgLogs_Click">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource GlyphBtn}" Text="&#xE8A5;" /><TextBlock Text="Abrir carpeta de logs" /></StackPanel>
                   </Button>
