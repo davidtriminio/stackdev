@@ -2,8 +2,8 @@
 
 **Español** · [English](README.md)
 
-Herramienta de desarrollo local para proyectos con **API .NET + web Angular + app Flutter + Postgres en Docker**.
-Reemplaza a `the previous script` (que sigue funcionando, no se borra) con una herramienta en C# que se instala como *dotnet global tool*.
+Una sola herramienta para levantar un proyecto full-stack en local (base de datos, API, web y emulador) y publicar su API en tu propio servidor por SSH, sin abrir una terminal. Nació para **API .NET + web Angular + app Flutter + Postgres en Docker** y crece hacia otros lenguajes.
+Se usa como ventana (WPF, Windows) o como línea de comandos que se instala como *herramienta global de .NET*.
 
 > **Estado:** en uso diario en Windows. La ruta hacia macOS y Linux está en el [plan](README.md#roadmap) (en inglés).
 
@@ -15,9 +15,10 @@ Reemplaza a `the previous script` (que sigue funcionando, no se borra) con una h
 ## Compilar y probar
 
 ```powershell
+git clone https://github.com/davidtriminio/stackdev
 cd stackdev
 dotnet test                                   # tests del núcleo
-dotnet run --project src/StackDev.Cli -- config C:\ruta\a\shop
+dotnet run --project src/StackDev.Cli -- config C:\ruta\al\proyecto
 ```
 
 ## Instalar como herramienta (`stackdev`)
@@ -59,7 +60,7 @@ Opciones comunes: `-p <ruta>` (proyecto), `--avd <nombre>`, `--modo debug|profil
 | `stackdev logs api\|web\|db [-n 40] [-f]` | Últimas líneas del log |
 | `stackdev detectar [ruta] [--guardar]` | Detecta y (opcional) crea `dev-menu.json` |
 | `stackdev config [ruta]` | Muestra cómo se lee `dev-menu.json` |
-| `stackdev estado [--sincronizar]` | Estado personal y migración desde `previous-state` |
+| `stackdev estado` | Muestra dónde se guarda el estado personal, el último proyecto y el último emulador |
 
 Códigos de salida: 0 bien · 1 falló · 2 uso incorrecto · 130 cancelado.
 
@@ -84,7 +85,7 @@ Sin ruta abre la carpeta actual si parece un proyecto, o el último usado, o mue
 
 ## Estado personal
 
-Va en `%APPDATA%\stackdev\` (no en el repo). La primera vez se **copia** lo que haya en `%APPDATA%\previous-state\` (último proyecto, último AVD, historial, condiciones, respaldos); el origen no se toca, así `the previous script` sigue funcionando. Mientras uses los dos, `stackdev estado --sincronizar` trae lo más nuevo.
+Va en `%APPDATA%\stackdev\` (no en el repo): último proyecto, último emulador, historial de comandos, condiciones del dispositivo y respaldos de la base de datos.
 
 ## `dev-menu.json`
 
