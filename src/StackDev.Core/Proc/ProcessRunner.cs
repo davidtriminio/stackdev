@@ -188,8 +188,9 @@ public static class ProcessRunner
                     return TimedOut;
                 }
             }
-            // Drains the last output events; bounded, because a grandchild that kept the pipes open would block this forever.
-            if (!p.WaitForExit(10000)) { KillTree(p); return TimedOut; }
+            // WaitForExit(int) does not flush the asynchronous output events; the parameterless one does, but it waits for the pipes to close,
+            // which a grandchild that kept them open would never allow. So: flush on another thread and give it a limit.
+            if (!Task.Run(() => p.WaitForExit()).Wait(10000)) { KillTree(p); return TimedOut; }
             return p.ExitCode;
         }
     }
