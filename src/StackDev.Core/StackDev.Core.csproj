@@ -6,5 +6,7 @@
   <ItemGroup>
     <!-- The script that runs on the server travels inside the application. -->
     <EmbeddedResource Include="Deploy\Remote\stackdev-remote.sh" LogicalName="StackDev.Core.Deploy.Remote.stackdev-remote.sh" />
+    <!-- The project profiles that ship with the application (data, not code). -->
+    <EmbeddedResource Include="Detection\Profiles\profiles.json" LogicalName="StackDev.Core.Detection.Profiles.profiles.json" />
   </ItemGroup>
 </Project>

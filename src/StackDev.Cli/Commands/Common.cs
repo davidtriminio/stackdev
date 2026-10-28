@@ -53,7 +53,7 @@ public class CommonSettings : CommandSettings
     [Description("Dispositivo donde correr la app: un serial de adb (emulator-5554, 192.168.1.20:5555…) o «todos».")]
     public string? Device { get; init; }
 
-    [CommandOption("--direccion <IP:PUERTO>")]
+    [CommandOption("--direccion <IP_PUERTO>")]
     [Description("Con emu connect, pair o disconnect: dirección del teléfono (sin ella se pregunta o se usan las guardadas).")]
     public string? Address { get; init; }
 

@@ -1,3 +1,4 @@
+using StackDev.Core.Detection.Profiles;
 using System.Text.RegularExpressions;
 using StackDev.Core.Config;
 using StackDev.Core.Util;
@@ -21,16 +22,17 @@ public sealed class DetectionResult
     public bool FoundAnything => Config.Api is not null || Config.Web is not null || Config.Mobile is not null;
 }
 
-/// <summary>Automatic detection of a repo's .NET API, Angular web app and Flutter app.</summary>
+/// <summary>Automatic detection of a repo's API, web app and Flutter app: .NET and Angular directly, other languages through profiles.</summary>
 public static class Detector
 {
     private const RegexOptions Ci = RegexOptions.IgnoreCase;
 
-    public static DetectionResult Detect(string root)
+    public static DetectionResult Detect(string root, ProfileCatalog? profiles = null)
     {
         root = Paths.Normalize(root);
+        profiles ??= ProfileCatalog.Load();
         var name = Paths.Slug(Paths.FolderName(root));
-        var files = FileTree.Search(root, new[] { "pubspec.yaml", "*.csproj", "package.json" }, 4);
+        var files = FileTree.Search(root, new[] { "pubspec.yaml", "*.csproj", "package.json" }.Concat(profiles.FileNames).Distinct(StringComparer.OrdinalIgnoreCase), 4);
         var findings = new List<string>();
         var tasks = new List<TaskConfig>();
 
@@ -38,8 +40,20 @@ public static class Detector
         var web = DetectWeb(root, files, findings);
         var mobile = DetectMobile(root, files, tasks, findings);
 
+        // Other languages and frameworks come from data (profiles); .NET, Angular and Flutter keep their dedicated detection.
+        if (api is null && ProfileDetector.Find(files, profiles, "api") is { } apiHit)
+        {
+            api = ProfileDetector.BuildApi(root, apiHit, tasks);
+            findings.Add($"API ({apiHit.Profile.Title}):  {api.Folder}  ->  {api.Url}");
+        }
+        if (web is null && ProfileDetector.Find(files, profiles, "web") is { } webHit)
+        {
+            web = ProfileDetector.BuildWeb(root, webHit, tasks);
+            findings.Add($"Web ({webHit.Profile.Title}):  {web.Folder}  ->  {web.Url}  ({PackageManager(root, webHit.Folder)})");
+        }
+
         if (api is null && web is null && mobile is null)
-            findings.Add("No encontré API .NET, web Angular ni app Flutter.");
+            findings.Add("No reconocí ninguna API, web ni app Flutter en esta carpeta.");
 
         var config = new ProjectConfig
         {
