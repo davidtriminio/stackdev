@@ -1285,13 +1285,6 @@ public partial class MainWindow : Window
         BuildAll();
     }
 
-    private void CfgSync_Click(object sender, RoutedEventArgs e)
-    {
-        if (_s is null) return;
-        var r = _state.Migrate(StateStore.DirPrevious(), force: true);
-        _ui.Write($"Estado de previous-state: {r.Copied} archivos copiados, {r.Skipped} sin cambios.", Level.Ok);
-    }
-
     private void OpenFolder(string path)
     {
         try

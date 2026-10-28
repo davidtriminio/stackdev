@@ -18,7 +18,7 @@ public class ConfigTests
         Assert.Equal("/scalar", c.Api!.Open);
         Assert.Equal("Host=127.0.0.1;Port=5440;Database=shop;Username=shop;Password=dev", c.Api.Env!["ConnectionStrings__Shop"]);
         Assert.Equal("pnpm install", c.Web!.Install);
-        Assert.Equal(@"C:\Programas\Android\Sdk", c.Mobile!.AndroidSdk);
+        Assert.Equal(@"C:\Android\Sdk", c.Mobile!.AndroidSdk);
         Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, c.StartAll);
         Assert.Equal(3, c.Tasks!.Count);
     }

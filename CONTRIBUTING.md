@@ -28,7 +28,7 @@ bash tests/remote/remote-script.test.sh     # Linux, WSL or Git Bash on Windows
 - Code and identifiers in English. The user interface is in Spanish today and will be translatable; do not hard-code text in new places without a reason.
 - Match the surrounding style: comment density, naming, idiom.
 - The remote script `stackdev-remote.sh` must stay plain bash that works on Debian/Ubuntu and RHEL-like systems. Every message it prints needs a translation rule in `RemoteText.cs` (a test checks this), and every new subcommand needs cases in `tests/remote/remote-script.test.sh`.
-- WPF details that bit us: subclasses of `Window` do not inherit implicit styles (use `SetResourceReference`), avoid nesting quotes inside interpolated strings, and do not set `IsDefault` on a Close button (Enter would close forms).
+- Known WPF pitfalls: subclasses of `Window` do not inherit implicit styles (use `SetResourceReference`), avoid nesting quotes inside interpolated strings, and do not set `IsDefault` on a Close button (Enter would close forms).
 - Never log secrets. Anything that goes to a log passes through `SecretMask`.
 
 ## Pull request checklist

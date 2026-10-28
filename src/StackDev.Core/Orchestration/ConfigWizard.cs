@@ -54,7 +54,7 @@ public sealed class ConfigWizard
         if (sdk is not null) return sdk;
         while (true)
         {
-            var p = _s.Ui.Ask(@"Ruta del Android SDK (ej: C:\Programas\Android\Sdk, Enter para omitir)")?.Trim().Trim('"');
+            var p = _s.Ui.Ask(@"Ruta del Android SDK (ej: C:\Android\Sdk, Enter para omitir)")?.Trim().Trim('"');
             if (string.IsNullOrEmpty(p)) return "";
             if (AndroidSdkLocator.IsValid(p)) return p;
             _s.Ui.Write(@"En esa carpeta no está emulator\emulator.exe.", Level.Error);

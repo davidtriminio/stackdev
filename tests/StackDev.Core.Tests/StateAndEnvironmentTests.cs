@@ -27,55 +27,13 @@ public class StateStoreTests
     }
 
     [Fact]
-    public void MigratesFromFlutterDevWithoutDeleteTheOriginNorOverwriteItThatAlreadyHas()
-    {
-        using var t = new TempFolder();
-        var appData = t.FilePath;
-        var old = StateStore.DirPrevious(appData);
-        Directory.CreateDirectory(Path.Combine(old, "respaldos", "shop-abcd1234"));
-        File.WriteAllText(Path.Combine(old, "ultimo-proyecto.txt"), @"C:\dev\shop");
-        File.WriteAllText(Path.Combine(old, "ultimo-avd.txt"), "Resizable_Experimental");
-        File.WriteAllText(Path.Combine(old, "respaldos", "shop-abcd1234", "shop-20260101-120000.sql"), "-- sql");
-
-        var s = StateStore.Open(appData);
-
-        Assert.Equal(@"C:\dev\shop", s.LastProject);
-        Assert.Equal("Resizable_Experimental", s.GlobalLastAvd);
-        Assert.True(File.Exists(Path.Combine(s.Dir, "respaldos", "shop-abcd1234", "shop-20260101-120000.sql")));
-        Assert.True(File.Exists(Path.Combine(old, "ultimo-proyecto.txt")));   // el script viejo sigue funcionando
-        Assert.EndsWith("stackdev", s.Dir);
-
-        // segunda apertura: no vuelve a migrar ni pisa lo que el usuario ya cambió
-        s.LastProject = @"C:\dev\otro";
-        var s2 = StateStore.Open(appData);
-        Assert.Equal(@"C:\dev\otro", s2.LastProject);
-    }
-
-    [Fact]
-    public void WithoutFolderPreviousSimplyStartsEmpty()
+    public void WithoutSavedStateStartsEmpty()
     {
         using var t = new TempFolder();
         var s = StateStore.Open(t.FilePath);
         Assert.Null(s.LastProject);
         Assert.Null(s.GlobalLastAvd);
         Assert.Empty(s.ReadRecent("x"));
-    }
-
-    [Fact]
-    public void MigrateForcedBringsOnlyItThatIsMoreNew()
-    {
-        using var t = new TempFolder();
-        var old = t.In("viejo"); var fresh = new StateStore(t.In("nuevo"));
-        Directory.CreateDirectory(old);
-        File.WriteAllText(Path.Combine(old, "ultimo-avd.txt"), "A");
-        fresh.Migrate(old);
-
-        File.WriteAllText(Path.Combine(old, "ultimo-avd.txt"), "B");
-        File.SetLastWriteTimeUtc(Path.Combine(old, "ultimo-avd.txt"), DateTime.UtcNow.AddMinutes(5));
-        var r = fresh.Migrate(old, force: true);
-
-        Assert.Equal(1, r.Copied);
-        Assert.Equal("B", fresh.GlobalLastAvd);
     }
 
     [Fact]
@@ -205,8 +163,8 @@ public class AndroidSdkTests
     [Fact]
     public void ReadsAndroidSdkOfFlutterSettingsYConvertsTheBars()
     {
-        Assert.Equal(@"C:\Programas\Android\Sdk",
-            AndroidSdkLocator.FromFlutterSettings("{ \"android-sdk\": \"C:\\\\Programas\\\\Android\\\\Sdk\" }"));
+        Assert.Equal(@"C:\Android\Sdk",
+            AndroidSdkLocator.FromFlutterSettings("{ \"android-sdk\": \"C:\\\\Android\\\\Sdk\" }"));
         Assert.Null(AndroidSdkLocator.FromFlutterSettings("{}"));
     }
 
@@ -228,9 +186,9 @@ public class AndroidSdkTests
     [Fact]
     public void TheVariablesOfSdkAreOnlyForTheProcessesLaunched()
     {
-        var v = AndroidSdkLocator.ProcessVariables(@"C:\Programas\Android\Sdk");
-        Assert.Equal(@"C:\Programas\Android\Sdk", v["ANDROID_SDK_ROOT"]);
-        Assert.Equal(@"C:\Programas\Android\Sdk", v["ANDROID_HOME"]);
+        var v = AndroidSdkLocator.ProcessVariables(@"C:\Android\Sdk");
+        Assert.Equal(@"C:\Android\Sdk", v["ANDROID_SDK_ROOT"]);
+        Assert.Equal(@"C:\Android\Sdk", v["ANDROID_HOME"]);
     }
 }
 

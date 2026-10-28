@@ -100,7 +100,7 @@ public sealed class ShopTree : IDisposable
           },
           "mobile": {
             "folder": "mobile",
-            "androidSdk": "C:\\Programas\\Android\\Sdk",
+            "androidSdk": "C:\\Android\\Sdk",
             "avd": "",
             "argsRun": "",
             "parse": "flutter analyze",

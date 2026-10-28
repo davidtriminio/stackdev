@@ -6,7 +6,7 @@ namespace StackDev.Core.Proc;
 /// <summary>
 /// PIDs de los procesos que lanzó la herramienta (API, web, app...), guardados en el estado personal
 /// junto con la hora de inicio para no confundirlos si el sistema reutiliza el PID.
-/// Formato de cada línea (igual que the previous script): <c>clave|pid|ticks</c>.
+/// Formato de cada línea (un archivo de texto por proceso): <c>clave|pid|ticks</c>.
 /// </summary>
 public sealed class ProcessRegistry
 {
