@@ -11,7 +11,7 @@ It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + P
 ## What it does
 
 **Local development**
-- Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it.
+- Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it. .NET, Angular and Flutter are built in; **Node (NestJS, Express, Fastify, Next, Nuxt, SvelteKit, Vite, CRA, Vue CLI) and Python (Django, FastAPI, Flask)** come from [profiles](CONTRIBUTING.md#project-profiles), plain JSON files anyone can add.
 - One panel with live status and buttons for every service: *Start all*, *Check*, *Stop all*, logs, device conditions, a command console.
 - A command-line version (`stackdev up`, `stackdev api start`, …) for scripts, with proper exit codes.
 
@@ -82,7 +82,7 @@ A project describes itself in one optional-everything file at its root: `postgre
 Planned, in this order:
 
 1. **Cross-platform**: put the Windows-only pieces (encryption, key permissions, window control) behind interfaces and add a second UI on Avalonia, reusing the core as it is. The command line first.
-2. **Language support as data**: describe how to detect, start, test and publish a project type in JSON/YAML files, so adding Python, Node, Go or Java needs no C#.
+2. **Language support as data**: *started.* Profiles describe how to detect, start, test and build a project type, so adding a language needs no C#; Node and Python ship today and `examples/profiles/go.json` shows how to add Go. Next: more built-in profiles (Go, Java, PHP, Rust) and publishing, which is still .NET-only.
 3. **More targets**: web (Vercel or your server), Android APK, database backup and restore.
 
 ## Contributing

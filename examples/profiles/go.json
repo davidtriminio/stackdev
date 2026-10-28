@@ -1,0 +1,21 @@
+{
+  // An example of a personal profile. Copy it to %APPDATA%\stackdev\profiles\ and stackdev will recognise Go services.
+  // Profiles are data: no code is needed to teach stackdev a new language or framework.
+  "profiles": [
+    {
+      "id": "go-service",
+      "title": "Go",
+      "role": "api",
+      "match": { "files": ["go.mod"] },
+      "url": "http://localhost:8080",
+      "commands": {
+        "start": "go run .",
+        "test": "go test ./...",
+        "build": "go build ./..."
+      },
+      "tasks": [
+        { "name": "Go: tidy modules", "command": "go mod tidy" }
+      ]
+    }
+  ]
+}
