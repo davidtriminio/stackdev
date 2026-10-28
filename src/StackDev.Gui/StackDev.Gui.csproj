@@ -7,7 +7,7 @@
     <RootNamespace>StackDev.Gui</RootNamespace>
     <AssemblyName>stackdev-gui</AssemblyName>
     <ApplicationTitle>stackdev</ApplicationTitle>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <ApplicationIcon>Assets\stackdev.ico</ApplicationIcon>
     <!-- Con PublishSingleFile, las DLL nativas (WebView2Loader.dll de la terminal) van dentro del .exe y se extraen al abrir; así el .exe funciona solo, sin copiar archivos junto a él. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
