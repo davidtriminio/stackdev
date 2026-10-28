@@ -12,7 +12,7 @@ public sealed record EmuState(EmuCode Code, string? Serial, string Text);
 
 public enum StartupResult { Ok, Timeout, Cancelled, Dead }
 
-/// <summary>Seguimiento del arranque de un emulador (para poder esperar varias cosas a la vez).</summary>
+/// <summary>Tracking of an emulator boot (so several things can be awaited at once).</summary>
 public sealed class EmuWait
 {
     public string? Serial { get; set; }
@@ -20,8 +20,8 @@ public sealed class EmuWait
 }
 
 /// <summary>
-/// El emulador de Android: arranque con Quick Boot, cierre guardando el estado, detección de un emulador colgado,
-/// cierre forzado, centrado de la ventana y recuperación cuando no arranca.
+/// The Android emulator: Quick Boot start, shutdown saving state, detection of a hung emulator,
+/// forced shutdown, window centring and recovery when it does not start.
 /// </summary>
 public sealed class EmulatorService
 {
@@ -52,8 +52,8 @@ public sealed class EmulatorService
     public bool HasProcess() => Processes().Length > 0;
 
     /// <summary>
-    /// Ninguno / Ok / NoResponde. Se considera que no responde si la ventana de qemu está congelada, si
-    /// <c>adb shell echo ok</c> no contesta en 5 s, si adb lo ve "offline", o si el proceso existe pero adb no lo ve.
+    /// None / Ok / Unresponsive. It is considered unresponsive if the qemu window is frozen, if
+    /// <c>adb shell echo ok</c> does not answer within 5 s, if adb sees it "offline", or if the process exists but adb does not see it.
     /// </summary>
     public EmuState State()
     {
@@ -86,7 +86,7 @@ public sealed class EmulatorService
 
     // ------------------------------------------------------------ AVDs
 
-    /// <summary>Carpeta donde viven los AVDs (~\.android\avd).</summary>
+    /// <summary>Folder where the AVDs live (~\.android\avd).</summary>
     public static string? AvdHome()
     {
         var h = Environment.GetEnvironmentVariable("ANDROID_AVD_HOME");
@@ -130,7 +130,7 @@ public sealed class EmulatorService
         return r.Output.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("INFO", StringComparison.Ordinal)).ToList();
     }
 
-    /// <summary>Muestra la lista y deja elegir. Devuelve null si se cancela.</summary>
+    /// <summary>Shows the list and lets the user choose. Returns null if cancelled.</summary>
     public string? ChooseAvd()
     {
         var avds = AvdList();
@@ -147,7 +147,7 @@ public sealed class EmulatorService
         return _s.Avd;
     }
 
-    /// <summary>Los .lock que deja un emulador cerrado a la fuerza hacen fallar el siguiente arranque.</summary>
+    /// <summary>The .lock files left by an emulator closed by force make the next start fail.</summary>
     public void CleanLocks()
     {
         if (HasProcess()) return;
@@ -172,7 +172,7 @@ public sealed class EmulatorService
         }
     }
 
-    /// <summary>Si el AVD está configurado para arrancar siempre en frío, ofrece cambiarlo a Quick Boot.</summary>
+    /// <summary>If the AVD is set to always cold boot, offers to switch it to Quick Boot.</summary>
     public void ConfirmQuickBoot(string name)
     {
         var dir = AvdDir(name);
@@ -220,8 +220,8 @@ public sealed class EmulatorService
     // ------------------------------------------------------------ Arranque
 
     /// <summary>
-    /// "" mientras sigue arrancando, "OK" cuando <c>sys.boot_completed</c> es 1, o el motivo del fallo.
-    /// La ventana se centra una vez al aparecer y otra al terminar de cargar (puede cambiar de tamaño).
+    /// "" while it is still starting, "OK" when <c>sys.boot_completed</c> is 1, or the reason for the failure.
+    /// The window is centred once when it appears and again when it finishes loading (it can change size).
     /// </summary>
     public string TestReady(EmuWait wait)
     {
@@ -258,7 +258,7 @@ public sealed class EmulatorService
         }
     }
 
-    /// <summary>Lanza el proceso del emulador (sin esperar). Siempre con <c>-netdelay none -netspeed full -no-boot-anim</c>.</summary>
+    /// <summary>Launches the emulator process (without waiting). Always with <c>-netdelay none -netspeed full -no-boot-anim</c>.</summary>
     public bool StartProcess(string name, bool cold)
     {
         if (!HasAndroid()) return false;
@@ -284,8 +284,8 @@ public sealed class EmulatorService
     }
 
     /// <summary>
-    /// Sin parámetros arranca el último emulador usado (rápido, sin preguntas); <paramref name="choose"/> muestra la lista.
-    /// Si no arranca ofrece: seguir esperando, reintentar desde cero, elegir otro o cerrarlo.
+    /// With no parameters it starts the last emulator used (fast, no questions); <paramref name="choose"/> shows the list.
+    /// If it does not start it offers: keep waiting, retry from scratch, pick another or close it.
     /// </summary>
     public bool Start(string? name = null, bool cold = false, bool choose = false)
     {
@@ -333,7 +333,7 @@ public sealed class EmulatorService
             options.Add(("Cerrarlo y salir", "cerrar"));
             if (r != StartupResult.Dead) options.Add(("Dejarlo abierto y salir", "dejar"));
 
-            // Sin una persona delante (comando sin interfaz) no se insiste: se cierra para no dejar un emulador a medias
+            // With nobody in front (headless command) it does not insist: it is closed so as not to leave a half-started emulator
             var i = _s.Ui.Interactive ? _s.Ui.Choose("¿Qué hacemos?", options.Select(o => o.Text).ToList(), -1) : -1;
             var choice = i < 0 ? (r == StartupResult.Cancelled ? "dejar" : "cerrar") : options[i].Key;
             switch (choice)
@@ -350,9 +350,9 @@ public sealed class EmulatorService
     // ------------------------------------------------------------ Cierre
 
     /// <summary>
-    /// Cierre normal: restablece las condiciones, guarda el estado (<c>snapshot save default_boot</c>), <c>emu kill</c> y
-    /// espera hasta 60 s a que el proceso termine solo (matarlo mientras escribe a disco obligaba a arrancar siempre desde cero).
-    /// Solo si no termina, o con <paramref name="force"/>, se mata a la fuerza, se borran los .lock y se reinicia adb si hay un fantasma.
+    /// Normal shutdown: resets the conditions, saves the state (<c>snapshot save default_boot</c>), <c>emu kill</c> and
+    /// waits up to 60 s for the process to end by itself (killing it while it writes to disk forced a cold start every time).
+    /// Only if it does not end, or with <paramref name="force"/>, is it killed, the .lock files removed and adb restarted if a ghost remains.
     /// </summary>
     public void Stop(bool force = false)
     {
@@ -368,7 +368,7 @@ public sealed class EmulatorService
             var serial = state.Serial!;
             if (_s.Conditions.Active().Count > 0)
             {
-                // para que el estado guardado no quede en modo avión, batería baja, etc.
+                // so that the saved state does not stay in airplane mode, low battery, etc.
                 _s.Ui.Write("Restableciendo condiciones del dispositivo...", Level.Muted);
                 _s.Conditions.Reset(serial);
             }
@@ -399,13 +399,13 @@ public sealed class EmulatorService
         if (remain.Length > 0 || force)
         {
             CleanLocks();
-            // si adb sigue mostrando un emulador fantasma, reiniciar el servidor
+            // if adb still shows a ghost emulator, restart the server
             if (_s.Adb is not null && _s.Adb.Emulators().Count > 0) _s.Adb.RestartServer();
         }
         if (state.Code != EmuCode.None) _s.Ui.Write("Emulador detenido.", Level.Ok);
     }
 
-    /// <summary>Elige primero; si cancelas, el actual sigue abierto.</summary>
+    /// <summary>Chooses first; if you cancel, the current one stays open.</summary>
     public bool Change()
     {
         if (!_s.AssertComp(ProjectComponent.Mobile) || !HasAndroid()) return false;
@@ -415,11 +415,11 @@ public sealed class EmulatorService
 
         var fresh = ChooseAvd();
         if (fresh is null) { _s.Ui.Write("Cancelado.", Level.Muted); return false; }
-        if (state.Code != EmuCode.None) Stop();   // si no responde, se fuerza solo
+        if (state.Code != EmuCode.None) Stop();   // if it does not respond, it is forced only then
         return Start(fresh);
     }
 
-    /// <summary>Arranque desde cero (cuando el estado guardado da problemas).</summary>
+    /// <summary>Cold start (when the saved state causes problems).</summary>
     public bool StartCold(string? name = null)
     {
         if (!_s.AssertComp(ProjectComponent.Mobile) || !HasAndroid()) return false;

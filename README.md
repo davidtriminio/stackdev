@@ -69,13 +69,14 @@ src/StackDev.Cli    commands and the console screen
 src/StackDev.Gui    the window (WPF, dark "Forja" theme)
 src/StackDev.Core/Deploy/Remote/stackdev-remote.sh   the script that runs on the server
 tests/              xUnit tests for the core and a shell suite for the remote script
+examples/           a complete dev-menu.json
 ```
 
 The remote script talks to the app with a line protocol (`##STEP`, `##INFO`, `##WARN`, `##FAIL code msg`, `##KV key=value`, `##DONE`) and uses documented exit codes.
 
 ## `dev-menu.json`
 
-A project describes itself in one optional-everything file at its root: `postgres`, `api`, `web`, `mobile`, `startAll`, `tasks` and `deployment`. Missing sections simply do not appear in the UI, and unknown fields are kept when the file is saved. The Spanish [README](README.es.md) has the full field table.
+A project describes itself in one optional-everything file at its root: `postgres`, `api`, `web`, `mobile`, `startAll`, `tasks` and `deployment`. Missing sections simply do not appear in the UI, and unknown fields are kept when the file is saved. See [examples/dev-menu.json](examples/dev-menu.json) for a complete file; the Spanish [README](README.es.md) has the full field table.
 
 ## Roadmap
 

@@ -2,20 +2,20 @@ using System.Text.RegularExpressions;
 
 namespace StackDev.Core.Util;
 
-/// <summary>{?Texto} dentro de una tarea pide un valor al ejecutarla; si se deja vacío, se cancela.</summary>
+/// <summary>{?Text} inside a task asks for a value when it runs; if left empty, it is cancelled.</summary>
 public static class Prompts
 {
     private static readonly Regex Pattern = new(@"\{\?([^}]+)\}", RegexOptions.Compiled);
 
-    /// <summary>Los textos de las preguntas, en orden y sin repetir.</summary>
+    /// <summary>The texts of the questions, in order and without repeats.</summary>
     public static IReadOnlyList<string> Texts(string command) =>
         Pattern.Matches(command).Select(m => m.Groups[1].Value).Distinct().ToList();
 
     public static bool HasPrompts(string command) => Pattern.IsMatch(command);
 
     /// <summary>
-    /// Reemplaza cada {?Texto} por lo que devuelva <paramref name="ask"/>.
-    /// Devuelve null si alguna respuesta queda vacía (la tarea se cancela).
+    /// Replaces each {?Text} with whatever <paramref name="ask"/> returns.
+    /// Returns null if any answer is empty (the task is cancelled).
     /// </summary>
     public static string? Expand(string command, Func<string, string?> ask)
     {

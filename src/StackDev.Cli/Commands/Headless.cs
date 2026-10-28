@@ -12,8 +12,8 @@ using StackDev.Core.Util;
 
 namespace StackDev.Cli.Commands;
 
-// Comandos sin interfaz: hacen una cosa, imprimen texto plano y devuelven un código de salida
-// (0 bien, 1 falló, 2 uso incorrecto, 130 cancelado con Ctrl+C). Sirven para scripts y para la línea de comandos.
+// Headless commands: they do one thing, print plain text and return an exit code
+// (0 ok, 1 failed, 2 bad usage, 130 cancelled with Ctrl+C). They serve scripts and the command line.
 
 public class GroupSettings : CommonSettings
 {
@@ -63,7 +63,7 @@ public abstract class GroupCommand<T> : Command<T> where T : GroupSettings
 
         var f = Special(st, name) ?? action.Run;
         var code = Startup.Run(s, () => f(s));
-        // Ver logs termina siempre con Ctrl+C: eso no es un error.
+        // Viewing logs always ends with Ctrl+C: that is not an error.
         return name == "logs" && code == 130 ? 0 : code;
     }
 }

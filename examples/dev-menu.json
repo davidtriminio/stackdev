@@ -1,0 +1,40 @@
+{
+  "name": "shop",
+  "postgres": {
+    "container": "shop-pg",
+    "image": "postgres:17-alpine",
+    "port": 5440,
+    "user": "shop",
+    "password": "dev",
+    "database": "shop",
+    "volume": ""
+  },
+  "api": {
+    "folder": "api",
+    "url": "http://localhost:5109",
+    "open": "/scalar",
+    "env": { "ConnectionStrings__Shop": "Host=127.0.0.1;Port=5440;Database=shop;Username=shop;Password=dev" },
+    "start": "dotnet run --project src/Shop.Api",
+    "test": "dotnet test",
+    "build": "dotnet build"
+  },
+  "web": {
+    "folder": "web",
+    "url": "http://localhost:4200",
+    "start": "pnpm start",
+    "test": "pnpm test --watch=false",
+    "build": "pnpm build",
+    "install": "pnpm install"
+  },
+  "mobile": {
+    "folder": "mobile",
+    "androidSdk": "C:\Android\Sdk",
+    "test": "flutter test",
+    "format": "dart format lib test"
+  },
+  "startAll": ["postgres", "api", "web", "emulador"],
+  "tasks": [
+    { "name": "EF: apply migrations", "folder": "api", "command": "dotnet ef database update --project src/Shop.Infrastructure --startup-project src/Shop.Api" },
+    { "name": "Flutter: build release APK", "folder": "mobile", "command": "flutter build apk --release" }
+  ]
+}

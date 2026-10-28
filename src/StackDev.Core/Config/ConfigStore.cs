@@ -4,8 +4,8 @@ using StackDev.Core.Util;
 namespace StackDev.Core.Config;
 
 /// <summary>
-/// dev-menu.json en la raíz del repo: lo lee, lo guarda y detecta si el usuario lo editó
-/// (se recarga solo al cambiar la fecha de modificación).
+/// dev-menu.json at the repo root: reads it, saves it and detects whether the user edited it
+/// (it reloads by itself when the modification date changes).
 /// </summary>
 public sealed class ConfigStore
 {
@@ -17,8 +17,8 @@ public sealed class ConfigStore
     private readonly string? _externalDir;
 
     /// <param name="dirExternal">
-    /// Carpeta fuera del proyecto (en %APPDATA%\stackdev) donde se crea y guarda el archivo, para no ensuciar el repo.
-    /// Si el proyecto ya trae su propio dev-menu.json, se sigue usando ese.
+    /// Folder outside the project (in %APPDATA%\stackdev) where the file is created and saved, so as not to dirty the repo.
+    /// If the project already ships its own dev-menu.json, that one keeps being used.
     /// </param>
     public ConfigStore(string root, string? dirExternal = null)
     {
@@ -31,7 +31,7 @@ public sealed class ConfigStore
     private string RepoPath => Path.Combine(Root, FileName);
     private string? ExternalPath => _externalDir is null ? null : Path.Combine(_externalDir, FileName);
 
-    /// <summary>El archivo en uso: el de fuera del proyecto si existe; si no, el del repo (heredado); si no, donde se creará.</summary>
+    /// <summary>The file in use: the one outside the project if it exists; otherwise the repo's (inherited); otherwise where it will be created.</summary>
     public string FilePath =>
         ExternalPath is not null && File.Exists(ExternalPath) ? ExternalPath :
         File.Exists(RepoPath) ? RepoPath :
@@ -39,10 +39,10 @@ public sealed class ConfigStore
 
     public bool Exists => File.Exists(FilePath);
 
-    /// <summary>¿Se está usando un dev-menu.json que vive dentro del proyecto?</summary>
+    /// <summary>Is a dev-menu.json that lives inside the project in use?</summary>
     public bool InRepo => string.Equals(FilePath, RepoPath, StringComparison.OrdinalIgnoreCase) && Exists;
 
-    /// <summary>Copia el dev-menu.json del proyecto a la carpeta externa (no borra el original). Devuelve la ruta nueva.</summary>
+    /// <summary>Copies the project's dev-menu.json to the external folder (does not delete the original). Returns the new path.</summary>
     public string? CopyOut()
     {
         if (ExternalPath is null || !File.Exists(RepoPath)) return null;
@@ -54,12 +54,12 @@ public sealed class ConfigStore
 
     public ProjectConfig Config { get; private set; }
 
-    /// <summary>Mensaje de error si el archivo no se pudo leer (el menú queda vacío hasta corregirlo).</summary>
+    /// <summary>Error message if the file could not be read (the menu stays empty until it is fixed).</summary>
     public string? Error { get; private set; }
 
     public ProjectContext Context => new(Root, Config);
 
-    /// <summary>Lee el archivo. Si tiene un error, deja una configuración vacía y llena <see cref="Error"/>.</summary>
+    /// <summary>Reads the file. If it has an error, leaves an empty configuration and fills <see cref="Error"/>.</summary>
     public void Load()
     {
         Error = null;
@@ -84,7 +84,7 @@ public sealed class ConfigStore
         _date = File.GetLastWriteTimeUtc(FilePath);
     }
 
-    /// <summary>Vuelve a leer el archivo si cambió desde la última vez. Devuelve true si recargó.</summary>
+    /// <summary>Reads the file again if it changed since last time. Returns true if it reloaded.</summary>
     public bool ReloadIfChanged()
     {
         if (!Exists) return false;
@@ -93,7 +93,7 @@ public sealed class ConfigStore
         return true;
     }
 
-    /// <summary>Guarda <paramref name="fresh"/> dejando una copia <c>dev-menu.json.bak</c> de la anterior.</summary>
+    /// <summary>Saves <paramref name="fresh"/> leaving a <c>dev-menu.json.bak</c> copy of the previous one.</summary>
     public void Replace(ProjectConfig fresh)
     {
         if (Exists) File.Copy(FilePath, FilePath + ".bak", overwrite: true);

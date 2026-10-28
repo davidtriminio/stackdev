@@ -9,7 +9,7 @@ using StackDev.Core.Services;
 
 namespace StackDev.Cli.Views;
 
-/// <summary>Dibuja el panel de estado.</summary>
+/// <summary>Draws the status panel.</summary>
 public static class Board
 {
     private static string Color(ServiceCode c) => c switch

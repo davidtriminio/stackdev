@@ -15,8 +15,8 @@ using Microsoft.Web.WebView2.Wpf;
 namespace StackDev.Gui.Terminal;
 
 /// <summary>
-/// Una terminal: xterm.js dentro de un WebView2 como pantalla y un <see cref="SessionPty"/> (ConPTY) como programa.
-/// Copiar y pegar pasan por el portapapeles de Windows (Ctrl+C con selección, Ctrl+V, clic derecho).
+/// A terminal: xterm.js inside a WebView2 as the screen and a <see cref="SessionPty"/> (ConPTY) as the program.
+/// Copy and paste go through the Windows clipboard (Ctrl+C with a selection, Ctrl+V, right click).
 /// </summary>
 public sealed class TerminalView : Grid, IDisposable
 {
@@ -35,13 +35,13 @@ public sealed class TerminalView : Grid, IDisposable
     public string Folder { get; }
     private readonly IReadOnlyDictionary<string, string>? _env;
 
-    /// <summary>El programa terminó (con su código de salida).</summary>
+    /// <summary>The program ended (with its exit code).</summary>
     public event Action<TerminalView, int>? Finished;
 
-    /// <summary>El programa cambió el título de la terminal (secuencia OSC).</summary>
+    /// <summary>The program changed the terminal title (OSC sequence).</summary>
     public event Action<TerminalView, string>? TitleChanged;
 
-    /// <summary>Un atajo de la aplicación pulsado con el foco dentro de la terminal (next, prev, toggle, new, tab).</summary>
+    /// <summary>An application shortcut pressed with focus inside the terminal (next, prev, toggle, new, tab).</summary>
     public event Action<string, int>? Shortcut;
 
     public TerminalView(string line, string folder, IReadOnlyDictionary<string, string>? env)
@@ -119,7 +119,7 @@ public sealed class TerminalView : Grid, IDisposable
         catch (Exception) { }
     }
 
-    // ------------------------------------------------------------ Mensajes de la página
+    // ------------------------------------------------------------ Messages from the page
 
     private void OnMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
@@ -167,7 +167,7 @@ public sealed class TerminalView : Grid, IDisposable
     {
         if (string.IsNullOrEmpty(text)) return;
         try { Clipboard.SetText(text); }
-        catch (ExternalException) { }   // el portapapeles lo tiene otro programa en este instante
+        catch (ExternalException) { }   // the clipboard is held by another program at this instant
     }
 
     private void Paste()
@@ -178,9 +178,9 @@ public sealed class TerminalView : Grid, IDisposable
         if (text.Length > 0) Send(new { t = "paste", d = text });
     }
 
-    // ------------------------------------------------------------ Salida hacia la página
+    // ------------------------------------------------------------ Output to the page
 
-    /// <summary>Se llama desde el hilo de lectura: junta lo que llega y lo manda a la página en tandas, sin saturar la interfaz.</summary>
+    /// <summary>Called from the reading thread: gathers what arrives and sends it to the page in batches, without flooding the interface.</summary>
     private void OnOutputArrived(string text)
     {
         lock (_lock) _pending.Append(text);
@@ -194,7 +194,7 @@ public sealed class TerminalView : Grid, IDisposable
         lock (_lock)
         {
             var n = Math.Min(_pending.Length, 65536);
-            if (n > 0 && n < _pending.Length && char.IsHighSurrogate(_pending[n - 1])) n--;   // no partir un par sustituto
+            if (n > 0 && n < _pending.Length && char.IsHighSurrogate(_pending[n - 1])) n--;   // do not split a surrogate pair
             text = _pending.ToString(0, n);
             _pending.Remove(0, n);
         }

@@ -18,7 +18,7 @@ public class StateStoreTests
     [Fact]
     public void TheKeyOfProjectIsStableYNoDistinguishesUppercase()
     {
-        // La parte del hash sale de la ruta en minúsculas; el nombre conserva las mayúsculas de la carpeta.
+        // The hash part comes from the lowercase path; the name keeps the folder's capitals.
         var a = StateStore.Key(Path.Combine(Path.GetTempPath(), "dev", "Shop"));
         var b = StateStore.Key(Path.Combine(Path.GetTempPath(), "DEV", "shop"));
         Assert.Equal(a[(a.LastIndexOf('-') + 1)..], b[(b.LastIndexOf('-') + 1)..]);
@@ -44,11 +44,11 @@ public class StateStoreTests
         Assert.Null(s.ResolveAvd("p-1", null, null));
 
         s.SaveLastAvd("otro-9", "Pixel_General");
-        Assert.Equal("Pixel_General", s.ResolveAvd("p-1", null, null));            // el general
-        Assert.Equal("Del_Config", s.ResolveAvd("p-1", null, "Del_Config"));       // movil.avd gana al general
+        Assert.Equal("Pixel_General", s.ResolveAvd("p-1", null, null));            // the global one
+        Assert.Equal("Del_Config", s.ResolveAvd("p-1", null, "Del_Config"));       // mobile.avd beats the global one
         s.SaveLastAvd("p-1", "Pixel_Proyecto");
-        Assert.Equal("Pixel_Proyecto", s.ResolveAvd("p-1", null, "Del_Config"));   // el del proyecto gana a la config
-        Assert.Equal("Param", s.ResolveAvd("p-1", "Param", "Del_Config"));         // el parámetro gana a todos
+        Assert.Equal("Pixel_Proyecto", s.ResolveAvd("p-1", null, "Del_Config"));   // the project's one beats the config's
+        Assert.Equal("Param", s.ResolveAvd("p-1", "Param", "Del_Config"));         // the argument beats all
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class StateStoreTests
 
         for (var i = 1; i <= 12; i++) s.AddRecent("p-1", "api", $"cmd {i}");
         s.AddRecent("p-1", "web", "pnpm lint");
-        s.AddRecent("p-1", "api", "cmd 8");   // repetido: sube al primer lugar
+        s.AddRecent("p-1", "api", "cmd 8");   // repeated: moves to first place
 
         var l = s.ReadRecent("p-1");
         Assert.Equal(10, l.Count);
@@ -217,9 +217,9 @@ public class ProjectRootTests
     {
         using var t = new ShopTree();
         Assert.Equal(t.Root, ProjectRoot.SuggestParent(t.FilePath("mobile")));
-        Assert.Null(ProjectRoot.SuggestParent(t.Root));                     // ya es la raíz
+        Assert.Null(ProjectRoot.SuggestParent(t.Root));                     // it is already the root
         File.WriteAllText(t.FilePath("mobile/dev-menu.json"), "{}");
-        Assert.Null(ProjectRoot.SuggestParent(t.FilePath("mobile")));           // tiene su propia configuración
+        Assert.Null(ProjectRoot.SuggestParent(t.FilePath("mobile")));           // it has its own configuration
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public class ProjectRootTests
         r = ProjectRoot.Resolve(null, empty.FilePath, empty.In("borrada"));
         Assert.Equal(ProjectOrigin.Selector, r.Origin);
 
-        r = ProjectRoot.Resolve(empty.In("no-existe"), project.Root, last.FilePath);   // parámetro malo: no cae a la carpeta actual
+        r = ProjectRoot.Resolve(empty.In("no-existe"), project.Root, last.FilePath);   // bad argument: it does not fall back to the current folder
         Assert.Equal(ProjectOrigin.Selector, r.Origin);
         Assert.True(r.ParameterInvalid);
     }

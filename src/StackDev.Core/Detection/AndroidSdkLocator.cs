@@ -3,8 +3,8 @@ using System.Text.RegularExpressions;
 namespace StackDev.Core.Detection;
 
 /// <summary>
-/// Busca el Android SDK. El SDK no está en las variables de entorno globales: se usa solo para los
-/// procesos que lanza la herramienta (emulador, adb, flutter).
+/// Looks for the Android SDK. The SDK is not in the global environment variables: it is used only for the
+/// processes the tool launches (emulator, adb, flutter).
 /// </summary>
 public static class AndroidSdkLocator
 {
@@ -17,7 +17,7 @@ public static class AndroidSdkLocator
     public static bool IsValid(string? sdk) =>
         !string.IsNullOrWhiteSpace(sdk) && File.Exists(EmulatorExe(sdk));
 
-    /// <summary>El valor de "android-sdk" en el archivo %APPDATA%\.flutter_settings (con \\ convertido a \).</summary>
+    /// <summary>The value of "android-sdk" in the %APPDATA%\.flutter_settings file (with \\ converted to \).</summary>
     public static string? FromFlutterSettings(string textJson)
     {
         var m = Regex.Match(textJson, "\"android-sdk\"\\s*:\\s*\"([^\"]+)\"");
@@ -26,7 +26,7 @@ public static class AndroidSdkLocator
 
     /// <summary>
     /// Orden: <c>mobile.androidSdk</c> → ANDROID_SDK_ROOT → ANDROID_HOME → .flutter_settings → %LOCALAPPDATA%\Android\Sdk.
-    /// Devuelve null si ninguno es válido (entonces se pregunta).
+    /// Returns null if none is valid (then the user is asked).
     /// </summary>
     public static string? Search(string? configured, Func<string, string?> variable, string? flutterSettings,
         string? localAppData, Func<string, bool>? isValid = null)
@@ -43,7 +43,7 @@ public static class AndroidSdkLocator
         return candidates.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c) && isValid(c!));
     }
 
-    /// <summary>Variables que se ponen solo en el entorno de los procesos que lanza la herramienta.</summary>
+    /// <summary>Variables set only in the environment of the processes the tool launches.</summary>
     public static IReadOnlyDictionary<string, string> ProcessVariables(string sdk) =>
         new Dictionary<string, string> { ["ANDROID_SDK_ROOT"] = sdk, ["ANDROID_HOME"] = sdk };
 }

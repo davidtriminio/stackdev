@@ -105,7 +105,7 @@ public class PathsTests
     {
         var outside = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "otro"));
         Assert.Equal(outside, Paths.Relative(Root, outside));
-        // "proyecto2" no está dentro de "proyecto" aunque empiece igual
+        // "project2" is not inside "project" even though it starts the same
         var similar = Root + "2";
         Assert.Equal(similar, Paths.Relative(Root, similar));
     }
@@ -128,7 +128,7 @@ public class PathsTests
     {
         Assert.True(Paths.IsSameOrSubfolder(P("api"), P("api")));
         Assert.True(Paths.IsSameOrSubfolder(P("api"), P("api", "src", "x")));
-        Assert.False(Paths.IsSameOrSubfolder(P("api"), P("api2")));      // el script viejo decía que sí
+        Assert.False(Paths.IsSameOrSubfolder(P("api"), P("api2")));      // the old behaviour said yes
         Assert.False(Paths.IsSameOrSubfolder(P("api"), P("web")));
         Assert.False(Paths.IsSameOrSubfolder(P("api"), Root));
     }

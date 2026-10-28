@@ -11,15 +11,15 @@ using StackDev.Core.Util;
 namespace StackDev.Gui;
 
 /// <summary>
-/// Para corregir qué tiene el proyecto (Postgres, API, web, móvil) y sus comandos principales sin tocar el JSON a mano.
-/// Trabaja sobre una copia: solo se guarda si se pulsa «Guardar».
+/// To correct what the project has (Postgres, API, web, mobile) and its main commands without editing the JSON by hand.
+/// It works on a copy: it is saved only if "Guardar" is pressed.
 /// </summary>
 public static class ComponentsDialog
 {
     private static Brush P(string key) => (Brush)Application.Current.FindResource(key);
 
     /// <summary>
-    /// Entiende NOMBRE=valor, $env:NOMBRE = "valor" y set NOMBRE=valor. Lo que no parezca una variable (un comando, por ejemplo) se ignora.
+    /// Understands NAME=value, $env:NAME = "value" and set NAME=value. Anything that does not look like a variable (a command, for example) is ignored.
     /// </summary>
     public static Dictionary<string, string> ParseEnv(string text)
     {
@@ -45,7 +45,7 @@ public static class ComponentsDialog
 
     public static ProjectConfig? Show(Window owner, Session s)
     {
-        var cfg = ConfigJson.Read(ConfigJson.Write(s.Ctx.Config));   // copia de trabajo
+        var cfg = ConfigJson.Read(ConfigJson.Write(s.Ctx.Config));   // working copy
         var detected = Detector.Detect(s.Root);
         var slug = Paths.Slug(Paths.FolderName(s.Root));
 
@@ -54,7 +54,7 @@ public static class ComponentsDialog
         var alreadyWeb = cfg.Web is not null;
         var alreadyMobile = cfg.Mobile is not null;
 
-        // Si está desactivado se muestran valores sugeridos (lo detectado o unos por defecto) por si lo activan.
+        // When disabled, suggested values are shown (what was detected or some defaults) in case they are enabled.
         var pg = cfg.Postgres ?? new PostgresConfig
         {
             Container = slug + "-db", Image = "postgres:17-alpine", Port = 5432,
@@ -139,7 +139,7 @@ public static class ComponentsDialog
             return toggle;
         }
 
-        // Botón «Sugerir un puerto libre» bajo el campo URL de la API y de la web
+        // "Sugerir un puerto libre" button under the API and web URL field
         void SuggestUrl(StackPanel panel, TextBox boxUrl, ProjectComponent comp)
         {
             var warning = new TextBlock { FontSize = 11, Foreground = P("MutedBrush"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10), Visibility = Visibility.Collapsed };
@@ -241,7 +241,7 @@ public static class ComponentsDialog
                     MessageBox.Show(window, "Activa primero Postgres.", "stackdev", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
-                foreach (var a in apply) a();   // pasa lo escrito en los campos a los objetos
+                foreach (var a in apply) a();   // copies what was typed in the fields into the objects
                 var suggested = detected.ConnectionName ?? (slug.Length > 0 ? char.ToUpperInvariant(slug[0]) + slug[1..] : "Default");
                 var name = Dialogs.Ask(window, "Nombre de la cadena de conexión (ConnectionStrings__...)", suggested);
                 if (name is null) return;
@@ -310,7 +310,7 @@ public static class ComponentsDialog
         cfg.Web = tWeb.IsChecked == true ? web : null;
         cfg.Mobile = tMobile.IsChecked == true ? mobile : null;
 
-        // La cadena de conexión de la API se agrega cuando se activa Postgres y ya hay API.
+        // The API's connection string is added when Postgres is enabled and there is already an API.
         if (cfg.Postgres is not null && !alreadyPg && cfg.Api is not null)
         {
             var before = cfg.StartAll;
@@ -318,7 +318,7 @@ public static class ComponentsDialog
             cfg.StartAll = before;
         }
 
-        // «Levantar todo»: quitar lo desactivado y agregar lo recién activado.
+        // "Levantar todo": remove what was disabled and add what was just enabled.
         var byDefault = Detector.DefaultStartAll(cfg);
         if (cfg.StartAll is null) cfg.StartAll = byDefault;
         else

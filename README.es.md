@@ -89,7 +89,7 @@ Va en `%APPDATA%\stackdev\` (no en el repo): último proyecto, último emulador,
 
 ## `dev-menu.json`
 
-Está en la raíz del repo. Es el mismo formato de siempre; se pueden agregar campos nuevos (se conservan al guardar). Cada sección es opcional: si falta, esa parte no aparece.
+Va en la raíz de cada proyecto; hay un ejemplo completo en [`examples/dev-menu.json`](examples/dev-menu.json). Se pueden agregar campos nuevos (se conservan al guardar). Cada sección es opcional: si falta, esa parte no aparece.
 
 | Sección | Campos |
 |---|---|

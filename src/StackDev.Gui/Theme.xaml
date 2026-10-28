@@ -12,24 +12,24 @@
   <SolidColorBrush x:Key="AccentBrush" Color="#6EE787" />
   <SolidColorBrush x:Key="AccentHoverBrush" Color="#8CF0A1" />
   <SolidColorBrush x:Key="AccentSoftBrush" Color="#12261A" />
-  <!-- Texto sobre el acento (oscuro, para que se lea sobre verde o ámbar) -->
+  <!-- Text on the accent (dark, so it reads on green or amber) -->
   <SolidColorBrush x:Key="AccentOnBrush" Color="#07210E" />
-  <!-- Relieve sutil de los botones: un poco más claro arriba -->
+  <!-- Subtle relief of the buttons: slightly lighter on top -->
   <LinearGradientBrush x:Key="ButtonGradient" StartPoint="0,0" EndPoint="0,1">
     <GradientStop Color="#26282D" Offset="0" />
     <GradientStop Color="#1E2024" Offset="1" />
   </LinearGradientBrush>
-  <!-- El degradado del acento (verde terminal; ámbar en el tema alterno) -->
+  <!-- The accent gradient (terminal green; amber in the alternate theme) -->
   <LinearGradientBrush x:Key="AccentGradient" StartPoint="0,0" EndPoint="1,1">
     <GradientStop Color="#7AEC92" Offset="0" />
     <GradientStop Color="#5BD878" Offset="1" />
   </LinearGradientBrush>
-  <!-- Superficie de las tarjetas: un poco más clara arriba, como en relieve -->
+  <!-- Card surface: slightly lighter on top, as if in relief -->
   <LinearGradientBrush x:Key="CardGradient" StartPoint="0,0" EndPoint="0,1">
     <GradientStop Color="#1A1C20" Offset="0" />
     <GradientStop Color="#16171A" Offset="1" />
   </LinearGradientBrush>
-  <!-- Cuadrícula de puntos del fondo (lienzo de ingeniería) -->
+  <!-- Dot grid of the background (engineering canvas) -->
   <DrawingBrush x:Key="DotGridBrush" TileMode="Tile" Viewport="0,0,22,22" ViewportUnits="Absolute" Viewbox="0,0,22,22" ViewboxUnits="Absolute">
     <DrawingBrush.Drawing>
       <GeometryDrawing Brush="#14FFFFFF">
@@ -67,7 +67,7 @@
     </Setter>
   </Style>
 
-  <!-- Botón base -->
+  <!-- Base button -->
   <Style TargetType="Button">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     <Setter Property="Background" Value="{StaticResource ButtonGradient}" />
@@ -126,7 +126,7 @@
     <Setter Property="Margin" Value="0,0,6,6" />
   </Style>
 
-  <!-- Fila de un menú desplegable propio (en lugar del menú de Windows) -->
+  <!-- Row of a custom drop-down menu (instead of the Windows menu) -->
   <Style x:Key="BtnMenuItem" TargetType="Button">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     <Setter Property="Background" Value="Transparent" />
@@ -153,14 +153,14 @@
     </Setter>
   </Style>
 
-  <!-- Principal compacto: la acción de una fila de botones pequeños (misma altura que BtnChip) -->
+  <!-- Compact primary: the action of a row of small buttons (same height as BtnChip) -->
   <Style x:Key="BtnPrimarySm" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
     <Setter Property="Padding" Value="12,6" />
     <Setter Property="FontSize" Value="12.5" />
     <Setter Property="Margin" Value="0,0,6,6" />
   </Style>
 
-  <!-- Ficha con un glifo (cabecera de grupo) -->
+  <!-- Tile with a glyph (group header) -->
   <Style x:Key="GlyphTile" TargetType="Border">
     <Setter Property="Width" Value="38" />
     <Setter Property="Height" Value="38" />
@@ -190,7 +190,7 @@
     <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
   </Style>
 
-  <!-- Chip del proyecto en la barra superior (~/proyecto on rama*) -->
+  <!-- Project chip in the top bar (~/project on branch*) -->
   <Style x:Key="BtnProjectChip" TargetType="Button">
     <Setter Property="Cursor" Value="Hand" />
     <Setter Property="Template">
@@ -209,7 +209,7 @@
     </Setter>
   </Style>
 
-  <!-- Botón de icono plano (estrella de favorito, barra superior) -->
+  <!-- Flat icon button (favourite star, top bar) -->
   <Style x:Key="BtnIcon" TargetType="Button">
     <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
     <Setter Property="Background" Value="Transparent" />
@@ -235,7 +235,7 @@
     </Setter>
   </Style>
 
-  <!-- Botones de la ventana (minimizar, maximizar, cerrar) -->
+  <!-- Window buttons (minimise, maximise, close) -->
   <Style x:Key="BtnWindow" TargetType="Button">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     <Setter Property="Background" Value="Transparent" />
@@ -275,7 +275,7 @@
     </Setter>
   </Style>
 
-  <!-- Navegación lateral -->
+  <!-- Side navigation -->
   <Style x:Key="NavButton" TargetType="RadioButton">
     <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
     <Setter Property="Cursor" Value="Hand" />
@@ -305,7 +305,7 @@
     </Setter>
   </Style>
 
-  <!-- Opción marcable (condiciones del dispositivo) -->
+  <!-- Checkable option (device conditions) -->
   <Style x:Key="ChipToggle" TargetType="ToggleButton">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     <Setter Property="Cursor" Value="Hand" />
@@ -332,7 +332,7 @@
     </Setter>
   </Style>
 
-  <!-- Cuadro de texto -->
+  <!-- Text box -->
   <Style TargetType="TextBox">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
@@ -357,7 +357,7 @@
     </Setter>
   </Style>
 
-  <!-- Campo de contraseña (misma plantilla que el cuadro de texto) -->
+  <!-- Password field (same template as the text box) -->
   <Style TargetType="PasswordBox">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
     <Setter Property="Background" Value="{StaticResource Surface2Brush}" />
@@ -382,7 +382,7 @@
     </Setter>
   </Style>
 
-  <!-- Barra de progreso -->
+  <!-- Progress bar -->
   <Style TargetType="ProgressBar">
     <Setter Property="Height" Value="6" />
     <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
@@ -429,7 +429,7 @@
     </Setter>
   </Style>
 
-  <!-- Barra de desplazamiento fina -->
+  <!-- Thin scroll bar -->
   <Style TargetType="ScrollBar">
     <Setter Property="Width" Value="10" />
     <Setter Property="Background" Value="Transparent" />

@@ -4,8 +4,8 @@ using StackDev.Core.Ui;
 namespace StackDev.Core.Android;
 
 /// <summary>
-/// Teléfonos y tablets Android por red (depuración inalámbrica): ver los dispositivos que adb conoce,
-/// conectar, emparejar (Android 11+) y desconectar. Las direcciones usadas se recuerdan por proyecto.
+/// Android phones and tablets over the network (wireless debugging): see the devices adb knows,
+/// connect, pair (Android 11+) and disconnect. The addresses used are remembered per project.
 /// </summary>
 public sealed class DeviceService
 {
@@ -36,7 +36,7 @@ public sealed class DeviceService
 
     private static readonly Regex Address = new(@"^[\w\.\-]+:\d{1,5}$", RegexOptions.Compiled);
 
-    /// <summary>«192.168.1.20» pasa a «192.168.1.20:5555». Null si no parece una dirección.</summary>
+    /// <summary>"192.168.1.20" becomes "192.168.1.20:5555". Null if it does not look like an address.</summary>
     public static string? Normalize(string? text)
     {
         var t = text?.Trim();
@@ -45,7 +45,7 @@ public sealed class DeviceService
         return Address.IsMatch(t) ? t : null;
     }
 
-    // ------------------------------------------------------------ Ver
+    // ------------------------------------------------------------ View
 
     public bool Show()
     {
@@ -119,7 +119,7 @@ public sealed class DeviceService
         return true;
     }
 
-    /// <summary>Método clásico: con el cable puesto, <c>adb tcpip 5555</c> y luego conectar por la IP del teléfono.</summary>
+    /// <summary>Classic method: with the cable plugged in, <c>adb tcpip 5555</c> and then connect through the phone's IP.</summary>
     private bool FromUsb()
     {
         var usb = _s.Adb!.Devices().Where(d => d.Ready && !d.IsEmulator && !d.IsNetwork).ToList();
@@ -182,8 +182,8 @@ public sealed class DeviceService
     // ------------------------------------------------------------ Reenviar puertos
 
     /// <summary>
-    /// <c>adb reverse</c> de los puertos de la API y la web a los dispositivos listos (por defecto todos): en el teléfono,
-    /// <c>http://localhost:PUERTO</c> llega a tu PC sin abrir nada a la red. Se pierde al reconectar, por eso se repite al ejecutar la app.
+    /// <c>adb reverse</c> of the API and web ports to the ready devices (all by default): on the phone,
+    /// <c>http://localhost:PORT</c> reaches your PC without opening anything to the network. It is lost on reconnect, so it is repeated when the app runs.
     /// </summary>
     public bool Forward(IEnumerable<AdbDevice>? destinations = null, bool silent = false)
     {
@@ -231,7 +231,7 @@ public sealed class DeviceService
         }
         else if (networks.Count == 1) dir = networks[0].Serial;
 
-        // la app que corría en ese dispositivo se queda sin destino
+        // the app that was running on that device is left without a destination
         var text = _s.Adb.Disconnect(dir);
         _s.Ui.Write(text.Length > 0 ? text : "Desconectado.", Level.Ok);
         return true;

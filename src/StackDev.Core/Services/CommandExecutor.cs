@@ -6,7 +6,7 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Services;
 
-/// <summary>Correr comandos del proyecto: en esta consola (con tiempo y código de salida) o en otra ventana.</summary>
+/// <summary>Run project commands: in this console (with time and exit code) or in another window.</summary>
 public sealed class CommandExecutor
 {
     private readonly Session _s;
@@ -14,8 +14,8 @@ public sealed class CommandExecutor
     public CommandExecutor(Session s) { _s = s; }
 
     /// <summary>
-    /// Ejecuta en esta misma consola mostrando la salida, el tiempo y el código. Corre en un PowerShell hijo
-    /// (conserva los colores y un error no rompe la herramienta). Ctrl+C cancela solo este comando.
+    /// Runs in this same console showing the output, the time and the code. It runs in a child PowerShell
+    /// (keeps the colours and an error does not break the tool). Ctrl+C cancels only this command.
     /// </summary>
     public int Here(string command, string? folder = null, IReadOnlyDictionary<string, string>? env = null)
     {
@@ -37,7 +37,7 @@ public sealed class CommandExecutor
         return code;
     }
 
-    /// <summary>Un comando de la configuración (api.test, web.build, movil.analizar...). Devuelve su código de salida.</summary>
+    /// <summary>A configuration command (api.test, web.build, mobile.test...). Returns its exit code.</summary>
     public int Step(ProjectComponent c, string key)
     {
         if (!_s.AssertComp(c)) return 1;
@@ -60,11 +60,11 @@ public sealed class CommandExecutor
         return r;
     }
 
-    // ------------------------------------------------------------ Ventanas / pestañas
+    // ------------------------------------------------------------ Windows / tabs
 
     private string PidFile(string key) => Path.Combine(Path.GetTempPath(), $"stackdev-{_s.Key}-{key}.pid");
 
-    /// <summary>"auto": Windows Terminal si está instalado, si no una ventana de consola nueva.</summary>
+    /// <summary>"auto": Windows Terminal if installed, otherwise a new console window.</summary>
     public bool UseWindowsTerminal()
     {
         var t = (_s.Ctx.Config.Terminal ?? "auto").ToLowerInvariant();
@@ -73,8 +73,8 @@ public sealed class CommandExecutor
     }
 
     /// <summary>
-    /// Abre un comando en su propia ventana o pestaña (para lo interactivo: flutter run con r/R/q, psql, logs).
-    /// El script guarda su PID, así se puede cerrar el árbol completo después. Devuelve false si no se pudo abrir.
+    /// Opens a command in its own window or tab (for interactive things: flutter run with r/R/q, psql, logs).
+    /// The script saves its PID, so the whole tree can be closed later. Returns false if it could not be opened.
     /// </summary>
     public bool InWindow(string key, string title, string folder, string command, IReadOnlyDictionary<string, string>? env = null,
         bool waitEnter = true)
@@ -115,7 +115,7 @@ public sealed class CommandExecutor
             if (_s.Services.Registry.AdoptFromFile(key, pidFile)) return true;
             Thread.Sleep(150);
         }
-        return true;   // se abrió, aunque no pudimos leer su PID
+        return true;   // it was opened, even though its PID could not be read
     }
 
     private static bool StartShell(string exe, string arguments)
@@ -124,7 +124,7 @@ public sealed class CommandExecutor
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) { return false; }
     }
 
-    /// <summary>Una terminal nueva ya parada en la carpeta (Windows Terminal si existe).</summary>
+    /// <summary>A new terminal already standing in the folder (Windows Terminal if it exists).</summary>
     public void OpenTerminal(string dir)
     {
         var env = _s.EnvFor(dir);

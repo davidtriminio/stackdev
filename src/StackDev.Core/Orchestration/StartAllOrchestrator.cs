@@ -8,7 +8,7 @@ namespace StackDev.Core.Orchestration;
 
 public sealed record StepResult(string Step, int Code, int Seconds);
 
-/// <summary>Levantar todo, detener todo y verificar todo.</summary>
+/// <summary>Start everything, stop everything and verify everything.</summary>
 public sealed class StartAllOrchestrator
 {
     private readonly Session _s;
@@ -21,8 +21,8 @@ public sealed class StartAllOrchestrator
     };
 
     /// <summary>
-    /// Espera en paralelo a que estén listos "api", "web" y/o "emulador", mostrando cada uno cuando termina.
-    /// Devuelve false si alguno falló, se agotó el plazo o se canceló (lo que arrancó sigue abierto).
+    /// Waits in parallel for "api", "web" and/or "emulator" to be ready, showing each one when it finishes.
+    /// Returns false if any failed, timed out or was cancelled (whatever started stays open).
     /// </summary>
     public bool Wait(IEnumerable<string> comps, int seconds = 180)
     {
@@ -74,8 +74,8 @@ public sealed class StartAllOrchestrator
     }
 
     /// <summary>
-    /// 1) Postgres, esperando a que esté listo. 2) Lanza la API, la web y el emulador sin esperar entre ellos.
-    /// 3) Espera a los tres en paralelo.
+    /// 1) Postgres, waiting until it is ready. 2) Launches the API, the web app and the emulator without waiting between them.
+    /// 3) Waits for the three in parallel.
     /// </summary>
     public bool Start()
     {
@@ -124,7 +124,7 @@ public sealed class StartAllOrchestrator
         return ok;
     }
 
-    /// <summary>En este orden: app → web → API → Postgres → emulador (guardando su estado).</summary>
+    /// <summary>In this order: app → web → API → Postgres → emulator (saving its state).</summary>
     public bool Stop()
     {
         _s.Ui.Write("\nDeteniendo todo...", Level.Info);
@@ -137,7 +137,7 @@ public sealed class StartAllOrchestrator
         return true;
     }
 
-    /// <summary>Tests de la API y de la web, flutter analyze y flutter test, con un resumen OK/FALLO y la duración de cada uno.</summary>
+    /// <summary>API and web tests, flutter analyze and flutter test, with an OK/FAIL summary and the duration of each.</summary>
     public List<StepResult> Verify()
     {
         var steps = new List<(string Name, ProjectComponent C, string Key)>();

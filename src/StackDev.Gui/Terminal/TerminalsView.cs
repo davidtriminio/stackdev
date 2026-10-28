@@ -13,8 +13,8 @@ namespace StackDev.Gui.Terminal;
 public enum ShellType { Default, WindowsPowerShell, Cmd }
 
 /// <summary>
-/// La sección «Terminales»: pestañas con terminales reales (cada una con su propio shell), un botón para abrir más,
-/// otro para elegir carpeta y shell, y otro para dividir la pestaña en paneles (hasta tres).
+/// The "Terminales" section: tabs with real terminals (each with its own shell), a button to open more,
+/// another to choose folder and shell, and another to split the tab into panes (up to three).
 /// </summary>
 public sealed class TerminalsView : Grid
 {
@@ -42,14 +42,14 @@ public sealed class TerminalsView : Grid
     private TabInfo? _current;
     private Button? _btnFull;
 
-    /// <summary>Pide al contenedor ocultar el panel de terminales (las sesiones siguen vivas).</summary>
+    /// <summary>Asks the container to hide the terminal panel (the sessions stay alive).</summary>
     public event Action? AskHide;
-    /// <summary>Pide alternar entre media pantalla y pantalla completa.</summary>
+    /// <summary>Asks to toggle between half screen and full screen.</summary>
     public event Action? AskToggleFull;
-    /// <summary>Atajos que afectan al contenedor (mostrar/ocultar) y llegaron desde dentro de una terminal.</summary>
+    /// <summary>Shortcuts that affect the container (show/hide) and arrived from inside a terminal.</summary>
     public event Action<string, int>? AskShortcut;
 
-    /// <summary>Atajos de pestañas: next, prev, tab (n = 1..9) y new.</summary>
+    /// <summary>Tab shortcuts: next, prev, tab (n = 1..9) and new.</summary>
     public void Shortcut(string action, int n)
     {
         switch (action)
@@ -75,7 +75,7 @@ public sealed class TerminalsView : Grid
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        // Barra de pestañas
+        // Tab bar
         var bar = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         bar.ColumnDefinitions.Add(new ColumnDefinition());
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -97,7 +97,7 @@ public sealed class TerminalsView : Grid
         bar.Children.Add(buttons);
         Children.Add(bar);
 
-        // Cuerpo: el fondo es el mismo de la terminal, así no parpadea al abrir
+        // Body: the background is the same as the terminal's, so it does not flicker when opening
         var frame = new Border
         {
             Background = new SolidColorBrush(Color.FromRgb(0x08, 0x09, 0x0A)),
@@ -133,7 +133,7 @@ public sealed class TerminalsView : Grid
         return b;
     }
 
-    // ------------------------------------------------------------ Shells y carpetas
+    // ------------------------------------------------------------ Shells and folders
 
     private static (string Name, string CommandLine) ShellFor(ShellType type)
     {
@@ -170,16 +170,16 @@ public sealed class TerminalsView : Grid
         return list;
     }
 
-    // ------------------------------------------------------------ Pestañas
+    // ------------------------------------------------------------ Tabs
 
-    /// <summary>Al mostrar la sección: si no hay ninguna terminal, abre una; si hay, devuelve el foco a la activa.</summary>
+    /// <summary>When the section is shown: if there is no terminal, opens one; if there is, gives focus back to the active one.</summary>
     public void OnShow()
     {
         if (_tabs.Count == 0) Fresh();
         else if (_current is not null) Select(_current);
     }
 
-    /// <summary>Cambia el glifo y la ayuda del botón según el modo actual.</summary>
+    /// <summary>Changes the button's glyph and tooltip according to the current mode.</summary>
     public void MarkComplete(bool full)
     {
         if (_btnFull is null) return;
@@ -187,7 +187,7 @@ public sealed class TerminalsView : Grid
         _btnFull.ToolTip = full ? "Volver a media pantalla" : "Pantalla completa";
     }
 
-    /// <summary>Muestra la pestaña de esa carpeta si ya existe; si no, abre una terminal nueva ahí.</summary>
+    /// <summary>Shows the tab for that folder if it already exists; otherwise opens a new terminal there.</summary>
     public void Open(string label, string folder)
     {
         var existing = _tabs.FirstOrDefault(x => x.Base == label && x.Panels.Count > 0
@@ -196,7 +196,7 @@ public sealed class TerminalsView : Grid
         else Fresh(ShellType.Default, folder, label);
     }
 
-    /// <summary>Abre una pestaña que ejecuta una línea de comando propia (por ejemplo ssh) en lugar de la shell.</summary>
+    /// <summary>Opens a tab that runs its own command line (for example ssh) instead of the shell.</summary>
     public void OpenCommand(string label, string line) => Fresh(ShellType.Default, null, label, line);
 
     public void Fresh(ShellType type = ShellType.Default, string? folder = null, string? label = null, string? lineOwn = null)
@@ -315,7 +315,7 @@ public sealed class TerminalsView : Grid
         else if (_current == p) Select(_tabs[Math.Min(index, _tabs.Count - 1)]);
     }
 
-    /// <summary>Cierra todas las terminales (y los programas que corren en ellas). Al cerrar la aplicación.</summary>
+    /// <summary>Closes all the terminals (and the programs running in them). When the application closes.</summary>
     public void CloseAll()
     {
         foreach (var p in _tabs.ToList()) CloseTab(p);
@@ -352,7 +352,7 @@ public sealed class TerminalsView : Grid
         return v;
     }
 
-    /// <summary>Reparte las columnas: panel, divisor, panel... Cambiar las columnas no toca a los paneles, así sus terminales siguen vivas.</summary>
+    /// <summary>Lays out the columns: pane, divider, pane... Changing the columns does not touch the panes, so their terminals stay alive.</summary>
     private static void Place(TabInfo p)
     {
         p.Content.ColumnDefinitions.Clear();
@@ -391,7 +391,7 @@ public sealed class TerminalsView : Grid
 
     private static void OnTitleChanged(TabInfo p, string title)
     {
-        // Los shells ponen la ruta de su .exe como título: eso no sirve. Un programa que pone un título propio (vim, claude...) sí.
+        // Shells put the path of their .exe as the title: that is useless. A program that sets a title of its own (vim, claude...) is fine.
         if (p.FixedName is not null || string.IsNullOrWhiteSpace(title)) return;
         if (title.Contains('\\') || title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) return;
         p.Title.Text = title.Length > 40 ? title[..40] : title;
@@ -406,7 +406,7 @@ public sealed class TerminalsView : Grid
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(v.Focus));
     }
 
-    // ------------------------------------------------------------ Elegir carpeta y shell
+    // ------------------------------------------------------------ Choose folder and shell
 
     private void ChooseAndOpen()
     {

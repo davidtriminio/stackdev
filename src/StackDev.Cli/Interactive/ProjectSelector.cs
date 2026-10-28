@@ -4,7 +4,7 @@ using StackDev.Core.Config;
 
 namespace StackDev.Cli.Interactive;
 
-/// <summary>Elegir la carpeta del proyecto con flechas: escribir la ruta, buscar proyectos o explorar carpetas.</summary>
+/// <summary>Choose the project folder with the arrow keys: type the path, search for projects or browse folders.</summary>
 public static class ProjectSelector
 {
     private const string Write = "e", Search = "b", Explore = "x", Cancel = "c", Last = "u";

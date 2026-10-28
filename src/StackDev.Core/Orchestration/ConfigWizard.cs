@@ -6,7 +6,7 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Orchestration;
 
-/// <summary>Primera vez en un proyecto: detecta los componentes y pregunta lo que no se puede saber (Postgres, Android SDK).</summary>
+/// <summary>First time in a project: detects the components and asks what cannot be known (Postgres, Android SDK).</summary>
 public sealed class ConfigWizard
 {
     private readonly Session _s;
@@ -62,7 +62,7 @@ public sealed class ConfigWizard
         }
     }
 
-    /// <summary>Lista los contenedores de Postgres/PostGIS, lee la configuración del que elijas con docker inspect, o pregunta los datos.</summary>
+    /// <summary>Lists the Postgres/PostGIS containers, reads the configuration of the one you choose with docker inspect, or asks for the details.</summary>
     private PostgresConfig? ReadPostgresConfig(string name)
     {
         if (_s.Ui.Interactive && _s.Docker.Installed && !_s.Docker.Live() &&
