@@ -60,6 +60,29 @@ public sealed class CredentialsStore
         Save(list);
     }
 
+    /// <summary>
+    /// Moves the item at <paramref name="from"/> to the gap <paramref name="slot"/> (0..Count: the gap before that position;
+    /// Count means "at the end"). False when nothing changes: bad numbers, or dropping an item into its own place.
+    /// </summary>
+    public static bool Reorder<T>(List<T> list, int from, int slot)
+    {
+        if (from < 0 || from >= list.Count || slot < 0 || slot > list.Count) return false;
+        if (slot == from || slot == from + 1) return false;
+        var item = list[from];
+        list.RemoveAt(from);
+        list.Insert(slot > from ? slot - 1 : slot, item);
+        return true;
+    }
+
+    /// <summary>Moves one credential (see <see cref="Reorder{T}"/>) and saves the new order. False when nothing changed.</summary>
+    public bool Move(int from, int slot)
+    {
+        var list = Read();
+        if (!Reorder(list, from, slot)) return false;
+        Save(list);
+        return true;
+    }
+
     public void Save(IEnumerable<Credential> list)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
