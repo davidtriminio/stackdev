@@ -6,8 +6,8 @@ using StackDev.Core.Security;
 namespace StackDev.Core.Config;
 
 /// <summary>
-/// Lectura y escritura de dev-menu.json: sangría de 2 espacios, saltos de línea "\n", sin escapar
-/// comillas simples ni tildes, y tolerante a comentarios y comas finales al leer.
+/// Reading and writing dev-menu.json: 2-space indentation, "\n" line breaks, without escaping
+/// single quotes or accents, and tolerant of comments and trailing commas when reading.
 /// </summary>
 public static class ConfigJson
 {
@@ -24,7 +24,7 @@ public static class ConfigJson
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>Lee la configuración; los secretos guardados como <c>dpapi:…</c> se descifran (en memoria siempre están en claro).</summary>
+    /// <summary>Reads the configuration; secrets saved as <c>dpapi:…</c> are decrypted (in memory they are always in the clear).</summary>
     public static ProjectConfig Read(string json)
     {
         json = LegacyKeys.Upgrade(json, LegacyKeys.Project, out _);
@@ -33,11 +33,11 @@ public static class ConfigJson
         return cfg;
     }
 
-    /// <summary>JSON en claro (copias de trabajo, pantallas de detección). Para guardar en disco se usa <see cref="WriteProtected"/>.</summary>
+    /// <summary>Plain JSON (working copies, detection screens). To save to disk use <see cref="WriteProtected"/>.</summary>
     public static string Write(ProjectConfig config) =>
         JsonSerializer.Serialize(config, Options) + "\n";
 
-    /// <summary>JSON para guardar en disco: la contraseña de Postgres y las variables de la API que parecen secretos van cifradas con DPAPI.</summary>
+    /// <summary>JSON to save to disk: the Postgres password and the API variables that look like secrets are encrypted with DPAPI.</summary>
     public static string WriteProtected(ProjectConfig config)
     {
         if (!Protection.Available) return Write(config);

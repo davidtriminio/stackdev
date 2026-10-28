@@ -4,7 +4,7 @@ using StackDev.Core.Security;
 
 namespace StackDev.Core.Servers;
 
-/// <summary>La lista global de servidores, en %APPDATA%\stackdev\servidores.json y cifrada con DPAPI.</summary>
+/// <summary>The global list of servers, in %APPDATA%\stackdev\servidores.json and encrypted with DPAPI.</summary>
 public sealed class ServerStore
 {
     private static readonly JsonSerializerOptions Options = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };

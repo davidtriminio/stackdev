@@ -5,11 +5,11 @@ using System.Text.RegularExpressions;
 namespace StackDev.Core.Security;
 
 /// <summary>
-/// Cifrado de secretos con DPAPI de Windows (<c>CryptProtectData</c>, ámbito del usuario actual).
-/// Solo tu usuario de Windows, en este equipo, puede descifrarlos: no hay clave que guardar ni que perder.
-/// Los valores cifrados se escriben como <c>dpapi:BASE64</c>; lo que no tenga ese prefijo se lee como texto normal
-/// (así un archivo escrito a mano o heredado sigue funcionando y se cifra solo la próxima vez que se guarde).
-/// En sistemas que no son Windows no se cifra nada.
+/// Encryption of secrets with Windows DPAPI (<c>CryptProtectData</c>, current-user scope).
+/// Only your Windows user, on this computer, can decrypt them: there is no key to store or lose.
+/// Encrypted values are written as <c>dpapi:BASE64</c>; anything without that prefix is read as normal text
+/// (so a hand-written or inherited file keeps working and is encrypted by itself the next time it is saved).
+/// On systems other than Windows nothing is encrypted.
 /// </summary>
 public static class Protection
 {
@@ -20,11 +20,11 @@ public static class Protection
 
     public static bool IsEncrypted(string? text) => text is not null && text.StartsWith(Prefix, StringComparison.Ordinal);
 
-    /// <summary>Nombres de variable que casi seguro guardan un secreto (contraseñas, tokens, claves, cadenas de conexión).</summary>
+    /// <summary>Variable names that almost surely hold a secret (passwords, tokens, keys, connection strings).</summary>
     public static bool LooksSecret(string name) =>
         Regex.IsMatch(name, "PASSWORD|PASSWD|PWD|SECRET|TOKEN|APIKEY|API_KEY|PRIVATE|CREDENTIAL|CONNECTIONSTRING|CONNECTION_STRING|__KEY|_KEY$|^KEY$", RegexOptions.IgnoreCase);
 
-    /// <summary>Cifra un texto; si ya está cifrado, está vacío o no hay DPAPI, lo devuelve igual.</summary>
+    /// <summary>Encrypts a text; if it is already encrypted, empty or DPAPI is not available, returns it unchanged.</summary>
     public static string Encrypt(string? text)
     {
         if (string.IsNullOrEmpty(text) || IsEncrypted(text) || !Available) return text ?? "";
@@ -33,7 +33,7 @@ public static class Protection
         { return text; }
     }
 
-    /// <summary>Descifra un texto <c>dpapi:…</c>; si no está cifrado lo devuelve igual. Si no se puede (otro usuario o equipo), devuelve "".</summary>
+    /// <summary>Decrypts a <c>dpapi:…</c> text; if it is not encrypted returns it unchanged. If it cannot be (another user or computer), returns "".</summary>
     public static string Decrypt(string? text)
     {
         if (string.IsNullOrEmpty(text) || !IsEncrypted(text)) return text ?? "";

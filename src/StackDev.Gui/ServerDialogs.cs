@@ -11,7 +11,7 @@ using StackDev.Core.Servers;
 
 namespace StackDev.Gui;
 
-/// <summary>Ventanas para agregar o editar un servidor y para decir a qué servidor y servicio se sube un proyecto.</summary>
+/// <summary>Windows to add or edit a server and to say which server and service a project is uploaded to.</summary>
 public static class ServerDialogs
 {
     internal static Brush P(string key) => (Brush)Application.Current.FindResource(key);
@@ -71,7 +71,7 @@ public static class ServerDialogs
         Foreground = P("ErrBrush"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4), Visibility = Visibility.Collapsed,
     };
 
-    /// <summary>Agrega (actual = null) o edita un servidor. Devuelve null si se cancela.</summary>
+    /// <summary>Adds (current = null) or edits a server. Returns null if cancelled.</summary>
     public static Server? EditServer(Window? owner, Server? current)
     {
         var s = current is null
@@ -144,7 +144,7 @@ public static class ServerDialogs
         return result;
     }
 
-    /// <summary>Elige a qué servidor y servicio se sube la API de un proyecto. Devuelve null si se cancela.</summary>
+    /// <summary>Chooses which server and service a project's API is uploaded to. Returns null if cancelled.</summary>
     public static DeploymentConfig? EditDeployment(Window? owner, IReadOnlyList<Server> servers, DeploymentConfig? current, string suggestionService, string suggestionDll)
     {
         if (servers.Count == 0)

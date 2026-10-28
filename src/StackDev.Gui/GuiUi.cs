@@ -9,8 +9,8 @@ using StackDev.Core.Ui;
 namespace StackDev.Gui;
 
 /// <summary>
-/// La "consola" de la ventana: los mensajes de la lógica van al panel de salida y las preguntas son diálogos.
-/// Se puede llamar desde cualquier hilo (las acciones corren en segundo plano).
+/// The window's "console": the logic's messages go to the output panel and the questions are dialogs.
+/// It can be called from any thread (actions run in the background).
 /// </summary>
 public sealed class GuiUi : IConsoleUi
 {

@@ -17,8 +17,8 @@ public sealed class CondCtx
 public sealed record Preset(int N, string Cat, string Txt, bool Normal, Func<CondCtx, string?> Cmd);
 
 /// <summary>
-/// Condiciones del dispositivo para probar la app (red, velocidad, batería, tema, texto, pantalla, GPS).
-/// Se aplican en vivo con adb, varias a la vez, y se recuerdan por AVD para poder restablecerlas.
+/// Device conditions for testing the app (network, speed, battery, theme, text, screen, GPS).
+/// They are applied live with adb, several at once, and remembered per AVD so they can be reset.
 /// </summary>
 public sealed class ConditionsService
 {
@@ -31,7 +31,7 @@ public sealed class ConditionsService
         var r = c.Adb.Sh(c.Serial, $"cmd connectivity airplane-mode {(active ? "enable" : "disable")}", 15) ?? "";
         if (System.Text.RegularExpressions.Regex.IsMatch(r, "Unknown|Error|Exception|not found", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
         {
-            // Android 10 o anterior
+            // Android 10 or earlier
             c.Sh($"settings put global airplane_mode_on {(active ? 1 : 0)}");
             c.Sh($"am broadcast -a android.intent.action.AIRPLANE_MODE --ez state {(active ? "true" : "false")}");
         }
@@ -70,7 +70,7 @@ public sealed class ConditionsService
         return null;
     }
 
-    /// <summary>Pide "latitud, longitud" y fija el GPS. <c>geo fix</c> pide la longitud primero, con cultura invariante.</summary>
+    /// <summary>Asks for "latitude, longitude" and sets the GPS. <c>geo fix</c> takes longitude first, with invariant culture.</summary>
     private static string? Gps(CondCtx c)
     {
         var t = c.Session.Ui.Ask("Latitud, longitud (ej: 14.0723, -87.1921; vacío = cancelar)")?.Trim();
@@ -123,11 +123,11 @@ public sealed class ConditionsService
 
     public static string Title(Preset p) => $"{p.Cat}: {p.Txt}";
 
-    // ------------------------------------------------------------ Estado guardado (por AVD)
+    // ------------------------------------------------------------ Saved state (per AVD)
 
     public Dictionary<string, string> Active() => _s.State.ReadConditions(_s.Avd);
 
-    /// <summary>"Normal" si no hay nada activo; si no, "Red: Modo avión | Tema: Oscuro".</summary>
+    /// <summary>"Normal" when nothing is active; otherwise "Network: Airplane mode | Theme: Dark".</summary>
     public string Text()
     {
         var h = Active();
@@ -145,7 +145,7 @@ public sealed class ConditionsService
         if (p.Normal) h.Remove(p.Cat); else h[p.Cat] = p.Txt;
     }
 
-    /// <summary>Aplica varias condiciones en el emulador que está corriendo y las recuerda.</summary>
+    /// <summary>Applies several conditions on the running emulator and remembers them.</summary>
     public bool Apply(IEnumerable<Preset> presets)
     {
         var serial = SerialReady();
@@ -158,7 +158,7 @@ public sealed class ConditionsService
         return true;
     }
 
-    /// <summary>Acepta números (3 13 17) y "0" para restablecer todo.</summary>
+    /// <summary>Accepts numbers (3 13 17) and "0" to reset everything.</summary>
     public bool ApplyNumbers(IEnumerable<string> tokens)
     {
         var list = new List<Preset>();
@@ -191,7 +191,7 @@ public sealed class ConditionsService
         return e.Serial;
     }
 
-    /// <summary>Vuelve a "Normal" lo que esté activo (o red/velocidad/batería si no hay nada registrado).</summary>
+    /// <summary>Sets back to "Normal" whatever is active (or network/speed/battery if nothing is recorded).</summary>
     public bool Reset(string? serial = null)
     {
         serial ??= SerialReady();
@@ -209,7 +209,7 @@ public sealed class ConditionsService
         return true;
     }
 
-    /// <summary>Tras arrancar, la velocidad siempre empieza normal: se quita de lo guardado y se avisa si quedan otras activas.</summary>
+    /// <summary>After boot, speed always starts normal: it is removed from the saved state and a warning is shown if others remain active.</summary>
     public void AfterStartup()
     {
         var h = Active();

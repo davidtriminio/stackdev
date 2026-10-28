@@ -4,32 +4,32 @@ using System.Text.Json.Serialization;
 namespace StackDev.Core.Config;
 
 /// <summary>
-/// Contenido de dev-menu.json. Los nombres de las propiedades JSON son los del archivo que ya existe
-/// (en español); los campos desconocidos se conservan al guardar (<see cref="Extra"/>).
+/// Contents of dev-menu.json. The JSON property names are the file's keys;
+/// unknown fields are kept when saving (<see cref="Extra"/>).
 /// </summary>
 public sealed class ProjectConfig : ConfigSection
 {
     [JsonPropertyName("name")] public string? Name { get; set; }
-    /// <summary>Navegador para abrir este proyecto (id conocido o ruta de un .exe); vacío = el que se definió para todos.</summary>
+    /// <summary>Browser used to open this project (known id or path to an .exe); empty = the one set for all projects.</summary>
     [JsonPropertyName("browser")] public string? Browser { get; set; }
     [JsonPropertyName("postgres")] public PostgresConfig? Postgres { get; set; }
     [JsonPropertyName("api")] public ApiConfig? Api { get; set; }
     [JsonPropertyName("web")] public WebConfig? Web { get; set; }
     [JsonPropertyName("mobile")] public MobileConfig? Mobile { get; set; }
-    /// <summary>Dónde se abren las sesiones interactivas (flutter run, psql...): "auto", "wt" (Windows Terminal) o "ventana".</summary>
+    /// <summary>Where interactive sessions open (flutter run, psql...): "auto", "wt" (Windows Terminal) or "ventana" (a separate window).</summary>
     [JsonPropertyName("terminal")] public string? Terminal { get; set; }
     [JsonPropertyName("startAll")] public List<string>? StartAll { get; set; }
     [JsonPropertyName("tasks")] public List<TaskConfig>? Tasks { get; set; }
-    /// <summary>A qué servidor y servicio se sube este proyecto.</summary>
+    /// <summary>Which server and service this project is uploaded to.</summary>
     [JsonPropertyName("deployment")] public DeploymentConfig? Deployment { get; set; }
 }
 
-/// <summary>Dónde vive la API de este proyecto en un servidor (el servidor se elige de la lista global).</summary>
+/// <summary>Where this project's API lives on a server (the server is chosen from the global list).</summary>
 public sealed class DeploymentConfig : ConfigSection
 {
-    /// <summary>Id del servidor en la lista global.</summary>
+    /// <summary>Id of the server in the global list.</summary>
     [JsonPropertyName("server")] public string? Server { get; set; }
-    /// <summary>Nombre del servicio systemd (y de la carpeta en /var/www).</summary>
+    /// <summary>Name of the systemd service (and of the folder in /var/www).</summary>
     [JsonPropertyName("service")] public string? Service { get; set; }
     [JsonPropertyName("dll")] public string? Dll { get; set; }
     [JsonPropertyName("domain")] public string? Domain { get; set; }
@@ -37,12 +37,12 @@ public sealed class DeploymentConfig : ConfigSection
     [JsonPropertyName("project")] public string? Project { get; set; }
 }
 
-/// <summary>Base de todas las secciones: guarda los campos que esta versión no conoce.</summary>
+/// <summary>Base of all sections: keeps the fields this version does not know.</summary>
 public abstract class ConfigSection
 {
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 
-    /// <summary>Como Get-Cfg del script: un texto vacío equivale a "no definido".</summary>
+    /// <summary>An empty text is the same as "not defined".</summary>
     internal static string Or(string? val, string fallback) => string.IsNullOrEmpty(val) ? fallback : val;
 }
 
@@ -64,7 +64,7 @@ public sealed class PostgresConfig : ConfigSection
     [JsonIgnore] public string EfDatabase => Or(Database, EfUser);
     [JsonIgnore] public string EfVolume => Volume ?? "";
 
-    /// <summary>Postgres 18+ guarda los datos en /var/lib/postgresql; antes en /var/lib/postgresql/data.</summary>
+    /// <summary>Postgres 18+ stores data in /var/lib/postgresql; before that in /var/lib/postgresql/data.</summary>
     public static string DataPath(string image)
     {
         var m = System.Text.RegularExpressions.Regex.Match(image, @":(\d+)");

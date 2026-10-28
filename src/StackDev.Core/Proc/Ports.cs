@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace StackDev.Core.Proc;
 
-/// <summary>Puertos TCP en escucha y qué proceso los tiene.</summary>
+/// <summary>Listening TCP ports and which process holds them.</summary>
 public static class Ports
 {
     public static bool IsListening(int port)
@@ -16,7 +16,7 @@ public static class Ports
         catch (NetworkInformationException) { return Pids(port).Count > 0; }
     }
 
-    /// <summary>PIDs que escuchan en el puerto: GetExtendedTcpTable (Windows) o, de respaldo, <c>netstat -ano</c>.</summary>
+    /// <summary>PIDs listening on the port: GetExtendedTcpTable (Windows) or, as a fallback, <c>netstat -ano</c>.</summary>
     public static List<int> Pids(int port)
     {
         if (port <= 0) return new();

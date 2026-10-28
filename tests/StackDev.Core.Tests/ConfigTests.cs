@@ -44,12 +44,12 @@ public class ConfigTests
         var text = ConfigJson.Write(c);
 
         Assert.Contains("\"name\": \"shop\"", text);
-        Assert.Contains("Migración 'nueva'", text);            // sin \u0027 ni \u00F3
-        Assert.Contains("\\\"hola\\\"", text);                  // las comillas dobles sí se escapan
+        Assert.Contains("Migración 'nueva'", text);            // without ' or ó
+        Assert.Contains("\\\"hola\\\"", text);                  // double quotes are escaped
         Assert.DoesNotContain("\r", text);
-        Assert.StartsWith("{\n  \"name\"", text);              // sangría de 2 espacios
+        Assert.StartsWith("{\n  \"name\"", text);              // 2-space indentation
         Assert.EndsWith("}\n", text);
-        Assert.DoesNotContain("\"postgres\"", text);             // sección ausente: no se escribe
+        Assert.DoesNotContain("\"postgres\"", text);             // missing section: not written
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class ConfigTests
     {
         const string json = """
             {
-              // el puerto del contenedor
+              // the container's port
               "postgres": { "port": "5440", },
             }
             """;
@@ -82,7 +82,7 @@ public class ConfigTests
     {
         var pg = new PostgresConfig { User = "shop" };
         Assert.Equal(5432, pg.EfPort);
-        Assert.Equal("shop", pg.EfDatabase);          // sin baseDatos: el usuario
+        Assert.Equal("shop", pg.EfDatabase);          // without a database name: the user
         Assert.Equal("postgres:17-alpine", pg.EfImage);
         Assert.Equal("postgres", new PostgresConfig().EfUser);
     }
@@ -106,9 +106,9 @@ public class ConfigTests
 
         store.Save(ConfigJson.Read(ShopTree.CurrentConfig));
         Assert.True(store.Exists);
-        Assert.False(store.ReloadIfChanged());                 // nada cambió
+        Assert.False(store.ReloadIfChanged());                 // nothing changed
 
-        // el usuario edita el archivo
+        // the user edits the file
         File.WriteAllText(store.FilePath, ShopTree.CurrentConfig.Replace("5440", "5441"));
         File.SetLastWriteTimeUtc(store.FilePath, DateTime.UtcNow.AddMinutes(1));
         Assert.True(store.ReloadIfChanged());
@@ -133,6 +133,6 @@ public class ConfigTests
         Assert.NotNull(store.Error);
         Assert.Null(store.Config.Api);
         Assert.Equal("{ esto no es json", File.ReadAllText(store.FilePath));
-        Assert.False(store.ReloadIfChanged());                 // no repite el error en cada vuelta
+        Assert.False(store.ReloadIfChanged());                 // does not repeat the error on every pass
     }
 }

@@ -6,7 +6,7 @@ using StackDev.Core.Detection;
 
 namespace StackDev.Gui;
 
-/// <summary>Ventanas pequeñas (confirmar, preguntar, elegir, abrir proyecto) construidas en código y con el tema oscuro.</summary>
+/// <summary>Small windows (confirm, ask, choose, open project) built in code with the dark theme.</summary>
 public static class Dialogs
 {
     private static Style GetStyle(string key) => (Style)Application.Current.FindResource(key);
@@ -77,7 +77,7 @@ public static class Dialogs
         return string.IsNullOrEmpty(result) ? null : result;
     }
 
-    /// <summary>Devuelve el índice elegido o -1.</summary>
+    /// <summary>Returns the chosen index or -1.</summary>
     public static int Choose(Window? owner, string title, IReadOnlyList<string> options, int byDefault)
     {
         var w = Base(owner, "stackdev", 480);
@@ -99,7 +99,7 @@ public static class Dialogs
         return result;
     }
 
-    /// <summary>Elegir la carpeta de un proyecto: escribirla, examinar, o buscar proyectos dentro de una carpeta.</summary>
+    /// <summary>Choose a project's folder: type it, browse, or search for projects inside a folder.</summary>
     public static string? Project(Window? owner, string? last)
     {
         var w = Base(owner, "Abrir proyecto", 620);

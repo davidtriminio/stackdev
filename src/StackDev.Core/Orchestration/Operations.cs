@@ -3,8 +3,8 @@ using StackDev.Core.Config;
 namespace StackDev.Core.Orchestration;
 
 /// <summary>
-/// Una acción del menú. <paramref name="Code"/> es el atajo de siempre (a1, w3, e1...); <paramref name="Group"/> y
-/// <paramref name="Name"/> son para los comandos sin interfaz (<c>stackdev api start</c>).
+/// A menu action. <paramref name="Code"/> is the usual shortcut (a1, w3, e1...); <paramref name="Group"/> and
+/// <paramref name="Name"/> are for the headless commands (<c>stackdev api start</c>).
 /// </summary>
 public sealed record Operation(string Code, string Section, string Group, string Name, string Title, ProjectComponent? Requires,
     Func<Session, bool> Run);
@@ -87,7 +87,7 @@ public static class Operations
 
     public static IEnumerable<string> NamesOf(string group) => All.Where(a => a.Group == group).Select(a => a.Name);
 
-    /// <summary>Acciones que se muestran en el menú: solo las de los componentes que el proyecto tiene.</summary>
+    /// <summary>Actions shown in the menu: only those of the components the project has.</summary>
     public static IEnumerable<Operation> Available(Session s) =>
         All.Where(a => a.Requires is null || s.Ctx.Has(a.Requires.Value));
 }

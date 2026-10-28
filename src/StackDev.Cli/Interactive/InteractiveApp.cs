@@ -13,12 +13,12 @@ using StackDev.Core.Ui;
 namespace StackDev.Cli.Interactive;
 
 /// <summary>
-/// El modo interactivo: panel de estado en vivo; con un código + Enter (a1, w1, d5…) o con el menú de flechas se ejecuta
-/// cualquier acción. Ctrl+C cancela solo la acción en curso.
+/// The interactive mode: live status panel; any action runs with a code + Enter (a1, w1, d5…) or from the arrow-key menu.
+/// Ctrl+C cancels only the action in progress.
 /// </summary>
 public sealed class InteractiveApp
 {
-    // Acciones que dejan algo que leer: se espera Enter antes de volver al panel.
+    // Actions that leave something to read: Enter is awaited before going back to the panel.
     private static readonly HashSet<string> AlwaysPause = new()
     {
         "test", "build", "analyze", "format", "gen", "install", "pub-get", "clean", "backup", "restore", "recreate", "check",
@@ -59,7 +59,7 @@ public sealed class InteractiveApp
 
     // ------------------------------------------------------------ Panel en vivo
 
-    /// <summary>Muestra el panel hasta que escriben un código + Enter (devuelve el texto) o piden el menú (devuelve null).</summary>
+    /// <summary>Shows the panel until a code + Enter is typed (returns the text) or the menu is requested (returns null).</summary>
     private string? WaitForInput(string? warning)
     {
         var code = "";
@@ -127,7 +127,7 @@ public sealed class InteractiveApp
         return result;
     }
 
-    // ------------------------------------------------------------ Códigos y menú
+    // ------------------------------------------------------------ Codes and menu
 
     private bool Dispatch(string text, out string? warning)
     {
@@ -156,7 +156,7 @@ public sealed class InteractiveApp
         return false;
     }
 
-    /// <summary>El menú de flechas, agrupado por sección. Devuelve true si hay que salir de la herramienta.</summary>
+    /// <summary>The arrow-key menu, grouped by section. Returns true if the tool must exit.</summary>
     private bool Menu()
     {
         var titles = new Dictionary<string, string>();
@@ -253,7 +253,7 @@ public sealed class InteractiveApp
         }
     }
 
-    // ------------------------------------------------------------ Submenús
+    // ------------------------------------------------------------ Submenus
 
     private void ConditionsMenu()
     {
