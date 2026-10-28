@@ -5,7 +5,7 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Docker;
 
-/// <summary>docker.exe con tiempo límite, y abrir Docker Desktop si el motor no responde.</summary>
+/// <summary>docker.exe with a time limit, and opening Docker Desktop if the engine does not answer.</summary>
 public sealed class DockerService
 {
     private readonly Session _s;
@@ -32,13 +32,13 @@ public sealed class DockerService
         return null;
     }
 
-    /// <summary>Cómo se escribe docker dentro de un script de PowerShell.</summary>
+    /// <summary>How docker is written inside a PowerShell script.</summary>
     public string PsCommand => Shell.SearchInPath("docker") is not null ? "docker" : $"& {Args.PsLiteral(Exe ?? "docker")}";
 
     public ProcResult Run(IEnumerable<string> args, int timeoutSec = 15) =>
         Exe is null ? new ProcResult(-1, "", "", ErrorHome: "Docker no está instalado") : ProcessRunner.Run(Exe, args, timeoutSec, ct: _s.Ct);
 
-    /// <summary>Corre mostrando su salida en esta consola (el progreso de la descarga de una imagen).</summary>
+    /// <summary>Runs showing its output in this console (the progress of an image download).</summary>
     public int RunVisible(IEnumerable<string> args) =>
         Exe is null ? 127 : _s.RunVisible(Exe, args, null, null);
 
@@ -46,10 +46,10 @@ public sealed class DockerService
         Exe is null ? new ProcResult(-1, "", "", ErrorHome: "Docker no está instalado")
                     : ProcessRunner.RunWithFiles(Exe, args, input, output, timeoutSec, _s.Ct);
 
-    /// <summary>¿El motor de Docker responde? (<c>docker info</c> con 8 segundos de plazo)</summary>
+    /// <summary>Does the Docker engine answer? (<c>docker info</c> with an 8-second limit)</summary>
     public bool Live() => Installed && Run(new[] { "info", "--format", "{{.ServerVersion}}" }, 8).Ok;
 
-    /// <summary>Si el motor no responde, abre Docker Desktop y espera hasta 150 s (se cancela con C o Ctrl+C).</summary>
+    /// <summary>If the engine does not answer, opens Docker Desktop and waits up to 150 s (cancel with C or Ctrl+C).</summary>
     public bool StartDesktop()
     {
         if (!Installed)

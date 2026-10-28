@@ -9,7 +9,7 @@ using StackDev.Core.Ui;
 
 namespace StackDev.Cli.Commands;
 
-/// <summary>Para detectar y config: el proyecto puede ir como primer argumento.</summary>
+/// <summary>For detect and config: the project can be given as the first argument.</summary>
 public class PathSettings : CommandSettings
 {
     [CommandArgument(0, "[ruta]")]
@@ -17,7 +17,7 @@ public class PathSettings : CommandSettings
     public string? FilePath { get; init; }
 }
 
-/// <summary>Opciones que entienden todos los comandos que operan sobre un proyecto.</summary>
+/// <summary>Options understood by every command that works on a project.</summary>
 public class CommonSettings : CommandSettings
 {
     [CommandOption("-p|--proyecto <RUTA>")]
@@ -53,7 +53,7 @@ public class CommonSettings : CommandSettings
     [Description("Dispositivo donde correr la app: un serial de adb (emulator-5554, 192.168.1.20:5555…) o «todos».")]
     public string? Device { get; init; }
 
-    [CommandOption("--direccion <IP:PUERTO>")]
+    [CommandOption("--direccion <IP_PUERTO>")]
     [Description("Con emu connect, pair o disconnect: dirección del teléfono (sin ella se pregunta o se usan las guardadas).")]
     public string? Address { get; init; }
 
@@ -76,7 +76,7 @@ public class CommonSettings : CommandSettings
 
 public static class Project
 {
-    /// <summary>Decide la raíz del proyecto: parámetro → carpeta actual → último usado (se pregunta) → pedir la ruta.</summary>
+    /// <summary>Decides the project root: argument → current folder → last used (asks) → ask for the path.</summary>
     public static string? Choose(string? parameter, StateStore state)
     {
         var r = ProjectRoot.Resolve(parameter, Directory.GetCurrentDirectory(), state.LastProject);
@@ -95,7 +95,7 @@ public static class Project
         return Confirm(path, state);
     }
 
-    /// <summary>Si eligieron una subcarpeta (p. ej. mobile/) y la de arriba tiene .git o dev-menu.json, ofrece la raíz.</summary>
+    /// <summary>If a subfolder was chosen (e.g. mobile/) and the parent has .git or dev-menu.json, offers the root.</summary>
     public static string Confirm(string path, StateStore state)
     {
         path = Path.GetFullPath(path);
@@ -109,7 +109,7 @@ public static class Project
         return path;
     }
 
-    /// <summary>Para scripts: nunca pregunta. Parámetro → carpeta actual → último usado.</summary>
+    /// <summary>For scripts: never asks. Argument → current folder → last used.</summary>
     public static string? ChooseWithoutAsking(string? parameter, StateStore state, IConsoleUi ui)
     {
         var r = ProjectRoot.Resolve(parameter, Directory.GetCurrentDirectory(), state.LastProject);
@@ -127,7 +127,7 @@ public static class Project
     }
 }
 
-/// <summary>Cancelación por comando: Ctrl+C cancela solo lo que está corriendo y devuelve el control.</summary>
+/// <summary>Per-command cancellation: Ctrl+C cancels only what is running and gives control back.</summary>
 public static class Cancellation
 {
     private static CancellationTokenSource? _current;
@@ -142,13 +142,13 @@ public static class Cancellation
             var cts = _current;
             if (cts is not null && !cts.IsCancellationRequested)
             {
-                e.Cancel = true;   // no cerrar la herramienta: solo cancelar el comando en curso
+                e.Cancel = true;   // do not close the tool: only cancel the command in progress
                 cts.Cancel();
             }
         };
     }
 
-    /// <summary>Corre <paramref name="f"/> con un token que se cancela con Ctrl+C. Devuelve false si falló o se canceló.</summary>
+    /// <summary>Runs <paramref name="f"/> with a token that Ctrl+C cancels. Returns false if it failed or was cancelled.</summary>
     public static bool Run(Session s, Func<bool> f, out bool cancelled)
     {
         Hook();
@@ -167,7 +167,7 @@ public static class Cancellation
 
 public static class Startup
 {
-    /// <summary>Abre el proyecto para un comando sin interfaz (nunca hace preguntas de más).</summary>
+    /// <summary>Opens the project for a headless command (never asks more than needed).</summary>
     public static Session? OpenHeadless(CommonSettings st)
     {
         var state = StateStore.Open();
@@ -179,7 +179,7 @@ public static class Startup
         return s;
     }
 
-    /// <summary>Corre una acción y devuelve el código de salida del proceso (0 bien, 1 falló, 130 cancelada).</summary>
+    /// <summary>Runs an action and returns the process exit code (0 ok, 1 failed, 130 cancelled).</summary>
     public static int Run(Session s, Func<bool> f)
     {
         var ok = Cancellation.Run(s, f, out var cancelled);

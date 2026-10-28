@@ -4,12 +4,12 @@ using System.Windows.Media;
 
 namespace StackDev.Gui;
 
-/// <summary>El color de acento de la interfaz: verde terminal (predeterminado) o ámbar, como una terminal vieja.</summary>
+/// <summary>The accent colour of the interface: terminal green (default) or amber, like an old terminal.</summary>
 public static class Appearance
 {
     public static bool IsAmber(string? accent) => string.Equals(accent, "ambar", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Cambia los colores del acento en los recursos de la aplicación. Devuelve false si algún pincel no se pudo modificar.</summary>
+    /// <summary>Changes the accent colours in the application resources. Returns false if some brush could not be modified.</summary>
     public static bool Apply(string? accent)
     {
         var amber = IsAmber(accent);

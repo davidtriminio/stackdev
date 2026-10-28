@@ -7,8 +7,8 @@ using StackDev.Core.Ui;
 namespace StackDev.Core.Diagnostics;
 
 /// <summary>
-/// Revisa que lo configurado coincida con la realidad (Docker, puertos, carpetas, SDK) y propone cómo arreglar cada diferencia.
-/// Solo lee: ningún chequeo cambia nada; los arreglos se ejecutan aparte y piden confirmación.
+/// Checks that what is configured matches reality (Docker, ports, folders, SDK) and proposes how to fix each difference.
+/// Read-only: no check changes anything; fixes run separately and ask for confirmation.
 /// </summary>
 public sealed class DiagnosticsService
 {
@@ -32,7 +32,7 @@ public sealed class DiagnosticsService
         if (c.Has(ProjectComponent.Web)) { CheckWeb(h); CheckPort(h, ProjectComponent.Web, "Web"); }
         if (c.Has(ProjectComponent.Mobile)) CheckMobile(h);
 
-        // Puertos que chocan con otros proyectos, contenedores o Windows, aunque nada esté corriendo
+        // Ports that clash with other projects, containers or Windows, even if nothing is running
         try
         {
             var plan = _s.Free.Plan();
@@ -50,7 +50,7 @@ public sealed class DiagnosticsService
         return h;
     }
 
-    // ------------------------------------------------------------ Postgres y Docker
+    // ------------------------------------------------------------ Postgres and Docker
 
     private void CheckPostgres(List<Finding> h)
     {
@@ -94,7 +94,7 @@ public sealed class DiagnosticsService
                     sug is null ? null : s => { PostgresService.ChangePort(s, sug.Value); return true; }));
             }
 
-            // Otros contenedores Postgres que podrían ser el que se buscaba (renombrado)
+            // Other Postgres containers that could be the one being looked for (renamed)
             var other = _s.Admin.Containers()?.Where(x => x.Image.Contains("postgres", StringComparison.OrdinalIgnoreCase)).ToList();
             if (other is { Count: > 0 })
                 h.Add(new(Severity.Info, "Postgres", "Hay otros contenedores Postgres en Docker",
@@ -102,7 +102,7 @@ public sealed class DiagnosticsService
             return;
         }
 
-        // El contenedor existe: comparar lo configurado con lo real
+        // The container exists: compare what is configured with what is real
         try
         {
             using var doc = JsonDocument.Parse(r.Output);
@@ -129,7 +129,7 @@ public sealed class DiagnosticsService
             else if (cfg.EfVolume.Length > 0 && real.Volume is null)
                 diffs.Add($"Volumen: la config usa «{cfg.EfVolume}» pero el contenedor no tiene ninguno (los datos no persisten)");
 
-            // Contenedor detenido cuyo puerto lo tomó otro mientras tanto: no arrancaría
+            // Stopped container whose port was taken by something else meanwhile: it would not start
             if (!state.Running)
             {
                 var mp = _s.Free.Take(ignoreContainer: name, ignoreComponent: ProjectComponent.Postgres);
@@ -196,7 +196,7 @@ public sealed class DiagnosticsService
         return new(image, port, user, db, pass, volume);
     }
 
-    /// <summary>Pone en dev-menu.json lo que tiene de verdad el contenedor (el camino seguro: no toca Docker).</summary>
+    /// <summary>Writes into dev-menu.json what the container really has (the safe way: it does not touch Docker).</summary>
     private static bool AdoptFromContainer(Session s, ContainerData real)
     {
         var copy = ConfigJson.Read(ConfigJson.Write(s.Ctx.Config));
@@ -212,7 +212,7 @@ public sealed class DiagnosticsService
         return true;
     }
 
-    // ------------------------------------------------------------ Carpetas y herramientas
+    // ------------------------------------------------------------ Folders and tools
 
     private void CheckFolder(List<Finding> h, ProjectComponent comp, string area, string[] marks)
     {
@@ -232,7 +232,7 @@ public sealed class DiagnosticsService
             h.Add(new(Severity.Warning, area, $"{area} no tiene una URL con puerto válida", "Sin ella no se puede saber si está corriendo."));
     }
 
-    /// <summary>El puerto de la API o la web no debe chocar con otros proyectos, contenedores ni reservas de Windows.</summary>
+    /// <summary>The API or web port must not clash with other projects, containers or Windows reservations.</summary>
     private void CheckPort(List<Finding> h, ProjectComponent comp, string area)
     {
         var port = _s.Ctx.Port(comp);

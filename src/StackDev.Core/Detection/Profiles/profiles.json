@@ -1,0 +1,135 @@
+{
+  // Built-in project profiles. To add your own, put a file with the same shape in %APPDATA%\stackdev\profiles\ :
+  // yours are tried first, so they can override these. See "Project profiles" in CONTRIBUTING.md.
+  "profiles": [
+    // ---------------------------------------------------------------- Node: API
+    {
+      "id": "node-nest", "title": "Node · NestJS", "role": "api",
+      "match": { "files": ["package.json"], "contains": ["\"@nestjs/core\""] },
+      "url": "http://localhost:3000",
+      "commands": { "install": "{pm} install", "start": "{pm} run start:dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "node-fastify", "title": "Node · Fastify", "role": "api",
+      "match": { "files": ["package.json"], "contains": ["\"fastify\""], "notContains": ["\"next\"", "\"nuxt\"", "\"react\"", "\"vue\"", "\"@angular/core\""] },
+      "url": "http://localhost:3000",
+      "commands": { "install": "{pm} install", "start": "{pm} start", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "node-express", "title": "Node · Express", "role": "api",
+      "match": { "files": ["package.json"], "contains": ["\"express\""], "notContains": ["\"next\"", "\"nuxt\"", "\"react\"", "\"vue\"", "\"@angular/core\""] },
+      "url": "http://localhost:3000",
+      "commands": { "install": "{pm} install", "start": "{pm} start", "test": "{pm} test", "build": "{pm} run build" }
+    },
+
+    // ---------------------------------------------------------------- Python: API
+    {
+      "id": "python-django", "title": "Python · Django", "role": "api",
+      "match": { "files": ["manage.py"], "contains": ["django"] },
+      "url": "http://localhost:8000", "open": "/admin/",
+      "commands": {
+        "install": [
+          { "when": "requirements.txt", "command": "pip install -r requirements.txt" },
+          { "when": "pyproject.toml", "command": "pip install -e ." }
+        ],
+        "start": "python manage.py runserver",
+        "test": "python manage.py test"
+      },
+      "tasks": [
+        { "name": "Django: aplicar migraciones", "command": "python manage.py migrate" },
+        { "name": "Django: crear migraciones", "command": "python manage.py makemigrations" }
+      ]
+    },
+    {
+      "id": "python-fastapi", "title": "Python · FastAPI", "role": "api",
+      "match": { "files": ["requirements.txt", "pyproject.toml", "Pipfile"], "contains": ["fastapi"] },
+      "url": "http://localhost:8000", "open": "/docs",
+      "commands": {
+        "install": [
+          { "when": "requirements.txt", "command": "pip install -r requirements.txt" },
+          { "when": "pyproject.toml", "command": "pip install -e ." }
+        ],
+        "start": [
+          { "when": "app/main.py", "command": "uvicorn app.main:app --reload" },
+          { "when": "src/main.py", "command": "uvicorn src.main:app --reload" },
+          { "command": "uvicorn main:app --reload" }
+        ],
+        "test": "pytest"
+      }
+    },
+    {
+      "id": "python-flask", "title": "Python · Flask", "role": "api",
+      "match": { "files": ["requirements.txt", "pyproject.toml", "Pipfile"], "contains": ["flask"], "notContains": ["django", "fastapi"] },
+      "url": "http://localhost:5000",
+      "commands": {
+        "install": [
+          { "when": "requirements.txt", "command": "pip install -r requirements.txt" },
+          { "when": "pyproject.toml", "command": "pip install -e ." }
+        ],
+        "start": "flask run --debug",
+        "test": "pytest"
+      }
+    },
+
+    // ---------------------------------------------------------------- Node: web
+    {
+      "id": "web-next", "title": "Next.js", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"next\""] },
+      "url": "http://localhost:3000",
+      "portFrom": [ { "file": "package.json", "regex": "next dev[^\"]*(?:-p|--port)[= ](\\d+)" } ],
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-nuxt", "title": "Nuxt", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"nuxt\""] },
+      "url": "http://localhost:3000",
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-sveltekit", "title": "SvelteKit", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["@sveltejs/kit"] },
+      "url": "http://localhost:5173",
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-cra", "title": "React (Create React App)", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"react-scripts\""] },
+      "url": "http://localhost:3000",
+      "commands": { "install": "{pm} install", "start": "{pm} start", "test": "{pm} test -- --watchAll=false", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-vue-cli", "title": "Vue (Vue CLI)", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["@vue/cli-service"] },
+      "url": "http://localhost:8080",
+      "commands": { "install": "{pm} install", "start": "{pm} run serve", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-vite-react", "title": "Vite · React", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"vite\"", "\"react\""] },
+      "url": "http://localhost:5173",
+      "portFrom": [ { "file": "vite.config.ts", "regex": "port:\\s*(\\d+)" }, { "file": "vite.config.js", "regex": "port:\\s*(\\d+)" } ],
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-vite-vue", "title": "Vite · Vue", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"vite\"", "\"vue\""] },
+      "url": "http://localhost:5173",
+      "portFrom": [ { "file": "vite.config.ts", "regex": "port:\\s*(\\d+)" }, { "file": "vite.config.js", "regex": "port:\\s*(\\d+)" } ],
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-vite-svelte", "title": "Vite · Svelte", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"vite\"", "\"svelte\""] },
+      "url": "http://localhost:5173",
+      "portFrom": [ { "file": "vite.config.ts", "regex": "port:\\s*(\\d+)" }, { "file": "vite.config.js", "regex": "port:\\s*(\\d+)" } ],
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    },
+    {
+      "id": "web-vite", "title": "Vite", "role": "web",
+      "match": { "files": ["package.json"], "contains": ["\"vite\""] },
+      "url": "http://localhost:5173",
+      "portFrom": [ { "file": "vite.config.ts", "regex": "port:\\s*(\\d+)" }, { "file": "vite.config.js", "regex": "port:\\s*(\\d+)" } ],
+      "commands": { "install": "{pm} install", "start": "{pm} run dev", "test": "{pm} test", "build": "{pm} run build" }
+    }
+  ]
+}

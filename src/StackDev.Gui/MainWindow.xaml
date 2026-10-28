@@ -15,7 +15,7 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <!-- Barra superior propia (estilo app de escritorio) -->
+    <!-- Custom top bar (desktop app style) -->
     <Border Grid.Row="0" Background="{StaticResource SidebarBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1">
       <Grid>
         <Grid.ColumnDefinitions>
@@ -372,7 +372,7 @@
             </RichTextBox.Resources>
           </RichTextBox>
 
-          <!-- Línea de comandos siempre visible -->
+          <!-- Command line, always visible -->
           <Border Grid.Row="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="12,8">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -399,7 +399,7 @@
         </Grid>
       </Border>
 
-      <!-- Estado de la acción en curso -->
+      <!-- State of the action in progress -->
       <Grid Grid.Row="4" Margin="2,10,2,0">
         <TextBlock x:Name="TxtBusy" Text="Listo" Foreground="{StaticResource MutedBrush}" FontSize="12" FontFamily="{StaticResource MonoFont}" />
         <TextBlock x:Name="TxtShortcuts" Text="Ctrl+P proyecto  ·  Ctrl+T terminal  ·  Ctrl+Q salir" Foreground="{StaticResource MutedBrush}" Opacity="0.7" FontSize="11"
@@ -409,7 +409,7 @@
       </Grid>
       </Grid>
 
-      <!-- Terminales: a la mitad, a pantalla completa o ocultas -->
+      <!-- Terminals: half, full screen or hidden -->
       <GridSplitter x:Name="TerminalDivider" Grid.Column="1" Width="10" HorizontalAlignment="Center" VerticalAlignment="Stretch"
                     Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" Visibility="Collapsed" />
       <Border x:Name="TerminalDock" Grid.Column="2" Visibility="Collapsed" />

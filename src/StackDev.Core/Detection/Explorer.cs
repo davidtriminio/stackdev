@@ -1,6 +1,6 @@
 namespace StackDev.Core.Detection;
 
-/// <summary>Navegación de carpetas para elegir el proyecto desde la consola.</summary>
+/// <summary>Folder browsing to choose the project from the console.</summary>
 public static class Explorer
 {
     public static List<string> Units()
@@ -19,7 +19,7 @@ public static class Explorer
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return new(); }
     }
 
-    /// <summary>Carpetas con .git o dev-menu.json hasta 3 niveles por debajo (máximo 30).</summary>
+    /// <summary>Folders with .git or dev-menu.json up to 3 levels below (at most 30).</summary>
     public static List<string> SearchProjects(string since, int depth = 3)
     {
         var res = new List<string>();
@@ -31,7 +31,7 @@ public static class Explorer
             if (Directory.Exists(Path.Combine(dir, ".git")) || File.Exists(Path.Combine(dir, Config.ConfigStore.FileName)))
             {
                 res.Add(dir);
-                continue;   // no buscar proyectos dentro de un proyecto
+                continue;   // do not search for projects inside a project
             }
             if (n >= depth) continue;
             try

@@ -15,7 +15,7 @@ public class DetectionTests
         var api = d.Config.Api;
         Assert.NotNull(api);
         Assert.Equal("api", api!.Folder);
-        Assert.Equal("http://localhost:5109", api.Url);   // el primer http://, no el https
+        Assert.Equal("http://localhost:5109", api.Url);   // the first http://, not the https
         Assert.Equal("/scalar", api.Open);
         Assert.Equal("dotnet run --project src/Shop.Api", api.Start);
         Assert.Equal("dotnet test --artifacts-path .art", api.Test);
@@ -173,7 +173,7 @@ public class DetectionTests
         var dirApi = t.FilePath("api/src/Shop.Api");
         Assert.Equal(t.FilePath("api"), Detector.SolutionFolder(t.Root, dirApi));
 
-        File.Delete(t.FilePath("api/Shop.sln"));   // sin .sln: la primera carpeta bajo la raíz
+        File.Delete(t.FilePath("api/Shop.sln"));   // without .sln: the first folder under the root
         Assert.Equal(t.FilePath("api"), Detector.SolutionFolder(t.Root, dirApi));
     }
 

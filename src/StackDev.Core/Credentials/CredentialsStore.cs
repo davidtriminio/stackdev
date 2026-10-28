@@ -5,7 +5,7 @@ using StackDev.Core.Security;
 
 namespace StackDev.Core.Credentials;
 
-/// <summary>Una credencial de prueba (usuario de la app, base de datos, panel de administración...).</summary>
+/// <summary>A test credential (app user, database, admin panel...).</summary>
 public sealed class Credential
 {
     [JsonPropertyName("name")] public string Name { get; set; } = "";
@@ -15,9 +15,9 @@ public sealed class Credential
 }
 
 /// <summary>
-/// Las credenciales de un proyecto, en <c>credenciales.json</c> dentro de la carpeta de configuración personal
-/// (fuera del repositorio, así no llegan a un commit). El archivo va cifrado con DPAPI de Windows (solo tu usuario, en este equipo).
-/// Un archivo heredado en texto plano se lee y se vuelve a guardar cifrado.
+/// A project's credentials, in <c>credentials.json</c> inside the personal configuration folder
+/// (outside the repository, so they never reach a commit). The file is encrypted with Windows DPAPI (only your user, on this computer).
+/// A legacy plain-text file is read and saved again encrypted.
 /// </summary>
 public sealed class CredentialsStore
 {
@@ -34,15 +34,15 @@ public sealed class CredentialsStore
         {
             var text = File.ReadAllText(FilePath, Encoding.UTF8).Trim();
             var flat = Protection.IsEncrypted(text) ? Protection.Decrypt(text) : text;
-            if (flat.Length == 0) return new();   // cifrado por otro usuario/equipo: no se puede leer
+            if (flat.Length == 0) return new();   // encrypted by another user/computer: it cannot be read
             flat = Config.LegacyKeys.Upgrade(flat, Config.LegacyKeys.Credential, out var upgraded);
             var list = JsonSerializer.Deserialize<List<Credential>>(flat, Options) ?? new();
-            if ((upgraded || !Protection.IsEncrypted(text)) && Protection.Available && list.Count > 0) Save(list);   // migra el texto plano heredado
+            if ((upgraded || !Protection.IsEncrypted(text)) && Protection.Available && list.Count > 0) Save(list);   // migrates the legacy plain text
             return list;
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            // un archivo dañado no debe perderse al guardar lo siguiente
+            // a damaged file must not be lost when saving the next one
             try { File.Copy(FilePath, FilePath + ".dañado", true); } catch (IOException) { }
             return new();
         }
@@ -58,6 +58,29 @@ public sealed class CredentialsStore
             if (i >= 0) list[i] = c; else list.Add(c);
         }
         Save(list);
+    }
+
+    /// <summary>
+    /// Moves the item at <paramref name="from"/> to the gap <paramref name="slot"/> (0..Count: the gap before that position;
+    /// Count means "at the end"). False when nothing changes: bad numbers, or dropping an item into its own place.
+    /// </summary>
+    public static bool Reorder<T>(List<T> list, int from, int slot)
+    {
+        if (from < 0 || from >= list.Count || slot < 0 || slot > list.Count) return false;
+        if (slot == from || slot == from + 1) return false;
+        var item = list[from];
+        list.RemoveAt(from);
+        list.Insert(slot > from ? slot - 1 : slot, item);
+        return true;
+    }
+
+    /// <summary>Moves one credential (see <see cref="Reorder{T}"/>) and saves the new order. False when nothing changed.</summary>
+    public bool Move(int from, int slot)
+    {
+        var list = Read();
+        if (!Reorder(list, from, slot)) return false;
+        Save(list);
+        return true;
     }
 
     public void Save(IEnumerable<Credential> list)

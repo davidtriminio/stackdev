@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace StackDev.Core.Detection;
 
-/// <summary>Búsqueda de archivos por niveles saltando las carpetas que nunca importan.</summary>
+/// <summary>Level-by-level file search that skips the folders that never matter.</summary>
 public static class FileTree
 {
     private static readonly Regex Excluded = new(
@@ -20,7 +20,7 @@ public static class FileTree
     public static bool IsExcludedFolder(string name) =>
         name.StartsWith('.') || Excluded.IsMatch(name);
 
-    /// <summary>Busca por niveles (hasta <paramref name="depth"/>) los archivos que coincidan con los patrones.</summary>
+    /// <summary>Searches level by level (up to <paramref name="depth"/>) for the files that match the patterns.</summary>
     public static List<string> Search(string root, IEnumerable<string> patterns, int depth = 4)
     {
         var list = patterns.ToList();
@@ -49,7 +49,7 @@ public static class FileTree
         return res;
     }
 
-    /// <summary>Contenido de un archivo de texto, o "" si no se puede leer.</summary>
+    /// <summary>Contents of a text file, or "" if it cannot be read.</summary>
     public static string Read(string file)
     {
         try { return File.ReadAllText(file); }

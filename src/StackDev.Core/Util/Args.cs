@@ -2,12 +2,12 @@ using System.Text;
 
 namespace StackDev.Core.Util;
 
-/// <summary>Armado y escape de argumentos para procesos externos y para scripts de PowerShell.</summary>
+/// <summary>Building and escaping arguments for external processes and for PowerShell scripts.</summary>
 public static class Args
 {
     /// <summary>
-    /// Escapa un argumento con las reglas de CommandLineToArgvW (las que usan casi todos los programas de Windows):
-    /// se ponen comillas si tiene espacios o comillas, y las barras invertidas antes de una comilla se duplican.
+    /// Escapes an argument with the rules of CommandLineToArgvW (the ones almost every Windows program uses):
+    /// quotes are added if it has spaces or quotes, and backslashes before a quote are doubled.
     /// </summary>
     public static string Quote(string argument)
     {
@@ -39,12 +39,12 @@ public static class Args
 
     public static string Join(IEnumerable<string> arguments) => string.Join(' ', arguments.Select(Quote));
 
-    /// <summary>Literal de PowerShell entre comillas simples: 'it''s'.</summary>
+    /// <summary>PowerShell single-quoted literal: 'it''s'.</summary>
     public static string PsLiteral(string text) => "'" + text.Replace("'", "''") + "'";
 
     /// <summary>
-    /// Parte una línea de comando en argumentos respetando comillas dobles
-    /// (para convertir "dotnet run --project src/Api" en ejecutable + argumentos).
+    /// Splits a command line into arguments respecting double quotes
+    /// (to turn "dotnet run --project src/Api" into executable + arguments).
     /// </summary>
     public static List<string> Split(string line)
     {

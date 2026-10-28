@@ -11,7 +11,7 @@ It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + P
 ## What it does
 
 **Local development**
-- Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it.
+- Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it. .NET, Angular and Flutter are built in; **Node (NestJS, Express, Fastify, Next, Nuxt, SvelteKit, Vite, CRA, Vue CLI) and Python (Django, FastAPI, Flask)** come from [profiles](CONTRIBUTING.md#project-profiles), plain JSON files anyone can add.
 - One panel with live status and buttons for every service: *Start all*, *Check*, *Stop all*, logs, device conditions, a command console.
 - A command-line version (`stackdev up`, `stackdev api start`, …) for scripts, with proper exit codes.
 
@@ -69,20 +69,21 @@ src/StackDev.Cli    commands and the console screen
 src/StackDev.Gui    the window (WPF, dark "Forja" theme)
 src/StackDev.Core/Deploy/Remote/stackdev-remote.sh   the script that runs on the server
 tests/              xUnit tests for the core and a shell suite for the remote script
+examples/           a complete dev-menu.json
 ```
 
 The remote script talks to the app with a line protocol (`##STEP`, `##INFO`, `##WARN`, `##FAIL code msg`, `##KV key=value`, `##DONE`) and uses documented exit codes.
 
 ## `dev-menu.json`
 
-A project describes itself in one optional-everything file at its root: `postgres`, `api`, `web`, `mobile`, `startAll`, `tasks` and `deployment`. Missing sections simply do not appear in the UI, and unknown fields are kept when the file is saved. The Spanish [README](README.es.md) has the full field table.
+A project describes itself in one optional-everything file at its root: `postgres`, `api`, `web`, `mobile`, `startAll`, `tasks` and `deployment`. Missing sections simply do not appear in the UI, and unknown fields are kept when the file is saved. See [examples/dev-menu.json](examples/dev-menu.json) for a complete file; the Spanish [README](README.es.md) has the full field table.
 
 ## Roadmap
 
 Planned, in this order:
 
 1. **Cross-platform**: put the Windows-only pieces (encryption, key permissions, window control) behind interfaces and add a second UI on Avalonia, reusing the core as it is. The command line first.
-2. **Language support as data**: describe how to detect, start, test and publish a project type in JSON/YAML files, so adding Python, Node, Go or Java needs no C#.
+2. **Language support as data**: *started.* Profiles describe how to detect, start, test and build a project type, so adding a language needs no C#; Node and Python ship today and `examples/profiles/go.json` shows how to add Go. Next: more built-in profiles (Go, Java, PHP, Rust) and publishing, which is still .NET-only.
 3. **More targets**: web (Vercel or your server), Android APK, database backup and restore.
 
 ## Contributing

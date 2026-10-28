@@ -58,7 +58,7 @@ Opciones comunes: `-p <ruta>` (proyecto), `--avd <nombre>`, `--modo debug|profil
 | `stackdev cond [3 13 17]` | Condiciones del dispositivo (`0` restablece; sin números lista) |
 | `stackdev status` | Estado una vez, sin panel |
 | `stackdev logs api\|web\|db [-n 40] [-f]` | Últimas líneas del log |
-| `stackdev detectar [ruta] [--guardar]` | Detecta y (opcional) crea `dev-menu.json` |
+| `stackdev detectar [ruta] [--guardar]` | Detecta y (opcional) crea `dev-menu.json`. Reconoce .NET, Angular y Flutter, y con perfiles JSON Node (Nest, Express, Fastify, Next, Nuxt, SvelteKit, Vite…) y Python (Django, FastAPI, Flask); los perfiles propios van en `%APPDATA%\stackdev\profiles\` (ver `CONTRIBUTING.md`) |
 | `stackdev config [ruta]` | Muestra cómo se lee `dev-menu.json` |
 | `stackdev estado` | Muestra dónde se guarda el estado personal, el último proyecto y el último emulador |
 
@@ -89,7 +89,7 @@ Va en `%APPDATA%\stackdev\` (no en el repo): último proyecto, último emulador,
 
 ## `dev-menu.json`
 
-Está en la raíz del repo. Es el mismo formato de siempre; se pueden agregar campos nuevos (se conservan al guardar). Cada sección es opcional: si falta, esa parte no aparece.
+Va en la raíz de cada proyecto; hay un ejemplo completo en [`examples/dev-menu.json`](examples/dev-menu.json). Se pueden agregar campos nuevos (se conservan al guardar). Cada sección es opcional: si falta, esa parte no aparece.
 
 | Sección | Campos |
 |---|---|

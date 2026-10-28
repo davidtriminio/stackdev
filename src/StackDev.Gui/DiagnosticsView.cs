@@ -13,8 +13,8 @@ using StackDev.Core.Docker;
 namespace StackDev.Gui;
 
 /// <summary>
-/// «Diagnóstico»: compara lo configurado con la realidad (Docker, puertos, carpetas, SDK) y ofrece arreglarlo,
-/// y administra los contenedores y volúmenes de Docker (iniciar, detener, logs, eliminar).
+/// "Diagnóstico": compares what is configured with reality (Docker, ports, folders, SDK) and offers to fix it,
+/// and manages the Docker containers and volumes (start, stop, logs, delete).
 /// </summary>
 public sealed class DiagnosticsView : ScrollViewer
 {
@@ -55,7 +55,7 @@ public sealed class DiagnosticsView : ScrollViewer
         _ => "",                 // info
     };
 
-    /// <summary>Se llama al abrir la sección y después de cada arreglo.</summary>
+    /// <summary>Called when the section is opened and after every fix.</summary>
     public async Task UpdateAsync()
     {
         var s = _session();
@@ -160,7 +160,7 @@ public sealed class DiagnosticsView : ScrollViewer
         };
         text.Children.Insert(0, area);
 
-        // El botón de arreglo va debajo del texto: así nunca pisa el texto, sin importar el ancho
+        // The fix button goes below the text: that way it never overlaps the text, whatever the width
         if (h.Repair is not null && h.ActionTitle is not null)
         {
             var repair = h.Repair;
@@ -219,7 +219,7 @@ public sealed class DiagnosticsView : ScrollViewer
             await Operation($"Eliminar {cname}", x => x.Admin.DeleteContainer(cname));
         }, danger: true));
 
-        // Dos filas: el nombre arriba y los botones debajo (se acomodan solos si falta ancho)
+        // Two rows: the name on top and the buttons below (they rearrange themselves if width is short)
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

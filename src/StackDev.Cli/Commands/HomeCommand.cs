@@ -15,7 +15,7 @@ public sealed class HomeSettings : CommonSettings
     public string? FilePath { get; init; }
 }
 
-/// <summary>Lo que corre al escribir <c>stackdev</c>: el panel en vivo con el menú.</summary>
+/// <summary>What runs when you type <c>stackdev</c>: the live panel with the menu.</summary>
 public sealed class HomeCommand : Command<HomeSettings>
 {
     public override int Execute(CommandContext context, HomeSettings st)

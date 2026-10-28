@@ -3,8 +3,8 @@ using System.Runtime.InteropServices;
 namespace StackDev.Core.Android;
 
 /// <summary>
-/// El emulador no tiene opción de posición. Se enumeran las ventanas visibles de qemu-system-* (pantalla y barra lateral),
-/// se calcula el rectángulo que las contiene a todas y se mueven juntas al centro del área de trabajo del monitor.
+/// The emulator has no position option. The visible qemu-system-* windows (screen and side bar) are enumerated,
+/// the rectangle that contains them all is computed and they are moved together to the centre of the monitor's work area.
 /// </summary>
 public static class Win32Window
 {
@@ -29,7 +29,7 @@ public static class Win32Window
 
     private static bool _dpi;
 
-    /// <summary>Centra todas las ventanas del proceso en el monitor de la principal. Devuelve false si no pudo.</summary>
+    /// <summary>Centres every window of the process on the monitor of the main one. Returns false if it could not.</summary>
     public static bool Center(int pid, IntPtr main)
     {
         if (!OperatingSystem.IsWindows()) return false;
@@ -65,10 +65,10 @@ public static class Win32Window
 
             var dx = (w.Left + w.Right) / 2 - (left + right) / 2;
             var dy = (w.Top + w.Bottom) / 2 - (top + bottom) / 2;
-            if (top + dy < w.Top) dy = w.Top - top;       // la barra de título siempre visible
+            if (top + dy < w.Top) dy = w.Top - top;       // the title bar always visible
             if (left + dx < w.Left) dx = w.Left - left;
 
-            // Primero las secundarias y al final la principal (la barra lateral la sigue)
+            // Secondary windows first and the main one last (the side bar follows it)
             if (windows.Remove(main)) windows.Add(main);
             foreach (var h in windows)
             {

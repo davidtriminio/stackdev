@@ -1,8 +1,8 @@
 namespace StackDev.Core.Ui;
 
 /// <summary>
-/// Implementación sobre System.Console, para los comandos sin interfaz (scripts).
-/// Sin persona delante contesta con los valores por defecto (o "sí" a todo con <c>--si</c>).
+/// Implementation on top of System.Console, for the headless commands (scripts).
+/// With nobody in front it answers with the default values (or "yes" to everything with <c>--si</c>).
 /// </summary>
 public sealed class SimpleConsole : IConsoleUi
 {

@@ -4,9 +4,9 @@ using System.Globalization;
 namespace StackDev.Core.Proc;
 
 /// <summary>
-/// PIDs de los procesos que lanzó la herramienta (API, web, app...), guardados en el estado personal
-/// junto con la hora de inicio para no confundirlos si el sistema reutiliza el PID.
-/// Formato de cada línea (un archivo de texto por proceso): <c>clave|pid|ticks</c>.
+/// PIDs of the processes the tool launched (API, web, app...), saved in the personal state
+/// together with the start time so they are not confused if the system reuses the PID.
+/// Format of each line (one text file per process): <c>key|pid|ticks</c>.
 /// </summary>
 public sealed class ProcessRegistry
 {
@@ -58,7 +58,7 @@ public sealed class ProcessRegistry
         if (h.Remove(key)) Write(h);
     }
 
-    /// <summary>El proceso de esa clave si sigue vivo y es el mismo (misma hora de inicio); si no, null.</summary>
+    /// <summary>The process for that key if it is still alive and is the same one (same start time); otherwise null.</summary>
     public Process? Live(string key)
     {
         var h = Read();
@@ -75,7 +75,7 @@ public sealed class ProcessRegistry
         return p;
     }
 
-    /// <summary>Lee un PID escrito por un script de PowerShell en su propia ventana (<c>pid|ticks</c>) y lo registra.</summary>
+    /// <summary>Reads a PID written by a PowerShell script in its own window (<c>pid|ticks</c>) and registers it.</summary>
     public bool AdoptFromFile(string key, string filePid)
     {
         try

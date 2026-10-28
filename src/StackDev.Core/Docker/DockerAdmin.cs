@@ -10,7 +10,7 @@ public sealed record DockerContainer(string Id, string Name, string Image, strin
 
 public sealed record DockerVolume(string Name, string Driver);
 
-/// <summary>Ver y administrar contenedores y volúmenes de Docker desde la herramienta.</summary>
+/// <summary>View and manage Docker containers and volumes from the tool.</summary>
 public sealed class DockerAdmin
 {
     private readonly Session _s;
@@ -19,7 +19,7 @@ public sealed class DockerAdmin
     private static string Text(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
 
-    /// <summary>Todos los contenedores (también los detenidos). null si Docker no responde.</summary>
+    /// <summary>All containers (stopped ones too). null if Docker does not answer.</summary>
     public List<DockerContainer>? Containers()
     {
         var r = _s.Docker.Run(new[] { "ps", "-a", "--format", "{{json .}}" }, 10);

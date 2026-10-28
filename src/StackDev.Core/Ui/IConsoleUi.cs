@@ -3,24 +3,24 @@ namespace StackDev.Core.Ui;
 public enum Level { Normal, Title, Info, Ok, Warning, Error, Muted }
 
 /// <summary>
-/// Lo único que la lógica necesita de la pantalla: escribir mensajes y hacer preguntas.
-/// La interfaz con Spectre.Console y la de comandos sin interfaz la implementan por separado.
+/// The only thing the logic needs from the screen: write messages and ask questions.
+/// The Spectre.Console interface and the headless-command one implement it separately.
 /// </summary>
 public interface IConsoleUi
 {
     void Write(string text, Level level = Level.Normal);
 
-    /// <summary>Escribe sin salto de línea (los puntos de "Esperando...").</summary>
+    /// <summary>Writes without a line break (the dots of "Waiting...").</summary>
     void WriteInline(string text);
 
     bool Confirm(string question, bool byDefault = true);
 
-    /// <summary>Pide un texto. Devuelve null si el usuario no escribe nada.</summary>
+    /// <summary>Asks for text. Returns null if the user types nothing.</summary>
     string? Ask(string question, string? byDefault = null);
 
-    /// <summary>Devuelve el índice elegido, o -1 si se cancela.</summary>
+    /// <summary>Returns the chosen index, or -1 if cancelled.</summary>
     int Choose(string title, IReadOnlyList<string> options, int byDefault = -1);
 
-    /// <summary>¿Hay una persona que pueda contestar? Si no, se usan los valores por defecto.</summary>
+    /// <summary>Is there a person who can answer? If not, the default values are used.</summary>
     bool Interactive { get; }
 }

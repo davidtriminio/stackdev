@@ -6,10 +6,10 @@ namespace StackDev.Core.Detection;
 
 public sealed record PostgresContainer(string Name, string Image);
 
-/// <summary>Lectura de la salida de docker para detectar el Postgres del proyecto (la ejecución real llega en la fase 3).</summary>
+/// <summary>Reads docker's output to detect the project's Postgres (the real execution comes in phase 3).</summary>
 public static class PostgresDocker
 {
-    /// <summary>De la salida de <c>docker ps -a --format "{{.Names}}|{{.Image}}"</c>, los contenedores con imagen postgres o postgis.</summary>
+    /// <summary>From the output of <c>docker ps -a --format "{{.Names}}|{{.Image}}"</c>, the containers with a postgres or postgis image.</summary>
     public static List<PostgresContainer> FilterContainers(string outputDockerPs)
     {
         var res = new List<PostgresContainer>();
@@ -24,9 +24,9 @@ public static class PostgresDocker
     }
 
     /// <summary>
-    /// Arma la configuración de Postgres desde la salida de <c>docker inspect &lt;c&gt; --format "{{json .}}"</c>:
-    /// imagen, puerto publicado de 5432/tcp, POSTGRES_USER/PASSWORD/DB y volumen con nombre.
-    /// Un volumen anónimo (nombre de 64 caracteres hexadecimales) cuenta como "sin volumen".
+    /// Builds the Postgres configuration from the output of <c>docker inspect &lt;c&gt; --format "{{json .}}"</c>:
+    /// image, published port of 5432/tcp, POSTGRES_USER/PASSWORD/DB and named volume.
+    /// An anonymous volume (a 64-character hexadecimal name) counts as "no volume".
     /// </summary>
     public static PostgresConfig? FromInspect(string nameContainer, string inspectJson)
     {
@@ -37,7 +37,7 @@ public static class PostgresDocker
         using (doc)
         {
             var root = doc.RootElement;
-            if (root.ValueKind == JsonValueKind.Array) // docker inspect sin --format devuelve una lista
+            if (root.ValueKind == JsonValueKind.Array) // docker inspect without --format returns a list
             {
                 if (root.GetArrayLength() == 0) return null;
                 root = root[0];

@@ -16,9 +16,9 @@ public sealed record ServiceState(ServiceCode Code, string Text, string? Url = n
 }
 
 /// <summary>
-/// API y web: corren ocultas con su salida a un archivo de log (siguen vivas aunque cierres la herramienta).
-/// "Corriendo" = escuchando en su puerto; "arrancando" = el proceso vive pero aún no escucha;
-/// "error" = terminó con un código distinto de cero (se guarda en un archivo marcador).
+/// API and web: they run hidden with their output going to a log file (they stay alive even if you close the tool).
+/// "Running" = listening on its port; "starting" = the process is alive but not listening yet;
+/// "error" = it ended with a non-zero code (saved in a marker file).
 /// </summary>
 public sealed class ServiceManager
 {
@@ -64,7 +64,7 @@ public sealed class ServiceManager
         catch (IOException) { return null; }
     }
 
-    /// <summary>"OK" si ya escucha; "" si todavía arranca; si no, el motivo por el que no va a arrancar.</summary>
+    /// <summary>"OK" if it is already listening; "" if it is still starting; otherwise the reason it is not going to start.</summary>
     public string TestReady(ProjectComponent c)
     {
         var port = _s.Ctx.Port(c);
@@ -125,8 +125,8 @@ public sealed class ServiceManager
     }
 
     /// <summary>
-    /// Lanza el comando en un cmd oculto con su salida a un archivo. Al terminar escribe su código en el marcador.
-    /// Sin ventana propia no recibe el Ctrl+C de esta consola, así que sigue vivo si cierras la herramienta.
+    /// Launches the command in a hidden cmd with its output going to a file. When it ends it writes its code to the marker.
+    /// With no window of its own it does not receive this console's Ctrl+C, so it stays alive if you close the tool.
     /// </summary>
     private bool StartHidden(string key, string folder, string command, IReadOnlyDictionary<string, string>? env)
     {
@@ -146,7 +146,7 @@ public sealed class ServiceManager
             UseShellExecute = false,
             CreateNoWindow = true,
             WorkingDirectory = folder,
-            // /v:on para que !errorlevel! se evalúe al ejecutar; chcp 65001 para que la salida quede en UTF-8
+            // /v:on so that !errorlevel! is evaluated at run time; chcp 65001 so the output stays in UTF-8
             Arguments = $"/v:on /d /s /c \"chcp 65001>nul & ({command}) >> \"{log}\" 2>&1 & echo !errorlevel!> \"{mark}\"\"",
         };
         psi.Environment["NO_COLOR"] = "1";
@@ -166,7 +166,7 @@ public sealed class ServiceManager
         }
     }
 
-    /// <summary>Cierra el árbol completo de procesos y, si el puerto sigue ocupado, pregunta si se cierra quien lo tiene.</summary>
+    /// <summary>Closes the whole process tree and, if the port is still busy, asks whether to close whoever holds it.</summary>
     public void Stop(ProjectComponent c, bool silent = false)
     {
         if (!_s.Ctx.Has(c)) return;
@@ -191,12 +191,12 @@ public sealed class ServiceManager
         else if (!silent) _s.Ui.Write($"{name} no estaba corriendo.", Level.Muted);
     }
 
-    /// <summary>Las claves de las sesiones de flutter run: «app» (emulador) y «app-serial» (otros dispositivos).</summary>
+    /// <summary>The keys of the flutter run sessions: "app" (emulator) and "app-serial" (other devices).</summary>
     public static bool IsAppKey(string k) => k == "app" || k.StartsWith("app-", StringComparison.Ordinal);
 
     public List<string> LiveApps() => Registry.Keys().Where(k => IsAppKey(k) && Registry.Live(k) is not null).ToList();
 
-    /// <summary>Cierra todas las sesiones de flutter run. Devuelve cuántas había.</summary>
+    /// <summary>Closes every flutter run session. Returns how many there were.</summary>
     public int StopApps()
     {
         var n = 0;
@@ -205,7 +205,7 @@ public sealed class ServiceManager
         return n;
     }
 
-    /// <summary>Cierra el árbol de procesos registrado con esa clave. Devuelve true si había uno vivo.</summary>
+    /// <summary>Closes the process tree registered under that key. Returns true if one was alive.</summary>
     public bool StopProcess(string key)
     {
         var p = Registry.Live(key);
@@ -234,7 +234,7 @@ public sealed class ServiceManager
 
     public static string StripAnsi(string text) => Ansi.Replace(text, "");
 
-    /// <summary>Las últimas líneas del log (sin códigos de color).</summary>
+    /// <summary>The last lines of the log (without colour codes).</summary>
     public List<string> LastLines(string key, int n)
     {
         var f = LogPath(key);
@@ -255,7 +255,7 @@ public sealed class ServiceManager
 
     public string? LastLine(string key) => LastLines(key, 1).FirstOrDefault();
 
-    /// <summary>Muestra el log y sigue mostrando lo nuevo hasta que se cancela (Ctrl+C).</summary>
+    /// <summary>Shows the log and keeps showing what is new until cancelled (Ctrl+C).</summary>
     public void Follow(string key, int initial, CancellationToken ct, Action<string> write)
     {
         foreach (var l in LastLines(key, initial)) write(l);
@@ -292,7 +292,7 @@ public sealed class ServiceManager
         }
     }
 
-    /// <summary>Abre una pestaña (o ventana) que sigue el log en vivo.</summary>
+    /// <summary>Opens a tab (or window) that follows the log live.</summary>
     public void OpenLogInTab(string key)
     {
         var f = LogPath(key);

@@ -6,15 +6,15 @@ using StackDev.Core.Util;
 namespace StackDev.Core.State;
 
 /// <summary>
-/// Estado personal (no va en el repo): último proyecto, último AVD, historial de comandos,
-/// condiciones por AVD y respaldos de la base. Vive en %APPDATA%\stackdev.
+/// Personal state (not in the repo): last project, last AVD, command history,
+/// conditions per AVD and database backups. It lives in %APPDATA%\stackdev.
 /// </summary>
 public sealed class StateStore
 {
     public const string FolderName = "stackdev";
     public const int MaxRecent = 10;
 
-    // UTF-8 con BOM: PowerShell 5.1 y los editores de Windows detectan bien las tildes de las rutas.
+    // UTF-8 with BOM: PowerShell 5.1 and Windows editors detect the accents in paths correctly.
     private static readonly UTF8Encoding Utf8Bom = new(true);
 
     public StateStore(string dir)
@@ -27,13 +27,13 @@ public sealed class StateStore
     public static string DefaultDir(string? appData = null) =>
         Path.Combine(appData ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), FolderName);
 
-    /// <summary>Abre el estado de esta persona (%APPDATA%\stackdev).</summary>
+    /// <summary>Opens this person's state (%APPDATA%\stackdev).</summary>
     public static StateStore Open(string? appData = null) => new(DefaultDir(appData));
 
 
     // ---------------------------------------------------------------- Proyecto
 
-    /// <summary>Clave estable de un proyecto: "nombre-xxxxxxxx" (MD5 de la ruta en minúsculas). Estable entre ejecuciones y entre equipos con la misma ruta.</summary>
+    /// <summary>Stable key of a project: "name-xxxxxxxx" (MD5 of the lowercase path). Stable across runs and across computers with the same path.</summary>
     public static string Key(string root)
     {
         var path = root.ToLowerInvariant();
@@ -48,42 +48,42 @@ public sealed class StateStore
         set => Write("ultimo-proyecto.txt", value);
     }
 
-    /// <summary>El proyecto favorito (solo uno): el que se abre al iniciar la aplicación con ventana.</summary>
+    /// <summary>The favourite project (only one): the one opened when the windowed application starts.</summary>
     public string? Favorite
     {
         get => Read("favorito.txt");
         set => Write("favorito.txt", value);
     }
 
-    /// <summary>El navegador para abrir direcciones en todos los proyectos (id o ruta de .exe); vacío = el predeterminado de Windows.</summary>
+    /// <summary>The browser used to open addresses in all projects (id or .exe path); empty = the Windows default.</summary>
     public string? Browser
     {
         get => Read("navegador.txt");
         set => Write("navegador.txt", value);
     }
 
-    /// <summary>El color de acento de la interfaz: «verde» (predeterminado) o «ambar».</summary>
+    /// <summary>The accent colour of the interface: "verde" (green, default) or "ambar" (amber).</summary>
     public string? Accent
     {
         get => Read("acento.txt");
         set => Write("acento.txt", value);
     }
 
-    /// <summary>Densidad de las tarjetas del panel: «1» = compacta.</summary>
+    /// <summary>Density of the panel cards: "1" = compact.</summary>
     public string? Compact
     {
         get => Read("compacto.txt");
         set => Write("compacto.txt", value);
     }
 
-    /// <summary>Dónde vive el dev-menu.json de un proyecto (fuera del repo, para que no llegue a un commit).</summary>
+    /// <summary>Where a project's dev-menu.json lives (outside the repo, so it never reaches a commit).</summary>
     public string ConfigFolder(string key) => Path.Combine(Dir, "config", key);
 
-    // ---------------------------------------------------------------- Proyectos abiertos (la lista de inicio)
+    // ---------------------------------------------------------------- Open projects (the start list)
 
     public const int MaxProjects = 30;
 
-    /// <summary>Los proyectos que se han abierto, el más reciente primero.</summary>
+    /// <summary>The projects that have been opened, most recent first.</summary>
     public List<string> ReadProjects()
     {
         var list = ReadLines("proyectos.txt").Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
@@ -108,9 +108,9 @@ public sealed class StateStore
         File.WriteAllLines(Path.Combine(Dir, "proyectos.txt"), list, Utf8Bom);
     }
 
-    // ---------------------------------------------------------------- Historial de la barra de comandos
+    // ---------------------------------------------------------------- Command bar history
 
-    /// <summary>Lo que se ha escrito en la barra de comandos de este proyecto, lo más reciente primero (↑/↓).</summary>
+    /// <summary>What has been typed in this project's command bar, most recent first (↑/↓).</summary>
     public List<string> ReadBarHistory(string key) =>
         ReadLines($"barra-{key}.txt").Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
 
@@ -126,7 +126,7 @@ public sealed class StateStore
 
     // ---------------------------------------------------------------- Dispositivos Android en red
 
-    /// <summary>Direcciones «ip:puerto» de los teléfonos que se han conectado por red en este proyecto.</summary>
+    /// <summary>"ip:port" addresses of the phones that have been connected over the network in this project.</summary>
     public List<string> ReadNetworkDevices(string key) =>
         ReadLines($"dispositivos-{key}.txt").Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
 
@@ -157,7 +157,7 @@ public sealed class StateStore
         Write("ultimo-avd.txt", avd);
     }
 
-    /// <summary>Emulador por defecto: parámetro → último de este proyecto → movil.avd → último en general.</summary>
+    /// <summary>Default emulator: argument → last of this project → mobile.avd → last overall.</summary>
     public string? ResolveAvd(string key, string? parameter, string? ofConfig)
     {
         if (!string.IsNullOrWhiteSpace(parameter)) return parameter;
@@ -167,7 +167,7 @@ public sealed class StateStore
         return GlobalLastAvd;
     }
 
-    // ---------------------------------------------------------------- Condiciones del dispositivo (por AVD)
+    // ---------------------------------------------------------------- Device conditions (per AVD)
 
     public static readonly string[] ConditionCategories =
         { "Red", "Velocidad", "Bateria", "Tema", "Texto", "Pantalla", "Ubicacion" };
@@ -199,7 +199,7 @@ public sealed class StateStore
         File.WriteAllLines(path, lines, Utf8Bom);
     }
 
-    // ---------------------------------------------------------------- Comandos recientes (por proyecto)
+    // ---------------------------------------------------------------- Recent commands (per project)
 
     public sealed record RecentCommand(string Folder, string Command);
 
@@ -215,7 +215,7 @@ public sealed class StateStore
         return res;
     }
 
-    /// <summary>El comando más reciente va primero; sin repetidos; los últimos 10.</summary>
+    /// <summary>The most recent command goes first; no repeats; the last 10.</summary>
     public void AddRecent(string key, string folder, string command)
     {
         var fresh = new RecentCommand(folder, command);
