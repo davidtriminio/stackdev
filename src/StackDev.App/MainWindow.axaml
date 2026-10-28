@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StackDev.App.MainWindow"
+        Title="stackdev"
+        Width="1040" Height="720" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="22">
+
+    <Grid ColumnDefinitions="*,Auto,Auto">
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock x:Name="Heading" Text="stackdev" FontSize="20" FontWeight="SemiBold" />
+        <TextBlock x:Name="Subtitle" Classes="muted" Text="Abre la carpeta de un proyecto para empezar." Margin="0,2,0,0" />
+      </StackPanel>
+      <ComboBox x:Name="Recent" Grid.Column="1" MinWidth="240" PlaceholderText="Proyectos recientes" Margin="0,0,8,0" VerticalAlignment="Center" />
+      <Button x:Name="OpenFolder" Grid.Column="2" Classes="primary" Content="Abrir carpeta…" />
+    </Grid>
+
+    <WrapPanel x:Name="Cards" Grid.Row="1" Margin="0,18,0,0" />
+
+    <Border Grid.Row="2" Background="{StaticResource Surface2Brush}" BorderBrush="{StaticResource LineBrush}"
+            BorderThickness="1" CornerRadius="10" Padding="12,8">
+      <ScrollViewer x:Name="LogScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="LogLines" />
+      </ScrollViewer>
+    </Border>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0" Spacing="8">
+      <Button x:Name="CancelAction" Content="Cancelar acción" IsEnabled="False" />
+      <Button x:Name="ClearLog" Content="Limpiar" />
+    </StackPanel>
+  </Grid>
+</Window>

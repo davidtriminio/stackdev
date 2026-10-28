@@ -6,7 +6,7 @@ One tool to run and ship a local full-stack project: start the database, the API
 
 It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + Postgres in Docker** stack, and is growing into a toolbox for projects in any language.
 
-> **Status:** used every day on Windows. The core is cross-platform in design but the window is WPF, so macOS and Linux are not supported yet. See the [roadmap](#roadmap).
+> **Status:** used every day on Windows. A first cross-platform window ([`stackdev-app`](#cross-platform-window-preview), Avalonia) runs on Windows, Linux and macOS with the local services only; the full window is still WPF (Windows). See the [roadmap](#roadmap).
 
 ## What it does
 
@@ -46,6 +46,16 @@ dotnet run --project src/StackDev.Gui         # the window
 dotnet run --project src/StackDev.Cli -- status   # the command line
 ```
 
+### Cross-platform window (preview)
+
+Needs only the .NET SDK 10, on Windows, Linux or macOS:
+
+```bash
+dotnet run --project src/StackDev.App
+```
+
+Open a project folder and it shows the API and web services with their state and start, stop, restart, open and log actions. The core and this window are built and tested on Windows, Ubuntu and macOS in CI, but the window has been tried by hand only on Windows so far. Not in it yet: Postgres/Docker, the emulator and the mobile app, terminals, credentials and deploying to a server. Outside Windows secrets are not encrypted yet (no system keychain), which is why the credentials and servers parts are left out.
+
 Single-file build of the window:
 
 ```powershell
@@ -82,7 +92,7 @@ A project describes itself in one optional-everything file at its root: `postgre
 
 Planned, in this order:
 
-1. **Cross-platform**: put the Windows-only pieces (encryption, key permissions, window control) behind interfaces and add a second UI on Avalonia, reusing the core as it is. The command line first.
+1. **Cross-platform**: *started.* The Avalonia window and the core already build and test on Linux and macOS. Next: Postgres/Docker and terminals in that window, a system keychain instead of DPAPI so credentials and servers can move over, then deploying from it.
 2. **Language support as data**: *started.* Profiles describe how to detect, start, test and build a project type, so adding a language needs no C#; Node and Python ship today and `examples/profiles/go.json` shows how to add Go. Next: more built-in profiles (Go, Java, PHP, Rust) and publishing, which is still .NET-only.
 3. **More targets**: web (Vercel or your server), Android APK, database backup and restore.
 

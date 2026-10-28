@@ -141,14 +141,7 @@ public sealed class ServiceManager
         }
         catch (IOException ex) { _s.Ui.Write($"No pude preparar el log: {ex.Message}", Level.Error); return false; }
 
-        var psi = new ProcessStartInfo("cmd.exe")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = folder,
-            // /v:on so that !errorlevel! is evaluated at run time; chcp 65001 so the output stays in UTF-8
-            Arguments = $"/v:on /d /s /c \"chcp 65001>nul & ({command}) >> \"{log}\" 2>&1 & echo !errorlevel!> \"{mark}\"\"",
-        };
+        var psi = BackgroundLaunch.Info(command, folder, log, mark);
         psi.Environment["NO_COLOR"] = "1";
         foreach (var (k, v) in _s.EnvFor(folder) ?? new Dictionary<string, string>()) psi.Environment[k] = v;
         if (env is not null) foreach (var (k, v) in env) psi.Environment[k] = v;

@@ -5,7 +5,7 @@
 Una sola herramienta para levantar un proyecto full-stack en local (base de datos, API, web y emulador) y publicar su API en tu propio servidor por SSH, sin abrir una terminal. Nació para **API .NET + web Angular + app Flutter + Postgres en Docker** y crece hacia otros lenguajes.
 Se usa como ventana (WPF, Windows) o como línea de comandos que se instala como *herramienta global de .NET*.
 
-> **Estado:** en uso diario en Windows. La ruta hacia macOS y Linux está en el [plan](README.md#roadmap) (en inglés).
+> **Estado:** en uso diario en Windows. Hay una primera ventana multiplataforma (`dotnet run --project src/StackDev.App`, Avalonia) que corre en Windows, Linux y macOS y por ahora solo maneja la API y la web locales. La ruta completa está en el [plan](README.md#roadmap) (en inglés).
 
 ## Requisitos
 
