@@ -72,7 +72,7 @@ public sealed class ConfigCommand : Command<PathSettings>
             exists ? "[green]OK[/]" : "[red]la carpeta no existe[/]");
     }
 
-    /// <summary>Muestra la cadena de conexión sin la contraseña.</summary>
+    /// <summary>Shows the connection string without the password.</summary>
     private static string Hide(string val) =>
         System.Text.RegularExpressions.Regex.Replace(val, "(?i)(password|pwd)=[^;]*", "$1=****");
 }

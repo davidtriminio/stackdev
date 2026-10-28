@@ -7,9 +7,9 @@ namespace StackDev.Core.Orchestration;
 public sealed record CommandItem(string Folder, string Command, bool Task, string Title);
 
 /// <summary>
-/// Una consola para ejecutar cualquier comando en una carpeta del proyecto: tareas de la configuración,
-/// historial de los últimos 10 por proyecto, cambio de carpeta (<c>cd</c> y <c>@api</c> <c>@web</c> <c>@movil</c> <c>@raiz</c>),
-/// <c>v &lt;comando&gt;</c> en otra ventana y <c>t</c> para abrir una terminal.
+/// A console to run any command in a project folder: tasks from the configuration,
+/// history of the last 10 per project, folder change (<c>cd</c> and <c>@api</c> <c>@web</c> <c>@movil</c> <c>@raiz</c>),
+/// <c>v &lt;command&gt;</c> in another window and <c>t</c> to open a terminal.
 /// </summary>
 public sealed class CommandConsole
 {
@@ -30,7 +30,7 @@ public sealed class CommandConsole
 
     public string Prompt => $"[{_s.Rel(Dir)}]>";
 
-    /// <summary>Tareas del proyecto y comandos recientes, numerados en ese orden.</summary>
+    /// <summary>Project tasks and recent commands, numbered in that order.</summary>
     public List<CommandItem> Items()
     {
         var items = new List<CommandItem>();
@@ -50,7 +50,7 @@ public sealed class CommandConsole
 
     private static ProjectComponent Comp(string n) => n switch { "api" => ProjectComponent.Api, "web" => ProjectComponent.Web, _ => ProjectComponent.Mobile };
 
-    /// <summary>Procesa una línea. Devuelve false cuando hay que salir de la consola (línea vacía).</summary>
+    /// <summary>Processes a line. Returns false when the console must be left (empty line).</summary>
     public bool HandleInput(string? input)
     {
         input = input?.Trim();
@@ -102,7 +102,7 @@ public sealed class CommandConsole
         return true;
     }
 
-    /// <summary>Ejecuta una tarea de la configuración por nombre (o parte del nombre). Para <c>stackdev tarea "..."</c>.</summary>
+    /// <summary>Runs a configuration task by name (or part of the name). For <c>stackdev tarea "..."</c>.</summary>
     public int RunTask(string name)
     {
         var t = _s.Ctx.Tasks.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))

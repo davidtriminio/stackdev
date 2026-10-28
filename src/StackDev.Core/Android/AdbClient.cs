@@ -5,12 +5,12 @@ namespace StackDev.Core.Android;
 public sealed record AdbDevice(string Serial, string State, string Description = "")
 {
     public bool IsEmulator => Serial.StartsWith("emulator-", StringComparison.OrdinalIgnoreCase);
-    /// <summary>Conectado por Wi-Fi: «ip:puerto» o el nombre mDNS de la depuración inalámbrica.</summary>
+    /// <summary>Connected over Wi-Fi: "ip:port" or the mDNS name of wireless debugging.</summary>
     public bool IsNetwork => !IsEmulator && (Serial.Contains(':') || Serial.Contains("_adb-tls-"));
     public bool Ready => State == "device";
 }
 
-/// <summary>adb.exe con tiempo límite. Devuelve null cuando se cuelga o no se pudo ejecutar (el emulador no responde).</summary>
+/// <summary>adb.exe with a time limit. Returns null when it hangs or could not run (the emulator does not answer).</summary>
 public sealed class AdbClient
 {
     private readonly string _exe;
@@ -50,7 +50,7 @@ public sealed class AdbClient
         return list;
     }
 
-    /// <summary>Todos los dispositivos que ve adb (emuladores, teléfonos por USB y por red), con su modelo.</summary>
+    /// <summary>Every device adb sees (emulators, phones over USB and over the network), with its model.</summary>
     public List<AdbDevice> Devices()
     {
         var list = new List<AdbDevice>();
@@ -66,7 +66,7 @@ public sealed class AdbClient
         return list;
     }
 
-    /// <summary><c>adb connect ip:puerto</c>. Devuelve si quedó conectado y el texto de adb.</summary>
+    /// <summary><c>adb connect ip:port</c>. Returns whether it ended up connected and the text from adb.</summary>
     public (bool Ok, string Text) Connect(string address)
     {
         var r = Run(new[] { "connect", address }, 20)?.Trim() ?? "adb no contestó (tiempo agotado).";
@@ -75,18 +75,18 @@ public sealed class AdbClient
         return (ok, r);
     }
 
-    /// <summary><c>adb pair ip:puerto código</c> (depuración inalámbrica de Android 11 o superior).</summary>
+    /// <summary><c>adb pair ip:port code</c> (wireless debugging, Android 11 or later).</summary>
     public (bool Ok, string Text) Pair(string address, string code)
     {
         var r = Run(new[] { "pair", address, code }, 30)?.Trim() ?? "adb no contestó (tiempo agotado).";
         return (r.Contains("Successfully paired", StringComparison.OrdinalIgnoreCase), r);
     }
 
-    /// <summary>Sin dirección desconecta todos los dispositivos de red.</summary>
+    /// <summary>Without an address, disconnects every network device.</summary>
     public string Disconnect(string? address = null) =>
         Run(address is null ? new[] { "disconnect" } : new[] { "disconnect", address }, 10)?.Trim() ?? "adb no contestó.";
 
-    /// <summary>Pasa un teléfono conectado por USB a modo red (<c>adb tcpip</c>) y devuelve su IP si la encuentra.</summary>
+    /// <summary>Switches a phone connected over USB to network mode (<c>adb tcpip</c>) and returns its IP if found.</summary>
     public string? EnableTcpip(string serial, int port = 5555)
     {
         var ip = Sh(serial, "ip -f inet addr show wlan0", 10);
@@ -95,7 +95,7 @@ public sealed class AdbClient
         return m is { Success: true } ? m.Groups[1].Value : null;
     }
 
-    /// <summary><c>adb reverse tcp:P tcp:P</c>: el «localhost:P» del dispositivo llega al «localhost:P» de este equipo.</summary>
+    /// <summary><c>adb reverse tcp:P tcp:P</c>: the device's "localhost:P" reaches this computer's "localhost:P".</summary>
     public (bool Ok, string Text) Forward(string serial, int port)
     {
         var r = Run(new[] { "-s", serial, "reverse", $"tcp:{port}", $"tcp:{port}" }, 10);
@@ -114,11 +114,11 @@ public sealed class AdbClient
         return n ?? "?";
     }
 
-    /// <summary>Un comando de shell del dispositivo, como un único argumento (igual que el script).</summary>
+    /// <summary>A device shell command, as a single argument.</summary>
     public string? Sh(string serial, string command, int timeoutSec = 15) =>
         Run(new[] { "-s", serial, "shell", command }, timeoutSec);
 
-    /// <summary>Un comando de la consola del emulador (<c>adb emu ...</c>).</summary>
+    /// <summary>An emulator console command (<c>adb emu ...</c>).</summary>
     public string? Emu(string serial, string command, int timeoutSec = 10) =>
         Run(new[] { "-s", serial, "emu", command }, timeoutSec);
 }

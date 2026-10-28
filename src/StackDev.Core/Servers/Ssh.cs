@@ -3,7 +3,7 @@ using StackDev.Core.Proc;
 
 namespace StackDev.Core.Servers;
 
-/// <summary>ssh y scp del sistema, con las opciones que evitan que se queden esperando (sin contraseñas, tiempo límite).</summary>
+/// <summary>The system's ssh and scp, with the options that keep them from waiting forever (no passwords, time limit).</summary>
 public static class Ssh
 {
     public static List<string> Options(Server s, bool interactive)
@@ -22,7 +22,7 @@ public static class Ssh
         return a;
     }
 
-    /// <summary>Ejecuta un comando en el servidor y devuelve su salida.</summary>
+    /// <summary>Runs a command on the server and returns its output.</summary>
     public static ProcResult Run(Server s, string command, int timeoutSec = 20, CancellationToken ct = default)
     {
         var a = Options(s, interactive: false);
@@ -61,8 +61,8 @@ public static class Ssh
     private static string Q(string x) => "'" + x.Replace("'", "''") + "'";
 
     /// <summary>
-    /// Línea para abrir una terminal que ejecuta ssh (con <paramref name="command"/>, o sesión interactiva si está vacío)
-    /// y, al terminar, se queda en PowerShell.
+    /// Line to open a terminal that runs ssh (with <paramref name="command"/>, or an interactive session if empty)
+    /// and stays in PowerShell when it ends.
     /// </summary>
     public static string TerminalLine(Server s, string command)
     {
@@ -73,9 +73,9 @@ public static class Ssh
         return $"\"{Shell.PowerShellExe}\" -NoLogo -NoExit -Command \"{cmd}\"";
     }
 
-    // ------------------------------------------------------------ Permisos de la clave (Windows)
+    // ------------------------------------------------------------ Key permissions (Windows)
 
-    /// <summary>SSH rechaza una clave que otros usuarios pueden leer. En Windows se mira con icacls.</summary>
+    /// <summary>SSH rejects a key that other users can read. On Windows it is checked with icacls.</summary>
     public static bool KeyPermissionsOk(string path)
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return true;
@@ -94,8 +94,8 @@ public static class Ssh
     }
 
     /// <summary>
-    /// Deja la clave legible solo por ti. En discos exFAT/externos no se puede: entonces copia la clave a ~\.ssh.
-    /// Devuelve la ruta que hay que usar, o null si no se logró.
+    /// Leaves the key readable only by you. On exFAT/external disks that is not possible: then the key is copied to ~\.ssh.
+    /// Returns the path to use, or null if it could not be done.
     /// </summary>
     public static string? FixKey(string path)
     {

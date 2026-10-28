@@ -3,14 +3,14 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Proc;
 
-/// <summary>PowerShell y Windows Terminal: dónde están y cómo se les pasa un script sin problemas de comillas.</summary>
+/// <summary>PowerShell and Windows Terminal: where they are and how to pass them a script without quoting problems.</summary>
 public static class Shell
 {
     private static string? _ps;
     private static string? _wt;
     private static bool _psSearched, _wtSearched;
 
-    /// <summary>pwsh (PowerShell 7) si está en el PATH; si no, Windows PowerShell 5.1.</summary>
+    /// <summary>pwsh (PowerShell 7) if it is on the PATH; otherwise Windows PowerShell 5.1.</summary>
     public static string PowerShellExe
     {
         get
@@ -30,7 +30,7 @@ public static class Shell
         }
     }
 
-    /// <summary>wt.exe (Windows Terminal), o null.</summary>
+    /// <summary>wt.exe (Windows Terminal), or null.</summary>
     public static string? WindowsTerminal
     {
         get
@@ -61,7 +61,7 @@ public static class Shell
         return null;
     }
 
-    /// <summary>Script de PowerShell en Base64 UTF-16 para <c>-EncodedCommand</c>.</summary>
+    /// <summary>PowerShell script in Base64 UTF-16 for <c>-EncodedCommand</c>.</summary>
     public static string Encode(IEnumerable<string> lines) =>
         Convert.ToBase64String(Encoding.Unicode.GetBytes(string.Join("\n", lines)));
 
@@ -72,7 +72,7 @@ public static class Shell
             yield return $"[Environment]::SetEnvironmentVariable({Args.PsLiteral(k)}, {Args.PsLiteral(v)}, 'Process')";
     }
 
-    /// <summary>Argumentos de PowerShell para correr un script sin perfil.</summary>
+    /// <summary>PowerShell arguments to run a script without a profile.</summary>
     public static List<string> ArgsScript(IEnumerable<string> lines, bool noExit = false, bool textFlat = false)
     {
         var a = new List<string> { "-NoLogo", "-NoProfile" };

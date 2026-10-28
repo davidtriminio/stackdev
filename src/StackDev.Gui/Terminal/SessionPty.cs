@@ -12,8 +12,8 @@ using StackDev.Core.Proc;
 namespace StackDev.Gui.Terminal;
 
 /// <summary>
-/// Un programa (normalmente un shell) corriendo dentro de una pseudoconsola de Windows (ConPTY, Windows 10 1809 o superior).
-/// Lo que escribe llega por <see cref="Output"/> con las secuencias de escape tal cual, listas para un emulador como xterm.js.
+/// A program (normally a shell) running inside a Windows pseudoconsole (ConPTY, Windows 10 1809 or later).
+/// What it writes arrives through <see cref="Output"/> with the escape sequences untouched, ready for an emulator such as xterm.js.
 /// </summary>
 public sealed class SessionPty : IDisposable
 {
@@ -97,10 +97,10 @@ public sealed class SessionPty : IDisposable
 
     public int Pid { get; }
 
-    /// <summary>Texto que produce el programa. Llega desde un hilo de fondo.</summary>
+    /// <summary>Text the program produces. Arrives from a background thread.</summary>
     public event Action<string>? Output;
 
-    /// <summary>El programa terminó (con su código de salida). Llega desde un hilo de fondo; no se dispara tras <see cref="Dispose"/>.</summary>
+    /// <summary>The program ended (with its exit code). Arrives from a background thread; it does not fire after <see cref="Dispose"/>.</summary>
     public event Action<int>? Finished;
 
     private SessionPty(IntPtr hPC, IntPtr hProcess, int pid, FileStream input, FileStream output)
@@ -112,7 +112,7 @@ public sealed class SessionPty : IDisposable
         _output = output;
     }
 
-    /// <summary>Lanza <paramref name="lineCommand"/> en <paramref name="folder"/> con el entorno actual más <paramref name="env"/>.</summary>
+    /// <summary>Launches <paramref name="lineCommand"/> in <paramref name="folder"/> with the current environment plus <paramref name="env"/>.</summary>
     public static SessionPty Start(string lineCommand, string folder, IReadOnlyDictionary<string, string>? env, int columns, int rows)
     {
         if (!CreatePipe(out var inputReads, out var inputWrites, IntPtr.Zero, 0)) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -121,7 +121,7 @@ public sealed class SessionPty : IDisposable
         var size = new COORD { X = (short)columns, Y = (short)rows };
         var hr = CreatePseudoConsole(size, inputReads, outputWrites, 0, out var hPC);
         if (hr != 0) throw new Win32Exception(hr, "No se pudo crear la pseudoconsola (hace falta Windows 10 1809 o superior).");
-        // la pseudoconsola ya tiene su copia de estos dos extremos
+        // the pseudoconsole already has its own copy of these two ends
         inputReads.Dispose();
         outputWrites.Dispose();
 
@@ -133,7 +133,7 @@ public sealed class SessionPty : IDisposable
             home.StartupInfo.cb = Marshal.SizeOf<STARTUPINFOEX>();
 
             var bytes = IntPtr.Zero;
-            InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref bytes);   // falla a propósito: solo devuelve el tamaño
+            InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref bytes);   // fails on purpose: it only returns the size
             list = Marshal.AllocHGlobal(bytes);
             if (!InitializeProcThreadAttributeList(list, 1, 0, ref bytes)) throw new Win32Exception(Marshal.GetLastWin32Error());
             if (!UpdateProcThreadAttribute(list, 0, PseudoConsoleAttribute, hPC, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))

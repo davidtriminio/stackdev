@@ -2,7 +2,7 @@ namespace StackDev.Core.Util;
 
 public static class ConsoleKeys
 {
-    /// <summary>¿Se pulsó la tecla C? (las esperas largas se pueden cancelar con C o con Ctrl+C). No bloquea.</summary>
+    /// <summary>Was the C key pressed? (long waits can be cancelled with C or with Ctrl+C). Does not block.</summary>
     public static bool PressCancel()
     {
         try

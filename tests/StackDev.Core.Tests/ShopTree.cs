@@ -2,7 +2,7 @@ using StackDev.Core.Config;
 
 namespace StackDev.Core.Tests;
 
-/// <summary>Árbol de carpetas falso con la estructura de "shop" en una carpeta temporal.</summary>
+/// <summary>Fake folder tree with the structure of a typical full-stack project, in a temporary folder.</summary>
 public sealed class ShopTree : IDisposable
 {
     public string Base { get; }
@@ -32,10 +32,10 @@ public sealed class ShopTree : IDisposable
         if (withSnapshotInOtherProject)
             Write("api/src/Shop.Infrastructure/Migrations/ShopDbContextModelSnapshot.cs", "// snapshot");
         Write("api/tests/Shop.Api.Tests/Shop.Api.Tests.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />");
-        // basura que debe ignorarse
+        // junk that must be ignored
         Write("api/src/Shop.Api/bin/Debug/Otro.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />");
 
-        // Móvil
+        // Mobile
         Write("mobile/pubspec.yaml", """
             name: shop
             dependencies:
@@ -46,7 +46,7 @@ public sealed class ShopTree : IDisposable
               build_runner: ^2.4.0
             """);
         Directory.CreateDirectory(Path.Combine(Root, "mobile", "test"));
-        Write("mobile/android/app/pubspec.yaml", "dependencies:\n  flutter:\n    sdk: flutter\n"); // en 'android': se salta
+        Write("mobile/android/app/pubspec.yaml", "dependencies:\n  flutter:\n    sdk: flutter\n"); // in 'android': skipped
 
         // Web
         Write("web/package.json", "{ \"dependencies\": { \"@angular/core\": \"^20.0.0\" }, \"scripts\": { \"start\": \"ng serve\" } }");
@@ -68,7 +68,7 @@ public sealed class ShopTree : IDisposable
         try { Directory.Delete(Base, recursive: true); } catch (IOException) { }
     }
 
-    /// <summary>dev-menu.json tal como está hoy en shop (copiado del enunciado).</summary>
+    /// <summary>A typical dev-menu.json for such a project.</summary>
     public const string CurrentConfig = """
         {
           "name": "shop",

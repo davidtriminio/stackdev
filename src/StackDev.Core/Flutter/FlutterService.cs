@@ -4,7 +4,7 @@ using StackDev.Core.Ui;
 
 namespace StackDev.Core.Flutter;
 
-/// <summary>flutter run (debug, profile o release), detener la app, analyze, test, format, build_runner, pub get y clean.</summary>
+/// <summary>flutter run (debug, profile or release), stop the app, analyze, test, format, build_runner, pub get and clean.</summary>
 public sealed class FlutterService
 {
     private readonly Session _s;
@@ -25,7 +25,7 @@ public sealed class FlutterService
     private static string AppKey(AdbDevice d) =>
         d.IsEmulator ? "app" : "app-" + System.Text.RegularExpressions.Regex.Replace(d.Serial, @"[^\w\-]", "_");
 
-    /// <summary>Dispositivos listos para correr la app (el emulador solo si responde).</summary>
+    /// <summary>Devices ready to run the app (the emulator only if it answers).</summary>
     private List<AdbDevice>? Destinations()
     {
         var all = _s.Adb!.Devices();
@@ -44,7 +44,7 @@ public sealed class FlutterService
         return null;
     }
 
-    /// <summary>Decide en qué dispositivos correr: --dispositivo, el único que hay, o pregunta (con la opción «Todos»).</summary>
+    /// <summary>Decides which devices to run on: --dispositivo, the only one there is, or asks (with the "All" option).</summary>
     private List<AdbDevice>? Choose(List<AdbDevice> ready)
     {
         var request = _s.Op.Device?.Trim();
@@ -73,9 +73,9 @@ public sealed class FlutterService
     }
 
     /// <summary>
-    /// <c>flutter run -d serial</c> más <c>movil.argsRun</c> y los argumentos extra, en el emulador, en un teléfono (USB o red) o en
-    /// varios a la vez. Cada dispositivo corre en su propia ventana o pestaña (necesita su terminal para las teclas r, R y q) o,
-    /// con <c>--misma-ventana</c> y un solo dispositivo, en esta consola.
+    /// <c>flutter run -d serial</c> plus <c>mobile.argsRun</c> and the extra arguments, on the emulator, on a phone (USB or network) or on
+    /// several at once. Each device runs in its own window or tab (it needs its terminal for the r, R and q keys) or,
+    /// with <c>--misma-ventana</c> and a single device, in this console.
     /// </summary>
     public bool Run()
     {
@@ -113,7 +113,7 @@ public sealed class FlutterService
                 Thread.Sleep(800);
             }
 
-            // El emulador ve el PC como 10.0.2.2; un teléfono no. Con el reenvío de puertos le sirve localhost.
+            // The emulator sees the PC as 10.0.2.2; a phone does not. With port forwarding, localhost works for it.
             var defines = "";
             var alreadyDefined = $"{_s.Ctx.Config.Mobile?.ArgsRun} {_s.Op.ArgsExtra}".Contains("API_BASE_URL", StringComparison.Ordinal);
             if (!d.IsEmulator && !alreadyDefined && _s.Ctx.Has(ProjectComponent.Api))
@@ -157,7 +157,7 @@ public sealed class FlutterService
     public int PubGet() =>
         _s.AssertComp(ProjectComponent.Mobile) ? _s.Executor.Here("flutter pub get", _s.Ctx.Folder(ProjectComponent.Mobile)) : 1;
 
-    /// <summary><c>flutter clean</c> y, si salió bien, <c>flutter pub get</c>.</summary>
+    /// <summary><c>flutter clean</c> and, if it went well, <c>flutter pub get</c>.</summary>
     public int Clean() =>
         _s.AssertComp(ProjectComponent.Mobile)
             ? _s.Executor.Here("flutter clean; if ($LASTEXITCODE -eq 0) { flutter pub get }", _s.Ctx.Folder(ProjectComponent.Mobile))

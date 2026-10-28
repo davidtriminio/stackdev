@@ -6,17 +6,17 @@ using StackDev.Core.Services;
 
 namespace StackDev.Core.Monitoring;
 
-/// <summary>Una foto del estado de todo lo que maneja el proyecto.</summary>
+/// <summary>A snapshot of the state of everything the project manages.</summary>
 public sealed record Snapshot(
     PostgresState? Postgres, ServiceState? Api, ServiceState? Web, EmuState? Emulator,
     bool App, string Conditions, string? LogApi, string? LogWeb, DateTime Time,
     IReadOnlyList<AdbDevice>? Devices = null)
 {
-    /// <summary>Teléfonos y tablets (USB o red) que ve adb, para mostrar junto al emulador. Vacío si no hay.</summary>
+    /// <summary>Phones and tablets (USB or network) that adb sees, to show next to the emulator. Empty if there are none.</summary>
     public string Phones => Devices is null ? "" : string.Join(", ", Devices.Where(d => !d.IsEmulator).Select(d =>
         (d.Description.Length > 0 ? d.Description : d.Serial) + (d.IsNetwork ? " (red)" : " (USB)") + (d.Ready ? "" : $" ⚠ {d.State}")));
 
-    /// <summary>Consulta todo en paralelo (docker, puertos, adb tardan; juntos tardan lo del más lento).</summary>
+    /// <summary>Queries everything in parallel (docker, ports and adb are slow; together they take as long as the slowest).</summary>
     public static Snapshot Take(Session s)
     {
         var c = s.Ctx;
@@ -44,7 +44,7 @@ public sealed record Snapshot(
         Emulator is { Code: not EmuCode.None } || App;
 }
 
-/// <summary>Actualiza la foto de fondo cada par de segundos; se pausa mientras se ejecuta una acción.</summary>
+/// <summary>Refreshes the snapshot in the background every couple of seconds; it pauses while an action runs.</summary>
 public sealed class StatusMonitor : IDisposable
 {
     private readonly Session _s;
@@ -72,7 +72,7 @@ public sealed class StatusMonitor : IDisposable
         _wake.Set();
     }
 
-    /// <summary>Pide una foto nueva ya (después de una acción).</summary>
+    /// <summary>Asks for a new snapshot right away (after an action).</summary>
     public void Refresh() => _wake.Set();
 
     private void Loop(TimeSpan interval)

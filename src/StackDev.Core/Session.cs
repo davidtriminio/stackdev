@@ -11,7 +11,7 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core;
 
-/// <summary>Opciones que se pasan al abrir la herramienta.</summary>
+/// <summary>Options passed when the tool is opened.</summary>
 public sealed class SessionOptions
 {
     public string? Avd { get; set; }
@@ -19,14 +19,14 @@ public sealed class SessionOptions
     public string Mode { get; set; } = "debug";
     public bool SameWindow { get; set; }
     public bool NoCenter { get; set; }
-    /// <summary>Serial (o «todos») donde correr la app; sin él se pregunta si hay varios dispositivos.</summary>
+    /// <summary>Serial (or "all") to run the app on; without it, it asks when there are several devices.</summary>
     public string? Device { get; set; }
-    /// <summary>Dirección «ip:puerto» para conectar o emparejar sin preguntar.</summary>
+    /// <summary>"ip:port" address to connect or pair without asking.</summary>
     public string? Address { get; set; }
     public string? PairingCode { get; set; }
 }
 
-/// <summary>Un proyecto abierto: su configuración, su estado personal y todos los servicios que lo manejan.</summary>
+/// <summary>An open project: its configuration, its personal state and all the services that handle it.</summary>
 public sealed class Session
 {
     public static readonly IReadOnlyDictionary<ProjectComponent, string> Names = new Dictionary<ProjectComponent, string>
@@ -66,13 +66,13 @@ public sealed class Session
     public SessionOptions Op { get; }
     public ProjectContext Ctx => Store.Context;
 
-    /// <summary>Se cancela con Ctrl+C: afecta solo al comando que está corriendo.</summary>
+    /// <summary>Cancelled with Ctrl+C: it affects only the command that is running.</summary>
     public CancellationToken Ct { get; set; }
 
-    /// <summary>Si la interfaz no tiene consola (la ventana gráfica), aquí llega la salida de los comandos que se ejecutan "aquí".</summary>
+    /// <summary>If the interface has no console (the graphical window), the output of the commands run "here" arrives here.</summary>
     public Action<string>? Capture { get; set; }
 
-    /// <summary>Corre mostrando la salida: en la consola, o en <see cref="Capture"/> si hay.</summary>
+    /// <summary>Runs showing the output: in the console, or in <see cref="Capture"/> if set.</summary>
     public int RunVisible(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env) =>
         Capture is null
             ? Proc.ProcessRunner.RunInheriting(exe, args, cwd, env, Ct)
@@ -100,7 +100,7 @@ public sealed class Session
     public FlutterService Flutter { get; }
     public StartAllOrchestrator All { get; }
 
-    /// <summary>Carga (o crea con la detección) dev-menu.json, prepara el Android SDK y elige el emulador por defecto.</summary>
+    /// <summary>Loads (or creates through detection) dev-menu.json, prepares the Android SDK and picks the default emulator.</summary>
     public void Start()
     {
         if (!Store.Exists)
@@ -120,7 +120,7 @@ public sealed class Session
         Avd = State.ResolveAvd(Key, Op.Avd, Ctx.Config.Mobile?.Avd);
     }
 
-    /// <summary>Recarga dev-menu.json si el usuario lo editó. Devuelve true si cambió.</summary>
+    /// <summary>Reloads dev-menu.json if the user edited it. Returns true if it changed.</summary>
     public bool ReloadIfChanged()
     {
         if (!Store.ReloadIfChanged()) return false;
@@ -128,7 +128,7 @@ public sealed class Session
         return true;
     }
 
-    /// <summary>Guarda una configuración editada a mano (deja copia .bak) y la aplica sin reiniciar.</summary>
+    /// <summary>Saves a hand-edited configuration (leaves a .bak copy) and applies it without restarting.</summary>
     public void ApplyConfig(ProjectConfig fresh)
     {
         Store.Replace(fresh);
@@ -136,7 +136,7 @@ public sealed class Session
         Avd = State.ResolveAvd(Key, Op.Avd, Ctx.Config.Mobile?.Avd);
     }
 
-    /// <summary>Detecta de nuevo (deja una copia dev-menu.json.bak) y recarga.</summary>
+    /// <summary>Detects again (leaves a dev-menu.json.bak copy) and reloads.</summary>
     public void Redetect()
     {
         Store.Replace(new ConfigWizard(this).Create());
@@ -145,7 +145,7 @@ public sealed class Session
         Ui.Write("Configuración regenerada (la anterior quedó en dev-menu.json.bak).", Level.Ok);
     }
 
-    /// <summary>Abre dev-menu.json en VS Code o, si no está, en el Bloc de notas. Al guardar, la herramienta lo recarga sola.</summary>
+    /// <summary>Opens dev-menu.json in VS Code or, failing that, in Notepad. When saved, the tool reloads it by itself.</summary>
     public void OpenConfigEditor()
     {
         var code = Proc.Shell.SearchInPath("code");
@@ -181,7 +181,7 @@ public sealed class Session
             Environment.GetEnvironmentVariable("LOCALAPPDATA"));
         if (sdk is null) return;
 
-        // Solo para los procesos que lanzamos (emulador, adb, flutter): no se tocan las variables globales
+        // Only for the processes we launch (emulator, adb, flutter): the global variables are not touched
         Sdk = sdk;
         EnvAndroid = AndroidSdkLocator.ProcessVariables(sdk);
         EmulatorExe = AndroidSdkLocator.EmulatorExe(sdk);
@@ -192,7 +192,7 @@ public sealed class Session
         Adb.StartServer();
     }
 
-    /// <summary>Variables de entorno para un comando en <paramref name="folder"/>: Android SDK + las de la API si corresponde.</summary>
+    /// <summary>Environment variables for a command in <paramref name="folder"/>: Android SDK + the API's if applicable.</summary>
     public IReadOnlyDictionary<string, string>? EnvFor(string folder)
     {
         var own = Ctx.EnvForFolder(folder);
@@ -218,7 +218,7 @@ public sealed class Session
         return true;
     }
 
-    /// <summary>Un comando de la configuración (api.test, web.build, movil.analizar...), o null si no está.</summary>
+    /// <summary>A configuration command (api.test, web.build, mobile.test...), or null if it is not there.</summary>
     public string? Command(ProjectComponent c, string key)
     {
         string? v = c switch

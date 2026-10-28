@@ -13,7 +13,7 @@ public sealed record PostgresState(PostgresCode Code, string Text)
     public bool Running => Code == PostgresCode.Running;
 }
 
-/// <summary>Postgres en un contenedor de Docker: iniciar, crear, esperar, psql, logs, respaldo, restaurar y recrear.</summary>
+/// <summary>Postgres in a Docker container: start, create, wait, psql, logs, backup, restore and recreate.</summary>
 public sealed class PostgresService
 {
     private readonly Session _s;
@@ -73,7 +73,7 @@ public sealed class PostgresService
         else _s.Ui.Write($"No se pudo detener: {r.Text.Trim()}", Level.Error);
     }
 
-    /// <summary>Espera (hasta 60 s) a que la base acepte conexiones: <c>pg_isready</c> dentro del contenedor.</summary>
+    /// <summary>Waits (up to 60 s) for the database to accept connections: <c>pg_isready</c> inside the container.</summary>
     public bool Wait()
     {
         _s.Ui.WriteInline("Esperando a Postgres");
@@ -96,7 +96,7 @@ public sealed class PostgresService
         return false;
     }
 
-    /// <summary>Argumentos de <c>docker run</c> con la configuración del proyecto (y el volumen, si lo hay).</summary>
+    /// <summary><c>docker run</c> arguments with the project's configuration (and the volume, if any).</summary>
     public List<string> CreateArgs()
     {
         var a = new List<string>
@@ -112,7 +112,7 @@ public sealed class PostgresService
         return a;
     }
 
-    /// <summary>Guarda otro puerto para Postgres en la configuración del proyecto.</summary>
+    /// <summary>Saves another port for Postgres in the project configuration.</summary>
     public static void ChangePort(Session s, int port)
     {
         var copy = ConfigJson.Read(ConfigJson.Write(s.Ctx.Config));
@@ -121,7 +121,7 @@ public sealed class PostgresService
         s.Ui.Write($"Postgres ahora usa el puerto {port}.", Level.Ok);
     }
 
-    /// <summary>Si el puerto configurado choca con algo, propone el siguiente libre. false = el usuario prefiere no seguir.</summary>
+    /// <summary>If the configured port clashes with something, proposes the next free one. false = the user prefers not to go on.</summary>
     private bool ResolvePort()
     {
         var map = _s.Free.Take(ignoreContainer: Container, ignoreComponent: ProjectComponent.Postgres);
@@ -141,12 +141,12 @@ public sealed class PostgresService
         return _s.Ui.Confirm($"¿Crearlo con el puerto {port} de todos modos?", false);
     }
 
-    /// <summary>Crea el contenedor mostrando el progreso de la descarga de la imagen.</summary>
+    /// <summary>Creates the container showing the progress of the image download.</summary>
     public bool Create()
     {
         if (!ResolvePort()) return false;
         var args = CreateArgs();
-        // la contraseña no debe quedar escrita en la salida
+        // the password must not be written to the output
         _s.Ui.Write("docker " + System.Text.RegularExpressions.Regex.Replace(Args.Join(args), @"POSTGRES_PASSWORD=(""[^""]*""|'[^']*'|\S+)", "POSTGRES_PASSWORD=••••"), Level.Muted);
         if (_s.Docker.RunVisible(args) != 0)
         {
@@ -164,7 +164,7 @@ public sealed class PostgresService
         return Start();
     }
 
-    // ------------------------------------------------------------ psql y logs
+    // ------------------------------------------------------------ psql and logs
 
     public void OpenPsql()
     {
@@ -182,16 +182,16 @@ public sealed class PostgresService
             _s.Ui.Write("Logs abiertos en otra ventana.", Level.Ok);
     }
 
-    /// <summary>Las últimas líneas del log del contenedor (para verlas dentro de la herramienta).</summary>
+    /// <summary>The last lines of the container log (to view them inside the tool).</summary>
     public List<string> LastLogLines(int n = 15)
     {
         var r = _s.Docker.Run(new[] { "logs", "--tail", n.ToString(), Container }, 8);
         return (r.Output + "\n" + r.Error).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).TakeLast(n).ToList();
     }
 
-    // ------------------------------------------------------------ Respaldo y restauración
+    // ------------------------------------------------------------ Backup and restore
 
-    /// <summary>pg_dump con la salida escrita byte a byte a un .sql. Devuelve la ruta, o null si falló.</summary>
+    /// <summary>pg_dump with the output written byte by byte to a .sql file. Returns the path, or null if it failed.</summary>
     public string? Back()
     {
         if (!EnsureRunning()) return null;
@@ -217,7 +217,7 @@ public sealed class PostgresService
         return new DirectoryInfo(dir).GetFiles("*.sql").OrderByDescending(f => f.LastWriteTime).Take(max).ToList();
     }
 
-    /// <summary>Restaura un respaldo (o cualquier .sql). Pide escribir "si" para confirmar y corta al primer error.</summary>
+    /// <summary>Restores a backup (or any .sql). Asks to type "si" to confirm and stops at the first error.</summary>
     public bool Restore(string? file = null)
     {
         if (!EnsureRunning()) return false;
@@ -252,8 +252,8 @@ public sealed class PostgresService
     // ------------------------------------------------------------ Recrear
 
     /// <summary>
-    /// Borra el contenedor y lo crea de nuevo con la configuración actual. Sin volumen con nombre se pierden los datos:
-    /// se ofrece un respaldo antes y se confirma escribiendo el nombre del contenedor.
+    /// Deletes the container and creates it again with the current configuration. Without a named volume the data is lost:
+    /// a backup is offered first and the user confirms by typing the container name.
     /// </summary>
     public bool Recreate()
     {

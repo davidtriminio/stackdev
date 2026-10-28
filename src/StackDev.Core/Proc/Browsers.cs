@@ -6,12 +6,12 @@ namespace StackDev.Core.Proc;
 public sealed record BrowserInfo(string Id, string Name, string Exe);
 
 /// <summary>
-/// Abrir direcciones con el navegador que elige el usuario (por proyecto o para todos) en lugar del predeterminado de Windows.
-/// Un navegador se guarda como un id conocido (chrome, edge, firefox, brave, opera, vivaldi) o como la ruta de un .exe.
+/// Open addresses with the browser the user chooses (per project or for all) instead of the Windows default.
+/// A browser is saved as a known id (chrome, edge, firefox, brave, opera, vivaldi) or as the path to an .exe.
 /// </summary>
 public static class Browsers
 {
-    public const string SystemDefault = "";   // el predeterminado de Windows
+    public const string SystemDefault = "";   // the Windows default
 
     private static IEnumerable<(string Id, string Name, string[] Paths)> Known()
     {
@@ -51,13 +51,13 @@ public static class Browsers
         });
     }
 
-    /// <summary>Los navegadores que están instalados en este equipo.</summary>
+    /// <summary>The browsers installed on this computer.</summary>
     public static List<BrowserInfo> Installed() =>
         Known().Select(c => (c.Id, c.Name, Exe: c.Paths.FirstOrDefault(File.Exists)))
                    .Where(c => c.Exe is not null)
                    .Select(c => new BrowserInfo(c.Id, c.Name, c.Exe!)).ToList();
 
-    /// <summary>De un id o una ruta, el .exe a usar; null = predeterminado del sistema (o no se encontró).</summary>
+    /// <summary>From an id or a path, the .exe to use; null = system default (or not found).</summary>
     public static string? Resolve(string? val)
     {
         if (string.IsNullOrWhiteSpace(val)) return null;
@@ -67,7 +67,7 @@ public static class Browsers
         return File.Exists(v) ? v : null;
     }
 
-    /// <summary>Nombre para mostrar de lo guardado ("" = predeterminado del sistema).</summary>
+    /// <summary>Display name of what is saved ("" = system default).</summary>
     public static string Name(string? val)
     {
         if (string.IsNullOrWhiteSpace(val)) return "Predeterminado del sistema";
@@ -76,7 +76,7 @@ public static class Browsers
         return known.Name ?? Path.GetFileNameWithoutExtension(v);
     }
 
-    /// <summary>Abre la dirección con el navegador elegido; si no se encuentra o falla, con el predeterminado. Devuelve un aviso si tuvo que volver al predeterminado.</summary>
+    /// <summary>Opens the address with the chosen browser; if it is not found or fails, with the default one. Returns a warning if it had to fall back to the default.</summary>
     public static string? Open(string url, string? preferred)
     {
         string? warning = null;

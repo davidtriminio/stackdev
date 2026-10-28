@@ -9,22 +9,22 @@ using StackDev.Core.Util;
 namespace StackDev.Core.Proc;
 
 /// <summary>
-/// Sugiere puertos que no choquen con nada: procesos que ya escuchan, puertos publicados por contenedores
-/// (también detenidos: al iniciarlos volverían a ocuparlos), otros proyectos de stackdev, este mismo proyecto
-/// y los rangos que Windows reserva (Hyper-V / WSL).
+/// Suggests ports that clash with nothing: processes already listening, ports published by containers
+/// (stopped ones too: starting them would take the ports again), other stackdev projects, this same project
+/// and the ranges Windows reserves (Hyper-V / WSL).
 /// </summary>
 public sealed class PortsService
 {
     private readonly Session _s;
     public PortsService(Session s) { _s = s; }
 
-    /// <summary>Una foto de lo ocupado; se toma una vez y sirve para varias preguntas.</summary>
+    /// <summary>A snapshot of what is in use; taken once and good for several questions.</summary>
     public sealed class Map
     {
         internal readonly Dictionary<int, string> ReservedPorts = new();
         internal readonly List<(int From, int Hasta)> WindowsRanges = new();
 
-        /// <summary>Quién ocupa el puerto (texto para mostrar), o null si está libre.</summary>
+        /// <summary>Who holds the port (text to display), or null if it is free.</summary>
         public string? Conflict(int port)
         {
             if (port <= 0) return null;
@@ -34,7 +34,7 @@ public sealed class PortsService
             return null;
         }
 
-        /// <summary>Solo lo reservado por configuración, contenedores o Windows (no cuenta lo que esté escuchando ahora, que puede ser el propio servicio).</summary>
+        /// <summary>Only what is reserved by configuration, containers or Windows (what is listening right now is not counted, since it may be the service itself).</summary>
         public string? ReservedReason(int port)
         {
             if (port <= 0) return null;
@@ -44,7 +44,7 @@ public sealed class PortsService
 
         public bool Free(int port) => Conflict(port) is null;
 
-        /// <summary>El primer puerto libre desde <paramref name="preferred"/> hacia arriba (hasta 300 intentos); null si no hay.</summary>
+        /// <summary>The first free port from <paramref name="preferred"/> upwards (up to 300 attempts); null if none.</summary>
         public int? Suggest(int preferred)
         {
             var p = preferred <= 0 ? 5432 : preferred;
@@ -65,15 +65,15 @@ public sealed class PortsService
         }
     }
 
-    /// <param name="ignoreContainer">Contenedor cuyos puertos no cuentan (el propio que se va a recrear).</param>
-    /// <param name="ignoreComponent">Componente de este proyecto cuyo puerto no cuenta (el que se está cambiando).</param>
+    /// <param name="ignoreContainer">Container whose ports do not count (the one about to be recreated).</param>
+    /// <param name="ignoreComponent">Component of this project whose port does not count (the one being changed).</param>
     public Map Take(string? ignoreContainer = null, ProjectComponent? ignoreComponent = null)
     {
         var m = new Map();
 
-        // Los otros componentes de este proyecto
+        // The other components of this project
         var ctx = _s.Ctx;
-        var mine = new List<(int Port, string Text)>();   // se agregan al final: no deben tapar a otros proyectos o contenedores
+        var mine = new List<(int Port, string Text)>();   // added at the end: they must not hide other projects or containers
         void Mine(ProjectComponent c, int port, string name)
         {
             if (c == ignoreComponent || port <= 0) return;
@@ -83,7 +83,7 @@ public sealed class PortsService
         if (ctx.Has(ProjectComponent.Api)) Mine(ProjectComponent.Api, ctx.Port(ProjectComponent.Api), "la API");
         if (ctx.Has(ProjectComponent.Web)) Mine(ProjectComponent.Web, ctx.Port(ProjectComponent.Web), "la web");
 
-        // Otros proyectos de stackdev
+        // Other stackdev projects
         try
         {
             foreach (var root in _s.State.ReadProjects())
@@ -105,7 +105,7 @@ public sealed class PortsService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
 
-        // Contenedores (también detenidos)
+        // Containers (stopped ones too)
         if (_s.Docker.Installed)
         {
             var ids = _s.Docker.Run(new[] { "ps", "-a", "-q" }, 8);
@@ -138,7 +138,7 @@ public sealed class PortsService
 
         foreach (var (port, text) in mine) m.ReservedPorts.TryAdd(port, text);
 
-        // Rangos reservados por Windows
+        // Ranges reserved by Windows
         if (OperatingSystem.IsWindows())
         {
             var r = ProcessRunner.Run("netsh.exe", new[] { "interface", "ipv4", "show", "excludedportrange", "protocol=tcp" }, 8);
@@ -148,14 +148,14 @@ public sealed class PortsService
         return m;
     }
 
-    // ------------------------------------------------------------ Plan de puertos del proyecto
+    // ------------------------------------------------------------ Project port plan
 
     public sealed record PortChange(ProjectComponent ProjectComponent, int Current, int Fresh, string Reason);
 
     /// <summary>
-    /// Qué puertos de este proyecto habría que mover para que no choquen con otros proyectos, contenedores ni reservas de Windows,
-    /// aunque nada esté corriendo. Lo que ya está bien no se toca (el puerto de un proyecto es fijo mientras no choque).
-    /// Postgres solo entra si su contenedor aún no existe (si existe, cambiar el puerto obliga a recrearlo).
+    /// Which ports of this project would have to move so they do not clash with other projects, containers or Windows reservations,
+    /// even if nothing is running. What is already fine is left alone (a project's port is fixed as long as it does not clash).
+    /// Postgres only takes part if its container does not exist yet (if it exists, changing the port forces recreating it).
     /// </summary>
     public List<PortChange> Plan()
     {
@@ -166,7 +166,7 @@ public sealed class PortsService
             pgExists = _s.Docker.Run(new[] { "inspect", "-f", "{{.Id}}", ctx.Config.Postgres!.EfContainer }, 6).Ok;
 
         var map = Take(ignoreContainer: ctx.Has(ProjectComponent.Postgres) ? ctx.Config.Postgres!.EfContainer : null);
-        // Los puertos de este proyecto ya están en el mapa como "este proyecto": se evalúa cada uno sin el suyo propio
+        // This project's ports are already in the map as "this project": each one is evaluated without its own
         var own = new List<(ProjectComponent C, int Port)>();
         if (ctx.Has(ProjectComponent.Postgres) && !pgExists) own.Add((ProjectComponent.Postgres, ctx.Config.Postgres!.EfPort));
         if (ctx.Has(ProjectComponent.Api) && ctx.Port(ProjectComponent.Api) > 0) own.Add((ProjectComponent.Api, ctx.Port(ProjectComponent.Api)));
@@ -175,7 +175,7 @@ public sealed class PortsService
         foreach (var (comp, port) in own)
         {
             var reason = map.ReservedReason(port);
-            // "lo usa X de este proyecto" apunta a otro componente del mismo proyecto, salvo que sea el mismo puerto compartido
+            // "used by X of this project" points to another component of the same project, unless it is the same shared port
             if (reason is not null && reason.Contains("de este proyecto") && own.Count(x => x.Port == port) < 2) reason = null;
             if (reason is null) continue;
             var fresh = map.Suggest(port + 1);
@@ -189,7 +189,7 @@ public sealed class PortsService
     private static string ChangePortInText(string? text, int old, int fresh) =>
         text is null ? "" : Regex.Replace(text, $@"(?<=:|--port[ =]|-p )(?:{old})(?!\d)", fresh.ToString());
 
-    /// <summary>Guarda los cambios: puerto de Postgres, URL de API/web y las veces que el puerto viejo aparece en sus comandos y variables.</summary>
+    /// <summary>Saves the changes: Postgres port, API/web URL and the times the old port appears in their commands and variables.</summary>
     public void Apply(IReadOnlyList<PortChange> changes)
     {
         if (changes.Count == 0) return;
@@ -231,7 +231,7 @@ public sealed class PortsService
     private static readonly string[] Extensions = { ".json", ".ts", ".js", ".env", ".dart", ".cs", ".yml", ".yaml", ".html", ".config", ".properties" };
     private static readonly string[] Excluded = { "node_modules", "bin", "obj", ".git", ".dart_tool", "build", "dist", ".angular", ".idea", ".vs", ".gradle", "Pods" };
 
-    /// <summary>Archivos del proyecto donde aparece <c>:puerto</c> (launchSettings, environment.ts, CORS...). Máximo 10.</summary>
+    /// <summary>Project files where <c>:port</c> appears (launchSettings, environment.ts, CORS...). At most 10.</summary>
     public List<string> References(int port)
     {
         var res = new List<string>();

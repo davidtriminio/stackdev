@@ -9,8 +9,8 @@ using StackDev.Core.Credentials;
 namespace StackDev.Gui;
 
 /// <summary>
-/// La tarjeta «Credenciales» del panel: usuarios y contraseñas de prueba del proyecto, con ojo para mostrar u ocultar
-/// (todas a la vez o cada una), botones para copiar y para agregar, editar y quitar.
+/// The "Credenciales" card of the panel: the project's test users and passwords, with an eye to show or hide
+/// (all at once or each one), buttons to copy and to add, edit and remove.
 /// </summary>
 public sealed class CredentialsCard : Border
 {
@@ -83,7 +83,7 @@ public sealed class CredentialsCard : Border
     private async void Copy(Button button, string text)
     {
         try { Clipboard.SetText(text); }
-        catch (ExternalException) { return; }   // el portapapeles lo tiene otro programa en este instante
+        catch (ExternalException) { return; }   // the clipboard is held by another program at this instant
         button.Content = IcReady;
         await Task.Delay(1000);
         button.Content = IcCopy;

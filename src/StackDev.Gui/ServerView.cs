@@ -17,8 +17,8 @@ using StackDev.Core.Util;
 namespace StackDev.Gui;
 
 /// <summary>
-/// «Servidor»: lista global de servidores (cifrada, fuera del repo), prueba de conexión SSH,
-/// estado del servicio de la API de este proyecto y logs en vivo en una pestaña de terminal.
+/// "Servidor": global list of servers (encrypted, outside the repo), SSH connection test,
+/// status of this project's API service and live logs in a terminal tab.
 /// </summary>
 public sealed class ServerView : ScrollViewer
 {
@@ -56,7 +56,7 @@ public sealed class ServerView : ScrollViewer
     private static Brush P(string key) => (Brush)Application.Current.FindResource(key);
     private static Style GetStyle(string key) => (Style)Application.Current.FindResource(key);
 
-    /// <summary>Se llama al abrir la sección y después de cada cambio.</summary>
+    /// <summary>Called when the section is opened and after every change.</summary>
     public void Update()
     {
         foreach (var sv in _store.Read()) _trusted[sv.Id] = HostKeys.IsTrusted(sv);
@@ -138,7 +138,7 @@ public sealed class ServerView : ScrollViewer
         var s = _session();
         var depl = s?.Ctx.Config.Deployment;
 
-        // --- Este proyecto
+        // --- This project
         if (s is not null)
             _root.Children.Add(ProjectCard(s, servers, depl));
 

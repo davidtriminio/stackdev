@@ -9,12 +9,12 @@ public sealed record SshResult(bool Ok, string Message, HostKeyInfo? Untrusted =
 
 public sealed record ApiStatus(bool Active, string State, string From, string Errors, int? Http, DateTime? CertExpires, string? Problem);
 
-/// <summary>Consultas y acciones sobre un servidor por SSH: probar la conexión, estado de un servicio, reiniciar.</summary>
+/// <summary>Queries and actions on a server over SSH: test the connection, service status, restart.</summary>
 public static class ServerService
 {
     public static readonly Regex ServiceName = Deploy.Sh.Service;
 
-    /// <summary>Deja solo el host: quita http(s)://, rutas y la barra final.</summary>
+    /// <summary>Leaves only the host: strips http(s)://, paths and the trailing slash.</summary>
     public static string? CleanDomain(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
@@ -106,7 +106,7 @@ public static class ServerService
         }
     }
 
-    /// <summary>start, stop o restart de un servicio systemd.</summary>
+    /// <summary>start, stop or restart of a systemd service.</summary>
     public static SshResult Operation(Server s, string service, string action)
     {
         if (action is not ("start" or "stop" or "restart")) return new(false, "Acción no válida.");

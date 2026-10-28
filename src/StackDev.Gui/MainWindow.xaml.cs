@@ -24,7 +24,7 @@ public partial class MainWindow : Window
 {
     private enum ViewKind { Home, Panel, Conditions, ConsolePage, Config, Terminals, Diagnostics, Server }
 
-    /// <summary>Una tarjeta del panel (Postgres, API, Web, Emulador, App) con su estado y sus botones.</summary>
+    /// <summary>A panel card (Postgres, API, Web, Emulator, App) with its state and its buttons.</summary>
     private sealed class Card
     {
         public required string Section { get; init; }
@@ -41,7 +41,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _cts;
     private bool _busy;
     private bool _closing;
-    private bool _quit;                                  // true = cerrar de verdad (no mandar a la bandeja)
+    private bool _quit;                                  // true = really close (do not send to the tray)
     private System.Windows.Forms.NotifyIcon? _tray;
     private bool _trayNotified;
     private Snapshot? _shown;
@@ -62,7 +62,7 @@ public partial class MainWindow : Window
     private bool _cleaning;
     private GridLength _outputHeight = new(190);
     private bool _rail;        // barra lateral reducida a iconos
-    private bool _railBefore;   // cómo estaba antes de abrir las terminales
+    private bool _railBefore;   // how it was before the terminals were opened
 
     public MainWindow()
     {
@@ -84,7 +84,7 @@ public partial class MainWindow : Window
             OpenTerminalCommand, SaveDeployment, (t, n) => _ui.Write(t, n));
         ServerHost.Children.Add(_srv);
         CreateTray();
-        Application.Current.SessionEnding += (_, _) => _quit = true;   // apagar/cerrar sesión de Windows: sí se sale
+        Application.Current.SessionEnding += (_, _) => _quit = true;   // Windows shutdown/sign-out: it does exit
         PreviewKeyDown += (_, e) =>
         {
             var mod = Keyboard.Modifiers;
@@ -112,7 +112,7 @@ public partial class MainWindow : Window
 
     private static Brush P(string key) => (Brush)Application.Current.FindResource(key);
 
-    // ------------------------------------------------------------ Arranque y proyecto
+    // ------------------------------------------------------------ Start-up and project
 
     private async Task StartAsync()
     {
@@ -140,7 +140,7 @@ public partial class MainWindow : Window
             _ui.Write($"El proyecto favorito ya no existe: {favorite}", Level.Warning);
         }
 
-        // Sin favorito: se reabre el último proyecto que usaste
+        // With no favourite: the last project you used is reopened
         var last = _state.LastProject;
         if (!string.IsNullOrWhiteSpace(last) && Directory.Exists(last))
         {
@@ -153,7 +153,7 @@ public partial class MainWindow : Window
 
     private System.Windows.Controls.Primitives.Popup? _selector;
 
-    /// <summary>Lista desplegable de proyectos recientes para saltar de uno a otro sin pasar por Inicio.</summary>
+    /// <summary>Drop-down list of recent projects to jump from one to another without going through Home.</summary>
     private void ChangeBar_Click(object sender, RoutedEventArgs e)
     {
         if (_state is null) return;
@@ -305,7 +305,7 @@ public partial class MainWindow : Window
         _mon?.Refresh();
     }
 
-    /// <summary>El logo parpadea mientras hay una acción en curso.</summary>
+    /// <summary>The logo blinks while an action is in progress.</summary>
     private void BlinkLogo(bool active)
     {
         if (active)
@@ -344,7 +344,7 @@ public partial class MainWindow : Window
         TxtBar.IsEnabled = BtnBar.IsEnabled = active && _s is not null;
     }
 
-    /// <summary>Corre algo de la lógica en segundo plano mostrando su salida. Una acción a la vez; «Cancelar acción» la detiene.</summary>
+    /// <summary>Runs something from the logic in the background showing its output. One action at a time; "Cancelar acción" stops it.</summary>
     private async Task<bool> RunAsync(string title, Func<Session, bool> f)
     {
         var s = _s;
@@ -388,7 +388,7 @@ public partial class MainWindow : Window
 
     private void HideOutput_Click(object sender, RoutedEventArgs e) => SetOutputHidden(!_outputHidden);
 
-    /// <summary>Con la salida oculta solo queda su cabecera y la línea de comandos; cualquier texto nuevo la vuelve a mostrar.</summary>
+    /// <summary>With the output hidden only its header and the command line remain; any new text shows it again.</summary>
     private void SetOutputHidden(bool hide)
     {
         if (_outputHidden == hide) return;
@@ -427,7 +427,7 @@ public partial class MainWindow : Window
         if (a is not null) _ = RunAsync(a.Title, a.Run);
     }
 
-    // ------------------------------------------------------------ Panel de tarjetas
+    // ------------------------------------------------------------ Card panel
 
     private static readonly (string Section, string Title, ProjectComponent Comp)[] Sections =
     {
@@ -440,8 +440,8 @@ public partial class MainWindow : Window
 
     private void PanelHost_SizeChanged(object sender, SizeChangedEventArgs e) => AdjustCards();
 
-    /// <summary>Con las terminales a la mitad las tarjetas se encogen para caber de dos en dos; si no, ancho normal.</summary>
-    /// <summary>Con poco ancho (terminal a la mitad, ventana angosta) los botones bajan a una segunda fila para no pisar el título.</summary>
+    /// <summary>With the terminals at half width the cards shrink to fit two across; otherwise normal width.</summary>
+    /// <summary>With little width (terminal at half, narrow window) the buttons drop to a second row so they do not overlap the title.</summary>
     private void AdjustHeader()
     {
         var narrow = MainArea.ActualWidth < 1300;
@@ -451,8 +451,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Reparte las tarjetas en columnas iguales que llenan el ancho (sin dejar huecos a un lado).
-    /// Deja unos píxeles de seguridad: si las columnas miden justo el ancho, la última salta de fila.
+    /// Spreads the cards into equal columns that fill the width (leaving no gaps at the side).
+    /// Leaves a few pixels of safety: if the columns measure exactly the width, the last one jumps to the next row.
     /// </summary>
     private static void Distribute(Panel panel, double available, double minimum, double gap)
     {
@@ -482,7 +482,7 @@ public partial class MainWindow : Window
         Distribute(HomePanel, available, 380, 16);
     }
 
-    /// <summary>Configuración en dos columnas cuando hay ancho; en una sola si no.</summary>
+    /// <summary>Settings in two columns when there is width; in a single one otherwise.</summary>
     private void ConfigHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var wide = ConfigHost.ActualWidth >= 1250;
@@ -534,7 +534,7 @@ public partial class MainWindow : Window
             header.Children.Add(blockName);
             header.Children.Add(state);
 
-            // Abrir una terminal en la carpeta de este componente (a la mitad, junto al panel)
+            // Open a terminal in this component's folder (at half, next to the panel)
             if (CardTerminal(section) is { } destination)
             {
                 var btnTerm = new Button
@@ -550,7 +550,7 @@ public partial class MainWindow : Window
                 header.Children.Add(btnTerm);
             }
 
-            // Abrir la web o la API en el navegador elegido
+            // Open the web app or the API in the chosen browser
             if (section is "API" or "WEB")
             {
                 var component = comp;
@@ -604,7 +604,7 @@ public partial class MainWindow : Window
 
         Dispatcher.InvokeAsync(AdjustCards, DispatcherPriority.Loaded);
 
-        // Las credenciales del proyecto, a continuación de la tarjeta de la app
+        // The project's credentials, right after the app card
         CardsPanel.Children.Add(new CredentialsCard(new StackDev.Core.Credentials.CredentialsStore(_s.State.ConfigFolder(_s.Key)), this));
 
         if (_cards.Count == 0)
@@ -706,7 +706,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ------------------------------------------------------------ Navegación
+    // ------------------------------------------------------------ Navigation
 
     private ViewKind CurrentView() =>
         NavHome.IsChecked == true ? ViewKind.Home :
@@ -733,7 +733,7 @@ public partial class MainWindow : Window
         ServerHost.Visibility = v == ViewKind.Server ? Visibility.Visible : Visibility.Collapsed;
         ConsoleHost.Visibility = v == ViewKind.ConsolePage ? Visibility.Visible : Visibility.Collapsed;
 
-        // «Terminales» del menú = las terminales a pantalla completa; al irse a otra vista pasan a la mitad
+        // "Terminales" in the menu = the terminals at full screen; when going to another view they drop to half
         if (v == ViewKind.Terminals) _termMode = TerminalMode.Full;
         else if (_termMode == TerminalMode.Full) _termMode = TerminalMode.Half;
         ApplyTerminalMode();
@@ -758,7 +758,7 @@ public partial class MainWindow : Window
         if (v == ViewKind.ConsolePage) RefreshConsole();
     }
 
-    // ------------------------------------------------------------ Condiciones del dispositivo
+    // ------------------------------------------------------------ Device conditions
 
     private string ConditionsText() => _s is null ? "" : $"Activas ahora: {_s.Conditions.Text()}";
 
@@ -783,7 +783,7 @@ public partial class MainWindow : Window
                 var chip = new ToggleButton { Content = p.Txt, Tag = p, Style = (Style)FindResource("ChipToggle") };
                 chip.Checked += (_, _) =>
                 {
-                    // Dentro de una categoría solo una opción a la vez.
+                    // Within a category only one option at a time.
                     foreach (var other in ofGroup.Where(o => !ReferenceEquals(o, chip) && o.IsChecked == true)) other.IsChecked = false;
                 };
                 ofGroup.Add(chip);
@@ -798,7 +798,7 @@ public partial class MainWindow : Window
         RefreshConditions();
     }
 
-    /// <summary>Marca las condiciones que están activas según lo guardado para este emulador.</summary>
+    /// <summary>Marks the conditions that are active according to what is saved for this emulator.</summary>
     private void RefreshConditions()
     {
         if (_s is null || !_s.Ctx.Has(ProjectComponent.Mobile)) return;
@@ -821,7 +821,7 @@ public partial class MainWindow : Window
     private void CondReset_Click(object sender, RoutedEventArgs e) =>
         _ = RunAsync("Restablecer condiciones", s => s.Conditions.Reset());
 
-    // ------------------------------------------------------------ Consola de comandos
+    // ------------------------------------------------------------ Command console
 
     private void RefreshConsole()
     {
@@ -880,7 +880,7 @@ public partial class MainWindow : Window
 
     private void HistDown_Click(object sender, RoutedEventArgs e) { NavigateHistory(-1); TxtBar.Focus(); }
 
-    /// <summary>↑ (delta = 1) va a un comando más viejo, ↓ (-1) a uno más nuevo; pasado el más nuevo deja la línea vacía.</summary>
+    /// <summary>↑ (delta = 1) goes to an older command, ↓ (-1) to a newer one; past the newest it leaves the line empty.</summary>
     private void NavigateHistory(int delta)
     {
         if (_s is null) return;
@@ -938,14 +938,14 @@ public partial class MainWindow : Window
         RunText((CommandList.SelectedIndex + 1).ToString());
     }
 
-    // ------------------------------------------------------------ Configuración
+    // ------------------------------------------------------------ Settings
 
     private TextBlock SummaryTitle(string text) => new()
     {
         Text = text, FontSize = 10.5, FontWeight = FontWeights.SemiBold, Foreground = P("MutedBrush"), Margin = new Thickness(0, 10, 0, 8),
     };
 
-    /// <summary>Una etiqueta pequeña (puerto, imagen, URL…) con fondo propio.</summary>
+    /// <summary>A small label (port, image, URL…) with its own background.</summary>
     private Border Chip(string text, string colorKey = "TextBrush", bool mono = true, bool icons = false)
     {
         var t = new TextBlock { FontSize = 11.5, Foreground = P(colorKey), VerticalAlignment = VerticalAlignment.Center };
@@ -1009,7 +1009,7 @@ public partial class MainWindow : Window
         };
     }
 
-    /// <summary>Una ruta: ficha con icono, nombre, la ruta en una caja (carpeta atenuada, nombre final resaltado) y botones de copiar / abrir.</summary>
+    /// <summary>A path: tile with icon, name, the path in a box (folder dimmed, final name highlighted) and copy / open buttons.</summary>
     private UIElement PathRow(string label, string glyph, string color, string path, bool isFile, string? warning, string? ok = null)
     {
         var g = new Grid { Margin = new Thickness(0, 0, 0, 10) };
@@ -1026,7 +1026,7 @@ public partial class MainWindow : Window
         Grid.SetColumn(name, 1);
         g.Children.Add(name);
 
-        // Carpeta atenuada + último tramo resaltado
+        // Dimmed folder + highlighted last segment
         var text = new TextBlock { FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 12, TextWrapping = TextWrapping.Wrap };
         var cut = Math.Max(path.LastIndexOf('\\'), path.LastIndexOf('/'));
         if (cut > 0)
@@ -1083,7 +1083,7 @@ public partial class MainWindow : Window
         var c = _s.Ctx;
         SummaryPanel.Children.Clear();
 
-        // ---- Componentes: icono, nombre, dónde vive y sus datos como etiquetas
+        // ---- Components: icon, name, where it lives and its data as labels
         SummaryPanel.Children.Add(SummaryTitle("COMPONENTES"));
         if (c.Has(ProjectComponent.Postgres))
         {
@@ -1124,7 +1124,7 @@ public partial class MainWindow : Window
 
     private System.Windows.Controls.Primitives.Popup? _menu;
 
-    /// <summary>Lista desplegable oscura bajo un botón (los menús de WPF por defecto salen claros).</summary>
+    /// <summary>Dark drop-down list under a button (the default WPF menus come out light).</summary>
     private void ShowMenu(FrameworkElement anchor, IEnumerable<(string Text, Action Operation)> items)
     {
         if (_menu is { IsOpen: true }) _menu.IsOpen = false;
@@ -1168,7 +1168,7 @@ public partial class MainWindow : Window
         BtnNavQuick.Content = Icons.WithGlyph("\uE774", nameNav + "  ▾");
     }
 
-    /// <summary>Cambio rápido de navegador desde el panel: para este proyecto, o (última opción) para todos.</summary>
+    /// <summary>Quick browser change from the panel: for this project, or (last option) for all.</summary>
     private void NavQuick_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null || _state is null) return;
@@ -1220,7 +1220,7 @@ public partial class MainWindow : Window
         }, "Igual que el de todos los proyectos"));
     }
 
-    /// <summary>Botón de la cabecera: abre la web y/o la API del proyecto en el navegador elegido.</summary>
+    /// <summary>Header button: opens the project's web app and/or API in the chosen browser.</summary>
     private void Browser_Click(object sender, RoutedEventArgs e)
     {
         if (_s is null) return;
@@ -1305,7 +1305,7 @@ public partial class MainWindow : Window
 
     private void CfgStatus_Click(object sender, RoutedEventArgs e) => OpenFolder(_state.Dir);
 
-    // ------------------------------------------------------------ Proyecto y cierre
+    // ------------------------------------------------------------ Project and closing
 
     // ------------------------------------------------------------ Barra superior propia
 
@@ -1314,9 +1314,9 @@ public partial class MainWindow : Window
     private void Maximize_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
-    // ------------------------------------------------------------ Segundo plano (bandeja del sistema)
+    // ------------------------------------------------------------ Background (system tray)
 
-    /// <summary>La X no cierra: manda la aplicación a la bandeja y todo (terminales, API, emulador) sigue vivo. Mayús+clic sale del todo.</summary>
+    /// <summary>The X does not close: it sends the application to the tray and everything (terminals, API, emulator) stays alive. Shift+click exits completely.</summary>
     private void Close_Click(object sender, RoutedEventArgs e)
     {
         if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) Exit(); else HideToTray();
@@ -1347,7 +1347,7 @@ public partial class MainWindow : Window
                 if (ev.Button == System.Windows.Forms.MouseButtons.Left) Dispatcher.Invoke(ShowFromTray);
             };
         }
-        catch (Exception) { _tray = null; }   // sin icono de bandeja la X vuelve a cerrar normalmente
+        catch (Exception) { _tray = null; }   // without a tray icon the X goes back to closing normally
     }
 
     private void HideToTray()
@@ -1368,20 +1368,20 @@ public partial class MainWindow : Window
         Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
-        Topmost = true; Topmost = false;   // la trae al frente aunque otra ventana tenga el foco
+        Topmost = true; Topmost = false;   // brings it to the front even if another window has focus
     }
 
     private void Exit()
     {
         _quit = true;
-        if (!IsVisible) Show();   // el diálogo de «¿qué hago con lo que corre?» necesita la ventana visible
+        if (!IsVisible) Show();   // the "what do I do with what is running?" dialog needs the window to be visible
         Close();
     }
 
     private void Window_StateChanged(object? sender, EventArgs e)
     {
         var maximized = WindowState == WindowState.Maximized;
-        // Maximizada, una ventana con marco propio se pasa unos píxeles del borde de la pantalla.
+        // Maximised, a window with its own frame overshoots the screen edge by a few pixels.
         var rb = SystemParameters.WindowResizeBorderThickness;
         Root.Margin = maximized ? new Thickness(rb.Left, rb.Top, rb.Right, rb.Bottom + 10) : new Thickness(0);
         BtnMaximize.Content = maximized ? "\uE923" : "\uE922";
@@ -1400,11 +1400,11 @@ public partial class MainWindow : Window
         _termMode = m;
         if (m == TerminalMode.Full)
         {
-            if (NavTerminals.IsChecked != true) { NavTerminals.IsChecked = true; return; }   // Nav_Checked aplica el modo
+            if (NavTerminals.IsChecked != true) { NavTerminals.IsChecked = true; return; }   // Nav_Checked applies the mode
         }
         else if (CurrentView() == ViewKind.Terminals)
         {
-            (_s is null ? NavHome : NavPanel).IsChecked = true;   // salir de la vista Terminales; Nav_Checked aplica el modo
+            (_s is null ? NavHome : NavPanel).IsChecked = true;   // leave the Terminals view; Nav_Checked applies the mode
             return;
         }
         ApplyTerminalMode();
@@ -1415,7 +1415,7 @@ public partial class MainWindow : Window
         var m = _termMode;
         MainArea.Visibility = m == TerminalMode.Full ? Visibility.Collapsed : Visibility.Visible;
         ColMain.MinWidth = m == TerminalMode.Half ? 460 : 0;
-        // En mitad el panel cede espacio: 2/5 para las tarjetas, 3/5 para la terminal
+        // At half width the panel gives up space: 2/5 for the cards, 3/5 for the terminal
         ColMain.Width = m == TerminalMode.Full ? new GridLength(0)
             : new GridLength(m == TerminalMode.Half && _appliedMode == TerminalMode.Hidden ? 2 : 1, GridUnitType.Star);
         TerminalDock.Visibility = m == TerminalMode.Hidden ? Visibility.Collapsed : Visibility.Visible;
@@ -1429,13 +1429,13 @@ public partial class MainWindow : Window
         var opens = _appliedMode == TerminalMode.Hidden && m != TerminalMode.Hidden;
         var closes = _appliedMode != TerminalMode.Hidden && m == TerminalMode.Hidden;
         _appliedMode = m;
-        if (opens) { _railBefore = _rail; _rail = true; }       // con las terminales abiertas el menú pasa a iconos
+        if (opens) { _railBefore = _rail; _rail = true; }       // with the terminals open the menu switches to icons
         else if (closes) _rail = _railBefore;
         ApplyRail();
         if (opens && createFirst) _terminals?.OnShow();
     }
 
-    /// <summary>Abre (si hace falta, a la mitad) la terminal de una carpeta; si ya hay una pestaña para ella, la muestra.</summary>
+    /// <summary>Opens (at half width if needed) a folder's terminal; if there is already a tab for it, shows it.</summary>
     private void OpenTerminal(string label, string folder)
     {
         if (_terminals is null) return;
@@ -1447,7 +1447,7 @@ public partial class MainWindow : Window
         _terminals.Open(label, folder);
     }
 
-    /// <summary>Abre una pestaña de terminal que ejecuta una línea propia (ssh, logs del servidor…).</summary>
+    /// <summary>Opens a terminal tab that runs its own command line (ssh, server logs…).</summary>
     private void OpenTerminalCommand(string label, string line)
     {
         if (_terminals is null) return;
@@ -1459,7 +1459,7 @@ public partial class MainWindow : Window
         _terminals.OpenCommand(label, line);
     }
 
-    /// <summary>Guarda en dev-menu.json a qué servidor se sube este proyecto.</summary>
+    /// <summary>Saves in dev-menu.json which server this project is uploaded to.</summary>
     private void SaveDeployment(StackDev.Core.Config.DeploymentConfig? d)
     {
         if (_s is null) return;
@@ -1469,7 +1469,7 @@ public partial class MainWindow : Window
         _ui.Write("Despliegue del proyecto guardado.", Level.Ok);
     }
 
-    /// <summary>Atajos de terminales: funcionan igual con el foco en la ventana o dentro de una terminal.</summary>
+    /// <summary>Terminal shortcuts: they work the same with focus on the window or inside a terminal.</summary>
     private void TerminalShortcut(string action, int n)
     {
         if (_terminals is null || _s is null) return;
@@ -1482,8 +1482,8 @@ public partial class MainWindow : Window
         if (wasHidden)
         {
             _termMode = TerminalMode.Half;
-            ApplyTerminalMode();          // crea la primera terminal si no hay ninguna
-            if (action is "next" or "prev") return;   // ya se muestra la primera; no saltar de pestaña
+            ApplyTerminalMode();          // creates the first terminal if there is none
+            if (action is "next" or "prev") return;   // the first one is already shown; do not jump tabs
         }
         _terminals.Shortcut(action, n);
     }
@@ -1507,8 +1507,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Carpeta configurada del componente; si es la propia raíz (los comandos usan rutas relativas),
-    /// se prefiere la subcarpeta con el nombre típico, para que la terminal abra donde se trabaja.
+    /// The component's configured folder; if it is the root itself (the commands use relative paths),
+    /// the subfolder with the typical name is preferred, so the terminal opens where the work happens.
     /// </summary>
     private string TerminalFolder(ProjectComponent c, params string[] candidates)
     {
@@ -1536,7 +1536,7 @@ public partial class MainWindow : Window
         ("Configuración", "\uE713"),
     };
 
-    /// <summary>Menú lateral completo (texto) o reducido a iconos pequeños.</summary>
+    /// <summary>Full side menu (text) or reduced to small icons.</summary>
     private void ApplyRail()
     {
         ColSidebar.Width = new GridLength(_rail ? 60 : 240);
@@ -1584,7 +1584,7 @@ public partial class MainWindow : Window
         return string.Equals(Path.GetFullPath(fav), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Solo uno puede ser favorito: marcar otro quita el anterior; volver a pulsar lo quita.</summary>
+    /// <summary>Only one can be the favourite: marking another removes the previous one; pressing again removes it.</summary>
     private void ToggleFavorite(string path)
     {
         if (IsFavorite(path))
@@ -1601,7 +1601,7 @@ public partial class MainWindow : Window
         if (CurrentView() == ViewKind.Home) RefreshHome();
     }
 
-    // ------------------------------------------------------------ Chip del proyecto (~/proyecto on rama*)
+    // ------------------------------------------------------------ Project chip (~/project on branch*)
 
     private string? _gitRoot;
     private string? _branch;
@@ -1674,7 +1674,7 @@ public partial class MainWindow : Window
     private void UpdateFavorite()
     {
         BtnBarFavorite.Visibility = _s is null ? Visibility.Collapsed : Visibility.Visible;
-        BtnChangeBar.Visibility = Visibility.Collapsed;   // lo reemplaza el chip del proyecto
+        BtnChangeBar.Visibility = Visibility.Collapsed;   // replaced by the project chip
         if (!string.Equals(_gitRoot, _s?.Root, StringComparison.OrdinalIgnoreCase))
         {
             _gitRoot = _s?.Root;
@@ -1837,15 +1837,15 @@ public partial class MainWindow : Window
     {
         if (!_quit && !_closing && _tray is not null)
         {
-            e.Cancel = true;      // Alt+F4 o cerrar desde la barra de tareas: también a segundo plano
+            e.Cancel = true;      // Alt+F4 or closing from the taskbar: also to the background
             HideToTray();
             return;
         }
         if (_closing) { _tray?.Dispose(); _terminals?.CloseAll(); _mon?.Dispose(); return; }
         if (_s is null) { _tray?.Dispose(); _terminals?.CloseAll(); return; }
 
-        e.Cancel = true;   // se decide primero qué hacer con lo que sigue corriendo
-        _quit = false;    // si al final se cancela, la próxima X vuelve a ir a segundo plano
+        e.Cancel = true;   // it is decided first what to do with what keeps running
+        _quit = false;    // if it ends up cancelled, the next X goes to the background again
         if (_busy)
         {
             if (!Dialogs.Confirm(this, "Hay una acción en curso. ¿Cancelarla y salir?", false)) return;

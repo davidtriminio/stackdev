@@ -3,7 +3,7 @@ using StackDev.Core.Ui;
 
 namespace StackDev.Cli.Ui;
 
-/// <summary>La pantalla interactiva: mensajes con color, confirmaciones y listas con flechas.</summary>
+/// <summary>The interactive screen: coloured messages, confirmations and arrow-key lists.</summary>
 public sealed class SpectreUi : IConsoleUi
 {
     public bool Interactive => !Console.IsInputRedirected;
@@ -43,7 +43,7 @@ public sealed class SpectreUi : IConsoleUi
 
     public int Choose(string title, IReadOnlyList<string> options, int byDefault = -1)
     {
-        // El primero de la lista es el que queda seleccionado: el valor por defecto va arriba.
+        // The first item of the list is the one that ends up selected: the default value goes on top.
         var order = new List<int>();
         if (byDefault >= 0 && byDefault < options.Count) order.Add(byDefault);
         for (var i = 0; i < options.Count; i++) if (i != byDefault) order.Add(i);

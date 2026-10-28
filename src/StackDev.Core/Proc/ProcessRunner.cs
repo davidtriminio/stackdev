@@ -10,8 +10,8 @@ public sealed record ProcResult(int Code, string Output, string Error, bool Time
 }
 
 /// <summary>
-/// Procesos externos. Todo lleva tiempo límite (adb y docker se cuelgan cuando el emulador o Docker no responden)
-/// y al cancelar o vencer el tiempo se cierra el árbol completo de procesos.
+/// External processes. Everything has a time limit (adb and docker hang when the emulator or Docker do not answer)
+/// and on cancel or timeout the whole process tree is closed.
 /// </summary>
 public static class ProcessRunner
 {
@@ -38,14 +38,14 @@ public static class ProcessRunner
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { }
     }
 
-    /// <summary>Ejecuta y captura la salida. Nunca queda esperando más de <paramref name="timeoutSec"/>.</summary>
+    /// <summary>Runs and captures the output. Never waits longer than <paramref name="timeoutSec"/>.</summary>
     public static ProcResult Run(string exe, IEnumerable<string> args, int timeoutSec = 10, string? cwd = null,
         IReadOnlyDictionary<string, string>? env = null, CancellationToken ct = default)
     {
         var psi = Psi(exe, args, cwd, env);
         psi.RedirectStandardOutput = true;
         psi.RedirectStandardError = true;
-        psi.RedirectStandardInput = true;   // se cierra enseguida: nada se queda esperando datos
+        psi.RedirectStandardInput = true;   // closed right away: nothing is left waiting for data
         Process p;
         try { p = Process.Start(psi)!; }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
@@ -69,7 +69,7 @@ public static class ProcessRunner
         }
     }
 
-    /// <summary>Como <see cref="Run"/> pero con stdin y stdout conectados a archivos, sin tocar un solo byte.</summary>
+    /// <summary>Like <see cref="Run"/> but with stdin and stdout connected to files, without touching a single byte.</summary>
     public static ProcResult RunWithFiles(string exe, IEnumerable<string> args, string? input, string? output,
         int timeoutSec = 900, CancellationToken ct = default, IReadOnlyDictionary<string, string>? env = null)
     {
@@ -125,8 +125,8 @@ public static class ProcessRunner
     }
 
     /// <summary>
-    /// Corre mostrando la salida en esta misma consola (tests, builds, flutter analyze...).
-    /// Ctrl+C (el <paramref name="ct"/>) cancela solo este comando y devuelve 130.
+    /// Runs showing the output in this same console (tests, builds, flutter analyze...).
+    /// Ctrl+C (the <paramref name="ct"/>) cancels only this command and returns 130.
     /// </summary>
     public static int RunInheriting(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env, CancellationToken ct)
     {
@@ -150,8 +150,8 @@ public static class ProcessRunner
     }
 
     /// <summary>
-    /// Como <see cref="RunInheriting"/> pero entrega cada línea de salida a <paramref name="line"/> (para la interfaz gráfica,
-    /// que no tiene consola). Devuelve 130 si se cancela.
+    /// Like <see cref="RunInheriting"/> but hands each output line to <paramref name="line"/> (for the graphical interface,
+    /// which has no console). Returns 130 if cancelled.
     /// </summary>
     public static int RunCapturing(string exe, IEnumerable<string> args, string? cwd, IReadOnlyDictionary<string, string>? env,
         CancellationToken ct, Action<string> line, int timeoutSec = 0, int idleSec = 0, bool closeStdin = false)
@@ -195,7 +195,7 @@ public static class ProcessRunner
         }
     }
 
-    /// <summary>Abre el programa en una ventana de consola nueva (para lo interactivo: flutter run, psql...).</summary>
+    /// <summary>Opens the program in a new console window (for interactive things: flutter run, psql...).</summary>
     public static Process? StartInWindow(string exe, string arguments, string? cwd)
     {
         var psi = new ProcessStartInfo(exe, arguments) { UseShellExecute = true };

@@ -4,24 +4,24 @@ using StackDev.Core.Util;
 
 namespace StackDev.Core.Detection;
 
-/// <summary>Lo que encontró la detección y lo que falta decidir con el usuario.</summary>
+/// <summary>What detection found and what is left to decide with the user.</summary>
 public sealed class DetectionResult
 {
     public required ProjectConfig Config { get; init; }
 
-    /// <summary>La API referencia Npgsql: toca configurar Postgres (docker inspect o preguntar).</summary>
+    /// <summary>The API references Npgsql: Postgres has to be configured (docker inspect or ask).</summary>
     public bool ApiUsesNpgsql { get; init; }
 
-    /// <summary>Nombre de la cadena de conexión (ConnectionStrings:X) si se encontró.</summary>
+    /// <summary>Name of the connection string (ConnectionStrings:X) if one was found.</summary>
     public string? ConnectionName { get; init; }
 
-    /// <summary>Líneas para mostrar al usuario ("API (.NET): api/src/X -> http://...").</summary>
+    /// <summary>Lines to show the user ("API (.NET): api/src/X -> http://...").</summary>
     public List<string> Findings { get; } = new();
 
     public bool FoundAnything => Config.Api is not null || Config.Web is not null || Config.Mobile is not null;
 }
 
-/// <summary>Detección automática de la API .NET, la web Angular y la app Flutter de un repo.</summary>
+/// <summary>Automatic detection of a repo's .NET API, Angular web app and Flutter app.</summary>
 public static class Detector
 {
     private const RegexOptions Ci = RegexOptions.IgnoreCase;
@@ -98,7 +98,7 @@ public static class Detector
 
         nameConnection = ConnectionName(dirApi, dirSolution);
 
-        // Migraciones de Entity Framework
+        // Entity Framework migrations
         var snapshot = FileTree.Search(dirSolution, new[] { "*ModelSnapshot.cs" }, 6).FirstOrDefault();
         if (snapshot is not null)
         {
@@ -118,7 +118,7 @@ public static class Detector
         return api;
     }
 
-    /// <summary>La primera carpeta hacia arriba (hasta la raíz) con .sln o .slnx; si no hay, la primera carpeta bajo la raíz.</summary>
+    /// <summary>The first folder going up (to the root) with a .sln or .slnx; if none, the first folder under the root.</summary>
     public static string SolutionFolder(string root, string dir)
     {
         var rootN = Paths.Normalize(root);
@@ -147,7 +147,7 @@ public static class Detector
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
     }
 
-    /// <summary>El primer http:// de applicationUrl en launchSettings.json; si no hay, el primero que aparezca.</summary>
+    /// <summary>The first http:// in applicationUrl of launchSettings.json; if none, the first one that appears.</summary>
     internal static string UrlLaunchSettings(string dirProject)
     {
         var text = FileTree.Read(Path.Combine(dirProject, "Properties", "launchSettings.json"));
@@ -163,7 +163,7 @@ public static class Detector
         return "http://localhost:5000";
     }
 
-    /// <summary>Nombre de la cadena de conexión: de appsettings*.json o, si no está, de GetConnectionString("X") en los .cs.</summary>
+    /// <summary>Name of the connection string: from appsettings*.json or, failing that, from GetConnectionString("X") in the .cs files.</summary>
     internal static string? ConnectionName(string dirProject, string dirSolution)
     {
         try
@@ -222,7 +222,7 @@ public static class Detector
         return web;
     }
 
-    /// <summary>pnpm, yarn o npm: por el lockfile (en la carpeta de la web o en la raíz) o por el campo packageManager.</summary>
+    /// <summary>pnpm, yarn or npm: by the lockfile (in the web folder or at the root) or by the packageManager field.</summary>
     internal static string PackageManager(string root, string dir)
     {
         foreach (var d in new[] { dir, root })
@@ -267,9 +267,9 @@ public static class Detector
         return mobile;
     }
 
-    // ------------------------------------------------------------------ Postgres y "levantar todo"
+    // ------------------------------------------------------------------ Postgres and "start all"
 
-    /// <summary>Agrega Postgres a la configuración y la cadena de conexión (ConnectionStrings__X) a la API.</summary>
+    /// <summary>Adds Postgres to the configuration and the connection string (ConnectionStrings__X) to the API.</summary>
     public static void ApplyPostgres(ProjectConfig config, PostgresConfig pg, string nameConnection)
     {
         config.Postgres = pg;

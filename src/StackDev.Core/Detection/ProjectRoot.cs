@@ -4,24 +4,24 @@ namespace StackDev.Core.Detection;
 
 public enum ProjectOrigin
 {
-    /// <summary>Se pasó una ruta válida.</summary>
+    /// <summary>A valid path was passed.</summary>
     Parameter,
-    /// <summary>La carpeta actual parece un proyecto.</summary>
+    /// <summary>The current folder looks like a project.</summary>
     CurrentFolder,
-    /// <summary>Hay un último proyecto usado: hay que preguntar si se usa.</summary>
+    /// <summary>There is a last project used: the user must be asked whether to use it.</summary>
     LastUsed,
-    /// <summary>No se pudo decidir: abrir el selector de carpeta.</summary>
+    /// <summary>It could not be decided: open the folder picker.</summary>
     Selector,
 }
 
 public sealed record ProjectResolution(ProjectOrigin Origin, string? FilePath, bool ParameterInvalid = false);
 
-/// <summary>Cómo se decide cuál es la raíz del proyecto.</summary>
+/// <summary>How the project root is decided.</summary>
 public static class ProjectRoot
 {
     private static readonly string[] Marks = { ConfigStore.FileName, ".git", "pubspec.yaml", "package.json" };
 
-    /// <summary>¿La carpeta parece la raíz de un proyecto? (tiene .git, dev-menu.json, *.sln, pubspec.yaml…)</summary>
+    /// <summary>Does the folder look like a project root? (it has .git, dev-menu.json, *.sln, pubspec.yaml…)</summary>
     public static bool IsProject(string? path)
     {
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return false;
@@ -45,8 +45,8 @@ public static class ProjectRoot
         Directory.Exists(Path.Combine(path, ".git")) || File.Exists(Path.Combine(path, ".git"));
 
     /// <summary>
-    /// Si eligieron una subcarpeta (p. ej. mobile/) y la carpeta de arriba tiene .git o dev-menu.json,
-    /// devuelve la de arriba para ofrecerla como raíz. Si no, null.
+    /// If a subfolder was chosen (e.g. mobile/) and the parent folder has .git or dev-menu.json,
+    /// returns the parent so it can be offered as the root. Otherwise null.
     /// </summary>
     public static string? SuggestParent(string path)
     {
@@ -56,7 +56,7 @@ public static class ProjectRoot
         return !string.IsNullOrEmpty(parent) && HasRepoOrConfig(parent) ? parent : null;
     }
 
-    /// <summary>Parámetro → carpeta actual (si parece proyecto) → último proyecto usado (se pregunta) → selector.</summary>
+    /// <summary>Argument → current folder (if it looks like a project) → last project used (asks) → picker.</summary>
     public static ProjectResolution Resolve(string? parameter, string folderCurrent, string? last)
     {
         var invalid = false;
