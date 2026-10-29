@@ -83,11 +83,13 @@ public sealed class DeviceService
         }
 
         var options = saved.Select(g => $"Reconectar {g}").ToList();
+        options.Insert(0, "Buscar en la red (automático)");
         var iNew = options.Count; options.Add("Escribir una dirección nueva (ip:puerto)");
         var iUsb = options.Count; options.Add("Pasar un teléfono conectado por USB a Wi-Fi");
         var i = _s.Ui.Choose("Conectar dispositivo por red:", options, 0);
         if (i < 0) { _s.Ui.Write("Cancelado.", Level.Muted); return false; }
-        if (i < saved.Count) return ConnectTo(saved[i]);
+        if (i == 0) return Discover();
+        if (i <= saved.Count) return ConnectTo(saved[i - 1]);
         if (i == iUsb) return FromUsb();
 
         _s.Ui.Write("En el teléfono: Opciones de desarrollador → Depuración inalámbrica; ahí aparece «Dirección IP y puerto».", Level.Muted);
@@ -95,6 +97,34 @@ public sealed class DeviceService
         var dir = Normalize(text);
         if (dir is null) { _s.Ui.Write("Dirección no válida.", Level.Error); return false; }
         return ConnectTo(dir);
+    }
+
+    /// <summary>
+    /// Looks for phones announcing wireless debugging (mDNS) and connects to the one you pick, with no address to type.
+    /// Only works for phones already paired with this computer, on the same network.
+    /// </summary>
+    public bool Discover()
+    {
+        if (!HasAdb()) return false;
+        _s.Ui.Write("Buscando teléfonos con depuración inalámbrica en la red…", Level.Info);
+        var connected = _s.Adb!.Devices();
+        var found = _s.Adb.MdnsServices().Where(x => !x.Pairing)
+            .Where(x => !connected.Any(d => d.Ready && (d.Serial.Equals(x.Address, StringComparison.OrdinalIgnoreCase) || d.Serial.StartsWith(x.Name, StringComparison.OrdinalIgnoreCase))))
+            .ToList();
+        if (found.Count == 0)
+        {
+            _s.Ui.Write("No encontré ninguno. Revisa que «Depuración inalámbrica» esté activa en el teléfono, que esté en la misma red Wi-Fi y que ya lo hayas emparejado (acción «Emparejar»).", Level.Warning);
+            _s.Ui.Write("Si tu red aísla los dispositivos entre sí (Wi-Fi de invitados, algunas oficinas) o hay VPN, la detección automática no funciona: usa la dirección ip:puerto.", Level.Muted);
+            return false;
+        }
+        var pick = 0;
+        if (found.Count > 1)
+        {
+            if (!_s.Ui.Interactive) { _s.Ui.Write("Hay varios teléfonos: usa --direccion ip:puerto.", Level.Error); return false; }
+            pick = _s.Ui.Choose("Teléfonos encontrados:", found.Select(x => $"{x.Name}   {x.Address}").ToList(), 0);
+            if (pick < 0) { _s.Ui.Write("Cancelado.", Level.Muted); return false; }
+        }
+        return ConnectTo(found[pick].Address);
     }
 
     private bool ConnectTo(string address)
@@ -160,9 +190,19 @@ public sealed class DeviceService
         if (string.IsNullOrWhiteSpace(dirPair) || string.IsNullOrWhiteSpace(code))
         {
             if (!_s.Ui.Interactive) { _s.Ui.Write("Indica --direccion ip:puerto y --codigo-emparejar.", Level.Error); return false; }
-            _s.Ui.Write("En el teléfono: Depuración inalámbrica → «Vincular dispositivo con código de sincronización».", Level.Muted);
-            _s.Ui.Write("Te muestra una IP:puerto (solo para vincular) y un código de 6 dígitos.", Level.Muted);
-            dirPair = _s.Ui.Ask("IP:puerto de la ventana de vinculación");
+            _s.Ui.Write("En el teléfono: Depuración inalámbrica → «Vincular dispositivo con código de sincronización» (deja esa ventana abierta).", Level.Muted);
+            // While that window is open the phone announces its pairing address, so only the code has to be typed.
+            var announced = string.IsNullOrWhiteSpace(dirPair) ? _s.Adb!.MdnsServices().FirstOrDefault(x => x.Pairing) : null;
+            if (announced is not null)
+            {
+                dirPair = announced.Address;
+                _s.Ui.Write($"Encontré el teléfono que está vinculando ({announced.Address}).", Level.Ok);
+            }
+            else
+            {
+                _s.Ui.Write("Te muestra una IP:puerto (solo para vincular) y un código de 6 dígitos.", Level.Muted);
+                dirPair = _s.Ui.Ask("IP:puerto de la ventana de vinculación");
+            }
             code = _s.Ui.Ask("Código de 6 dígitos");
         }
         var dir = Normalize(dirPair);
@@ -174,6 +214,8 @@ public sealed class DeviceService
         if (!ok) return false;
 
         if (!_s.Ui.Interactive) return true;
+        Thread.Sleep(1500);
+        if (Discover()) return true;
         _s.Ui.Write("Ahora conéctalo con la IP:puerto de la pantalla principal de Depuración inalámbrica (es otro puerto).", Level.Muted);
         var connect = Normalize(_s.Ui.Ask("IP:puerto para conectar (vacío = después)"));
         return connect is null || ConnectTo(connect);

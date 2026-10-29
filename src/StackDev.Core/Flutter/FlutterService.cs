@@ -33,6 +33,16 @@ public sealed class FlutterService
         var ready = all.Where(d => d.Ready && (!d.IsEmulator || emu.Code == EmuCode.Ok)).ToList();
         if (ready.Count > 0) return ready;
 
+        // A paired phone on the same network connects by itself, with no address to type.
+        if (_s.Ui.Interactive && _s.Adb!.MdnsServices().Any(x => !x.Pairing)
+            && _s.Ui.Confirm("Encontré un teléfono con depuración inalámbrica en la red. ¿Conectarlo?", true)
+            && _s.Devices.Discover())
+        {
+            all = _s.Adb.Devices();
+            ready = all.Where(d => d.Ready && (!d.IsEmulator || emu.Code == EmuCode.Ok)).ToList();
+            if (ready.Count > 0) return ready;
+        }
+
         foreach (var d in all.Where(d => !d.Ready && !d.IsEmulator))
             _s.Ui.Write(DeviceService.Label(d), Level.Warning);
         if (emu.Code == EmuCode.NotResponding)

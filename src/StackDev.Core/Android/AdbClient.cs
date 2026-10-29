@@ -10,6 +10,9 @@ public sealed record AdbDevice(string Serial, string State, string Description =
     public bool Ready => State == "device";
 }
 
+/// <summary>A wireless-debugging service a phone announces on the network (mDNS): to connect to it or to pair with it.</summary>
+public sealed record MdnsService(string Name, bool Pairing, string Address);
+
 /// <summary>adb.exe with a time limit. Returns null when it hangs or could not run (the emulator does not answer).</summary>
 public sealed class AdbClient
 {
@@ -62,6 +65,27 @@ public sealed class AdbClient
             if (!m.Success) continue;
             var model = System.Text.RegularExpressions.Regex.Match(m.Groups[3].Value, @"model:(\S+)");
             list.Add(new AdbDevice(m.Groups[1].Value, m.Groups[2].Value, model.Success ? model.Groups[1].Value.Replace('_', ' ') : ""));
+        }
+        return list;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex MdnsLine =
+        new(@"^(\S+)\s+_adb-tls-(connect|pairing)\._tcp\.?\s+(\S+:\d+)\s*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Phones with wireless debugging on that adb can see right now (<c>adb mdns services</c>); empty if none or mDNS is blocked.</summary>
+    public List<MdnsService> MdnsServices()
+    {
+        var output = Run(new[] { "mdns", "services" }, 10);
+        return output is null ? new() : ParseMdns(output);
+    }
+
+    public static List<MdnsService> ParseMdns(string output)
+    {
+        var list = new List<MdnsService>();
+        foreach (var l in output.Split('\n'))
+        {
+            var m = MdnsLine.Match(l.Trim());
+            if (m.Success) list.Add(new MdnsService(m.Groups[1].Value, m.Groups[2].Value == "pairing", m.Groups[3].Value));
         }
         return list;
     }
