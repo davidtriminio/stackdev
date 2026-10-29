@@ -44,6 +44,47 @@ public sealed class FlutterService
         return null;
     }
 
+    private int _lastTarget;
+    private string? _lastCustomUrl;
+
+    /// <summary>
+    /// Which API the app talks to: the one on this PC, the one deployed on the server or an address typed by hand.
+    /// Null = "the local one" (what the app does by itself); otherwise the base URL to pass as API_BASE_URL.
+    /// Cancelled = the user closed the question.
+    /// </summary>
+    private (bool Cancelled, string? Url) ChooseApi()
+    {
+        var options = new List<string>();
+        var urls = new List<string?>();
+        var port = _s.Ctx.Port(ProjectComponent.Api);
+        options.Add(port > 0 ? $"Local: la API de este PC (puerto {port})" : "Local: la API de este PC");
+        urls.Add(null);
+        var domain = _s.Ctx.Config.Deployment?.Domain?.Trim();
+        if (!string.IsNullOrEmpty(domain))
+        {
+            options.Add($"Servidor: https://{domain}");
+            urls.Add($"https://{domain}");
+        }
+        options.Add(_lastCustomUrl is null ? "Otra dirección…" : $"Otra dirección… (última: {_lastCustomUrl})");
+        urls.Add("");
+
+        var pick = _s.Ui.Choose("¿Con qué API va a hablar la app?", options, Math.Min(_lastTarget, options.Count - 1));
+        if (pick < 0) { _s.Ui.Write("Cancelado.", Level.Muted); return (true, null); }
+        _lastTarget = pick;
+        if (urls[pick] != "") return (false, urls[pick]);
+
+        var typed = _s.Ui.Ask("Dirección de la API (ej. https://api.midominio.com o http://192.168.1.20:5000)", _lastCustomUrl);
+        if (typed is null) { _s.Ui.Write("Cancelado.", Level.Muted); return (true, null); }
+        typed = typed.Trim().TrimEnd('/');
+        if (!Uri.TryCreate(typed, UriKind.Absolute, out var u) || u.Scheme is not ("http" or "https"))
+        {
+            _s.Ui.Write("Esa dirección no es válida: debe empezar por http:// o https://.", Level.Error);
+            return (true, null);
+        }
+        _lastCustomUrl = typed;
+        return (false, typed);
+    }
+
     /// <summary>Decides which devices to run on: --dispositivo, the only one there is, or asks (with the "All" option).</summary>
     private List<AdbDevice>? Choose(List<AdbDevice> ready)
     {
@@ -103,6 +144,16 @@ public sealed class FlutterService
         var folder = _s.Ctx.Folder(ProjectComponent.Mobile);
         var ok = true;
 
+        // Asked once for all the devices, and only when nobody already decided it with --dart-define in the arguments.
+        var apiDefined = $"{_s.Ctx.Config.Mobile?.ArgsRun} {_s.Op.ArgsExtra}".Contains("API_BASE_URL", StringComparison.Ordinal);
+        string? apiUrl = null;
+        if (!apiDefined && _s.Ctx.Has(ProjectComponent.Api) && _s.Ui.Interactive)
+        {
+            var (cancelled, url) = ChooseApi();
+            if (cancelled) return false;
+            apiUrl = url;
+        }
+
         foreach (var d in destinations)
         {
             var key = AppKey(d);
@@ -116,7 +167,12 @@ public sealed class FlutterService
             // The emulator sees the PC as 10.0.2.2; a phone does not. With port forwarding, localhost works for it.
             var defines = "";
             var alreadyDefined = $"{_s.Ctx.Config.Mobile?.ArgsRun} {_s.Op.ArgsExtra}".Contains("API_BASE_URL", StringComparison.Ordinal);
-            if (!d.IsEmulator && !alreadyDefined && _s.Ctx.Has(ProjectComponent.Api))
+            if (apiUrl is not null)
+            {
+                defines = $"--dart-define=API_BASE_URL={apiUrl}";
+                _s.Ui.Write($"La app llamará a {apiUrl}.", Level.Muted);
+            }
+            else if (!d.IsEmulator && !alreadyDefined && _s.Ctx.Has(ProjectComponent.Api))
             {
                 defines = $"--dart-define=API_BASE_URL=http://localhost:{_s.Ctx.Port(ProjectComponent.Api)}";
                 _s.Ui.Write($"Teléfono: la app llamará a http://localhost:{_s.Ctx.Port(ProjectComponent.Api)} (puerto reenviado a tu PC).", Level.Muted);

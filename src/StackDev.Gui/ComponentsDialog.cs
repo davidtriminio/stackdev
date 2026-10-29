@@ -238,7 +238,7 @@ public static class ComponentsDialog
             {
                 if (tPg.IsChecked != true)
                 {
-                    MessageBox.Show(window, "Activa primero Postgres.", "stackdev", MessageBoxButton.OK, MessageBoxImage.Information);
+                    Dialogs.Info(window, "Activa primero Postgres.");
                     return;
                 }
                 foreach (var a in apply) a();   // copies what was typed in the fields into the objects
