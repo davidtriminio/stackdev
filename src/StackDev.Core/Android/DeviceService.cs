@@ -214,8 +214,12 @@ public sealed class DeviceService
         if (!ok) return false;
 
         if (!_s.Ui.Interactive) return true;
-        Thread.Sleep(1500);
-        if (Discover()) return true;
+        // Right after pairing the phone takes a few seconds to announce its connect address.
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            Thread.Sleep(2000);
+            if (_s.Adb.MdnsServices().Any(x => !x.Pairing)) return Discover();
+        }
         _s.Ui.Write("Ahora conéctalo con la IP:puerto de la pantalla principal de Depuración inalámbrica (es otro puerto).", Level.Muted);
         var connect = Normalize(_s.Ui.Ask("IP:puerto para conectar (vacío = después)"));
         return connect is null || ConnectTo(connect);
