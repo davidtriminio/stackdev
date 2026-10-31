@@ -226,6 +226,7 @@ public partial class MainWindow : Window
         var parent = ProjectRoot.SuggestParent(root);
         if (parent is not null && Dialogs.Confirm(this, $"«{Path.GetFileName(root)}» parece ser parte del proyecto en:\n{parent}\n\n¿Usar la carpeta raíz del proyecto?"))
             root = parent;
+        OfferCopiedConfig(root);
         _state.LastProject = root;
         _state.AddProject(root);
 
@@ -1704,6 +1705,59 @@ public partial class MainWindow : Window
         await OpenFromHome(path);
     }
 
+    private string? PickFolder(string title)
+    {
+        var d = new Microsoft.Win32.OpenFolderDialog { Title = title };
+        return d.ShowDialog(this) == true ? d.FolderName : null;
+    }
+
+    /// <summary>The folder was renamed or moved: its saved state goes to the new place.</summary>
+    private void RelocateProject(string oldPath)
+    {
+        var fresh = PickFolder($"Nueva carpeta de «{Path.GetFileName(oldPath.TrimEnd('\\', '/'))}»");
+        if (fresh is null) return;
+        if (ProjectRelocation.HasConfig(_state, fresh)
+            && !Dialogs.Confirm(this, "Esa carpeta ya tiene su propia configuración guardada. ¿Reemplazarla por la del proyecto anterior?", false)) return;
+        var r = ProjectRelocation.Relocate(_state, oldPath, fresh);
+        _ui.Write(r.Message, r.Ok ? Level.Ok : Level.Error);
+        if (!r.Ok) Dialogs.Info(this, r.Message);
+        RefreshHome();
+    }
+
+    /// <summary>Copies the configuration of a project of the list to another folder.</summary>
+    private void CopyConfigTo(string fromPath)
+    {
+        var to = PickFolder("Carpeta que recibe la configuración");
+        if (to is null) return;
+        var overwrite = false;
+        if (ProjectRelocation.HasConfig(_state, to))
+        {
+            if (!Dialogs.Confirm(this, "Esa carpeta ya tiene configuración. ¿Reemplazarla? (queda una copia .bak)", false)) return;
+            overwrite = true;
+        }
+        var r = ProjectRelocation.CopyConfig(_state, fromPath, to, overwrite);
+        _ui.Write(r.Message, r.Ok ? Level.Ok : Level.Error);
+        if (!r.Ok) { Dialogs.Info(this, r.Message); return; }
+        _state.AddProject(Path.GetFullPath(to));
+        RefreshHome();
+    }
+
+    /// <summary>A project with no configuration yet: offers to start from another project's instead of detecting from scratch.</summary>
+    private void OfferCopiedConfig(string root)
+    {
+        if (ProjectRelocation.HasConfig(_state, root) || File.Exists(Path.Combine(root, ConfigStore.FileName))) return;
+        var others = _state.ReadProjects()
+            .Where(p => !string.Equals(Path.GetFullPath(p), root, StringComparison.OrdinalIgnoreCase) && ProjectRelocation.HasConfig(_state, p))
+            .Take(10).ToList();
+        if (others.Count == 0) return;
+        var options = new List<string> { "Detectar automáticamente (recomendado)" };
+        options.AddRange(others.Select(p => $"Copiar la configuración de «{Path.GetFileName(p.TrimEnd('\\', '/'))}»   {p}"));
+        var i = Dialogs.Choose(this, "Este proyecto aún no tiene configuración. ¿Cómo la preparo?", options, 0);
+        if (i <= 0) return;
+        var r = ProjectRelocation.CopyConfig(_state, others[i - 1], root, overwrite: false);
+        _ui.Write(r.Message, r.Ok ? Level.Ok : Level.Error);
+    }
+
     private async Task OpenFromHome(string path)
     {
         if (_busy) { _ui.Write("Espera a que termine la acción en curso.", Level.Warning); return; }
@@ -1813,6 +1867,15 @@ public partial class MainWindow : Window
             var remove = new Button { Content = "Quitar de la lista", Style = (Style)FindResource("BtnChip") };
             remove.Click += (_, _) => { _state.RemoveProject(folder); RefreshHome(); };
             buttons.Children.Add(open);
+            if (!exists)
+            {
+                var relocate = new Button { Content = "Reubicar…", Style = (Style)FindResource("BtnChip"), ToolTip = "La carpeta cambió de nombre o de lugar: elige la nueva y se lleva la configuración y el historial" };
+                relocate.Click += (_, _) => RelocateProject(folder);
+                buttons.Children.Add(relocate);
+            }
+            var copy = new Button { Content = "Copiar config…", Style = (Style)FindResource("BtnChip"), ToolTip = "Copia la configuración de este proyecto a otra carpeta" };
+            copy.Click += (_, _) => CopyConfigTo(folder);
+            buttons.Children.Add(copy);
             buttons.Children.Add(remove);
 
             var content = new StackPanel();
@@ -1846,6 +1909,7 @@ public partial class MainWindow : Window
 
         e.Cancel = true;   // it is decided first what to do with what keeps running
         _quit = false;    // if it ends up cancelled, the next X goes to the background again
+        await Task.Yield();   // dialogs and Close() cannot be called while the Closing event is still running
         if (_busy)
         {
             if (!Dialogs.Confirm(this, "Hay una acción en curso. ¿Cancelarla y salir?", false)) return;
@@ -1872,4 +1936,3 @@ public partial class MainWindow : Window
         Close();
     }
 }
-        await Task.Yield();   // dialogs and Close() cannot be called while the Closing event is still running
