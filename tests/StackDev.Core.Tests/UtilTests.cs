@@ -233,3 +233,32 @@ public class PromptDetectionTests
         Assert.Equal(expected, StackDev.Core.Services.ServiceManager.LooksLikePrompt(line));
 }
 
+public class WebProxyTests
+{
+    private const string Json = "{\n  \"/api\": {\n    \"target\": \"http://localhost:5227\",\n    \"secure\": false\n  },\n  \"/other\": { \"target\": \"http://localhost:9000\" }\n}";
+
+    [Fact]
+    public void Rewrite_changes_only_the_api_target()
+    {
+        var text = StackDev.Core.Proc.WebProxy.Rewrite(Json, 5228);
+        Assert.Contains("\"target\": \"http://localhost:5228\"", text);
+        Assert.Contains("http://localhost:9000", text);
+        Assert.DoesNotContain("5227", text);
+    }
+
+    [Fact]
+    public void Find_reports_only_files_that_point_to_another_port()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sd-proxy-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "proxy.conf.json"), Json);
+            var stale = StackDev.Core.Proc.WebProxy.Find(dir, 5228);
+            Assert.Single(stale);
+            Assert.Equal(5227, stale[0].Port);
+            Assert.Empty(StackDev.Core.Proc.WebProxy.Find(dir, 5227));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+}

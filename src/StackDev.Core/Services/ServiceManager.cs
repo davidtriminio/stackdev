@@ -179,6 +179,27 @@ public sealed class ServiceManager
         return !wait || _s.All.Wait(new[] { "api" });
     }
 
+    /// <summary>The web dev server forwards "/api" to a port written in a proxy file: warns when it is not the API's port and offers to fix it.</summary>
+    private void SyncWebProxy()
+    {
+        if (!_s.Ctx.Has(ProjectComponent.Api)) return;
+        var apiPort = _s.Ctx.Port(ProjectComponent.Api);
+        var stale = WebProxy.Find(_s.Ctx.Folder(ProjectComponent.Web), apiPort);
+        if (stale.Count == 0) return;
+
+        var files = string.Join(", ", stale.Select(x => _s.Rel(x.File)));
+        var message = $"La web envía sus llamadas a la API por «{files}» al puerto {stale[0].Port}, pero la API corre en el {apiPort}. Así fallan con ECONNREFUSED.";
+        if (!_s.Ui.Interactive) { _s.Ui.Write(message, Level.Warning); return; }
+        var pick = _s.Ui.Choose(message + "\n\n¿Qué hago?",
+            new[] { $"Cambiar ese archivo al puerto {apiPort}", "Dejarlo como está" }, 0);
+        if (pick != 0) return;
+        foreach (var x in stale)
+        {
+            try { WebProxy.Update(x.File, apiPort); _s.Ui.Write($"{_s.Rel(x.File)}: puerto {x.Port} → {apiPort}", Level.Ok); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _s.Ui.Write($"No pude editar {_s.Rel(x.File)}: {ex.Message}", Level.Error); }
+        }
+    }
+
     public bool StartWeb(bool wait = true)
     {
         if (!_s.AssertComp(ProjectComponent.Web)) return false;
@@ -189,6 +210,7 @@ public sealed class ServiceManager
                 return true;
             case PortCheck.Cancel: return false;
         }
+        SyncWebProxy();
         if (!EnsureNodeModules()) return false;
         var cmd = _s.Command(ProjectComponent.Web, "iniciar");
         if (cmd is null) { _s.Ui.Write("Falta web.iniciar en la configuración.", Level.Error); return false; }
