@@ -72,7 +72,8 @@ public partial class App : Application
         // An unexpected error must not close the window silently.
         DispatcherUnhandledException += (_, e) =>
         {
-            MessageBox.Show(e.Exception.Message, "stackdev", MessageBoxButton.OK, MessageBoxImage.Error);
+            // The window may be closing, when no dialog can be opened: then the error is just swallowed.
+            try { Dialogs.Info(MainWindow, e.Exception.Message); } catch (InvalidOperationException) { }
             e.Handled = true;
         };
     }

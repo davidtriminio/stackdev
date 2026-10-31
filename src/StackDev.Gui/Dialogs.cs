@@ -58,6 +58,19 @@ public static class Dialogs
         return result;
     }
 
+    /// <summary>A notice with a single OK button, drawn with the app's theme (instead of the Windows message box).</summary>
+    public static void Info(Window? owner, string message)
+    {
+        var w = Base(owner, "stackdev", 460);
+        var ok = Button("Entendido", true, cancel: true);
+        ok.Click += (_, _) => w.Close();
+        var root = new StackPanel { Margin = new Thickness(22) };
+        root.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, FontSize = 14 });
+        root.Children.Add(ButtonRow(ok));
+        w.Content = root;
+        w.ShowDialog();
+    }
+
     public static string? Ask(Window? owner, string question, string? byDefault)
     {
         var w = Base(owner, "stackdev", 480);
@@ -81,8 +94,8 @@ public static class Dialogs
     public static int Choose(Window? owner, string title, IReadOnlyList<string> options, int byDefault)
     {
         var w = Base(owner, "stackdev", 480);
-        var list = new ListBox { MaxHeight = 320, Margin = new Thickness(0, 12, 0, 0), BorderThickness = new Thickness(1) };
-        foreach (var o in options) list.Items.Add(o);
+        var list = new ListBox { MaxHeight = 320, Margin = new Thickness(0, 12, 0, 0), BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent };
+        foreach (var o in options) list.Items.Add(new TextBlock { Text = o, TextWrapping = TextWrapping.Wrap });
         list.SelectedIndex = byDefault >= 0 && byDefault < options.Count ? byDefault : (options.Count > 0 ? 0 : -1);
         var ok = Button("Elegir", true);
         var cancel = Button("Cancelar", false, cancel: true);
@@ -134,7 +147,7 @@ public static class Dialogs
         ok.Click += (_, _) =>
         {
             var r = path.Text.Trim().Trim('"');
-            if (!Directory.Exists(r)) { MessageBox.Show(w, "Esa carpeta no existe.", "stackdev", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            if (!Directory.Exists(r)) { Info(w, "Esa carpeta no existe."); return; }
             result = Path.GetFullPath(r);
             w.Close();
         };

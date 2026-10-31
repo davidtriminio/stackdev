@@ -91,10 +91,12 @@ public sealed class ServiceManager
     public bool StartApi(bool wait = true, bool withoutPostgres = false)
     {
         if (!_s.AssertComp(ProjectComponent.Api)) return false;
-        if (Ports.IsListening(_s.Ctx.Port(ProjectComponent.Api)))
+        switch (CheckPort(ProjectComponent.Api))
         {
-            _s.Ui.Write($"La API ya está corriendo en {_s.Ctx.Url(ProjectComponent.Api)}.", Level.Warning);
-            return true;
+            case PortCheck.AlreadyRunning:
+                _s.Ui.Write($"La API ya está corriendo en {_s.Ctx.Url(ProjectComponent.Api)}.", Level.Warning);
+                return true;
+            case PortCheck.Cancel: return false;
         }
         if (!withoutPostgres && _s.Ctx.Has(ProjectComponent.Postgres) && _s.Postgres.State().Code != PostgresCode.Running)
         {
@@ -111,10 +113,12 @@ public sealed class ServiceManager
     public bool StartWeb(bool wait = true)
     {
         if (!_s.AssertComp(ProjectComponent.Web)) return false;
-        if (Ports.IsListening(_s.Ctx.Port(ProjectComponent.Web)))
+        switch (CheckPort(ProjectComponent.Web))
         {
-            _s.Ui.Write($"La web ya está corriendo en {_s.Ctx.Url(ProjectComponent.Web)}.", Level.Warning);
-            return true;
+            case PortCheck.AlreadyRunning:
+                _s.Ui.Write($"La web ya está corriendo en {_s.Ctx.Url(ProjectComponent.Web)}.", Level.Warning);
+                return true;
+            case PortCheck.Cancel: return false;
         }
         if (!EnsureNodeModules()) return false;
         var cmd = _s.Command(ProjectComponent.Web, "iniciar");
@@ -122,6 +126,70 @@ public sealed class ServiceManager
         _s.Ui.Write("Iniciando la web en segundo plano (su salida va al log)...", Level.Info);
         if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), cmd, null)) return false;
         return !wait || _s.All.Wait(new[] { "web" });
+    }
+
+    private enum PortCheck { Free, AlreadyRunning, Cancel }
+
+    /// <summary>
+    /// Before starting: is the component's port free? If somebody else holds it (or Windows / a container has reserved it) the user
+    /// chooses: another free port (saved in the configuration), a port typed by hand, close whoever holds it, or use it as it is.
+    /// Without a person to ask, a busy port counts as "already running", as it always did.
+    /// </summary>
+    private PortCheck CheckPort(ProjectComponent c)
+    {
+        var port = _s.Ctx.Port(c);
+        if (port <= 0) return PortCheck.Free;
+        var key = KeyOf(c);
+        var listening = Ports.IsListening(port);
+        if (listening && Registry.Live(key) is not null) return PortCheck.AlreadyRunning;
+        if (!_s.Ui.Interactive) return listening ? PortCheck.AlreadyRunning : PortCheck.Free;
+
+        var name = Session.Names[c];
+        for (var round = 0; round < 5; round++)
+        {
+            var map = _s.Free.Take(ignoreComponent: c);
+            var why = map.Conflict(port);
+            if (why is null) return PortCheck.Free;
+
+            var fresh = map.Suggest(port + 1);
+            var options = new List<string>();
+            var actions = new List<string>();
+            if (fresh is not null) { options.Add($"Usar el puerto {fresh} (libre)"); actions.Add("suggested"); }
+            options.Add("Escribir otro puerto…"); actions.Add("custom");
+            if (listening && Ports.Pids(port).Count > 0) { options.Add("Cerrar el proceso que lo usa"); actions.Add("kill"); }
+            if (listening) { options.Add($"Ya es {name}: usarla tal como está"); actions.Add("use"); }
+
+            var pick = _s.Ui.Choose($"El puerto {port} de {name} no está libre: {why}.\n¿Qué hago antes de iniciar?", options);
+            if (pick < 0 || pick >= actions.Count) { _s.Ui.Write("Cancelado.", Level.Muted); return PortCheck.Cancel; }
+            switch (actions[pick])
+            {
+                case "use": return PortCheck.AlreadyRunning;
+                case "kill":
+                    foreach (var id in Ports.Pids(port)) ProcessRunner.KillTree(id);
+                    Thread.Sleep(800);
+                    listening = Ports.IsListening(port);
+                    continue;
+                case "custom":
+                    var typed = _s.Ui.Ask($"Puerto para {name} (1024–65535)", fresh?.ToString());
+                    if (typed is null) { _s.Ui.Write("Cancelado.", Level.Muted); return PortCheck.Cancel; }
+                    if (!int.TryParse(typed.Trim(), out var chosen) || chosen is < 1024 or > 65535)
+                    {
+                        _s.Ui.Write("Ese no es un puerto válido.", Level.Error);
+                        continue;
+                    }
+                    if (map.Conflict(chosen) is { } other)
+                    {
+                        _s.Ui.Write($"El puerto {chosen} tampoco está libre: {other}.", Level.Warning);
+                        continue;
+                    }
+                    fresh = chosen;
+                    break;
+            }
+            _s.Free.Apply(new[] { new PortsService.PortChange(c, port, fresh!.Value, why) });
+            port = _s.Ctx.Port(c);
+            listening = Ports.IsListening(port);
+        }
+        return PortCheck.Cancel;
     }
 
     /// <summary>

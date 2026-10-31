@@ -408,11 +408,11 @@
   </Style>
   <Style TargetType="ListBoxItem">
     <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-    <Setter Property="Padding" Value="10,7" />
+    <Setter Property="Padding" Value="12,9" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ListBoxItem">
-          <Border x:Name="Background" Background="Transparent" Padding="{TemplateBinding Padding}">
+          <Border x:Name="Background" Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="8" Margin="0,1">
             <ContentPresenter />
           </Border>
           <ControlTemplate.Triggers>

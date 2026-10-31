@@ -203,14 +203,25 @@ public sealed class PortsService
                     break;
                 case ProjectComponent.Api when copy.Api is not null:
                     copy.Api.Url = Regex.Replace(copy.Api.Url ?? "", @"(://[^/:]+):\d+", $"$1:{c.Fresh}");
-                    copy.Api.Start = ChangePortInText(copy.Api.Start, c.Current, c.Fresh) is { Length: > 0 } i1 ? i1 : copy.Api.Start;
+                    var apiStart = copy.Api.Start ?? "";
+                    copy.Api.Start = ChangePortInText(apiStart, c.Current, c.Fresh) is { Length: > 0 } i1 ? i1 : copy.Api.Start;
                     if (copy.Api.Env is not null)
                         foreach (var k in copy.Api.Env.Keys.ToList())
                             copy.Api.Env[k] = ChangePortInText(copy.Api.Env[k], c.Current, c.Fresh);
+                    // `dotnet run` takes its port from launchSettings.json; the environment variable overrides it without touching the file.
+                    if (copy.Api.Start == apiStart && apiStart.Contains("dotnet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        copy.Api.Env ??= new();
+                        copy.Api.Env["ASPNETCORE_URLS"] = Regex.Replace(copy.Api.Url ?? "", @"/+$", "");
+                    }
                     break;
                 case ProjectComponent.Web when copy.Web is not null:
                     copy.Web.Url = Regex.Replace(copy.Web.Url ?? "", @"(://[^/:]+):\d+", $"$1:{c.Fresh}");
-                    copy.Web.Start = ChangePortInText(copy.Web.Start, c.Current, c.Fresh) is { Length: > 0 } i2 ? i2 : copy.Web.Start;
+                    var webStart = copy.Web.Start ?? "";
+                    copy.Web.Start = ChangePortInText(webStart, c.Current, c.Fresh) is { Length: > 0 } i2 ? i2 : copy.Web.Start;
+                    // `npm start` and the like: pass the port through to the dev server (ng serve, vite, next...).
+                    if (copy.Web.Start == webStart && webStart.Length > 0 && !webStart.Contains("--port", StringComparison.Ordinal))
+                        copy.Web.Start = webStart + (webStart.StartsWith("npm ", StringComparison.OrdinalIgnoreCase) ? " -- " : " ") + $"--port {c.Fresh}";
                     break;
             }
         }
