@@ -1872,3 +1872,4 @@ public partial class MainWindow : Window
         Close();
     }
 }
+        await Task.Yield();   // dialogs and Close() cannot be called while the Closing event is still running
