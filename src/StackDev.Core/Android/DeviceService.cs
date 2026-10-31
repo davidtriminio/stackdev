@@ -108,9 +108,19 @@ public sealed class DeviceService
         if (!HasAdb()) return false;
         _s.Ui.Write("Buscando teléfonos con depuración inalámbrica en la red…", Level.Info);
         var connected = _s.Adb!.Devices();
-        var found = _s.Adb.MdnsServices().Where(x => !x.Pairing)
-            .Where(x => !connected.Any(d => d.Ready && (d.Serial.Equals(x.Address, StringComparison.OrdinalIgnoreCase) || d.Serial.StartsWith(x.Name, StringComparison.OrdinalIgnoreCase))))
-            .ToList();
+        bool IsConnected(MdnsService x) => connected.Any(d => d.Ready && (d.Serial.Equals(x.Address, StringComparison.OrdinalIgnoreCase) || d.Serial.StartsWith(x.Name, StringComparison.OrdinalIgnoreCase)));
+        var services = _s.Adb.MdnsServices().Where(x => !x.Pairing).ToList();
+        var found = services.Where(x => !IsConnected(x)).ToList();
+        if (found.Count == 0)
+        {
+            // adb connects paired phones by itself once they announce themselves: there may be nothing left to do.
+            var already = connected.Where(d => d.Ready && d.IsNetwork).ToList();
+            if (already.Count > 0)
+            {
+                foreach (var d in already) _s.Ui.Write($"Ya está conectado: {Label(d)}", Level.Ok);
+                return true;
+            }
+        }
         if (found.Count == 0)
         {
             _s.Ui.Write("No encontré ninguno. Revisa que «Depuración inalámbrica» esté activa en el teléfono, que esté en la misma red Wi-Fi y que ya lo hayas emparejado (acción «Emparejar»).", Level.Warning);
@@ -218,7 +228,7 @@ public sealed class DeviceService
         for (var attempt = 0; attempt < 6; attempt++)
         {
             Thread.Sleep(2000);
-            if (_s.Adb.MdnsServices().Any(x => !x.Pairing)) return Discover();
+            if (_s.Adb.MdnsServices().Any(x => !x.Pairing) || _s.Adb.Devices().Any(d => d.Ready && d.IsNetwork)) return Discover();
         }
         _s.Ui.Write("Ahora conéctalo con la IP:puerto de la pantalla principal de Depuración inalámbrica (es otro puerto).", Level.Muted);
         var connect = Normalize(_s.Ui.Ask("IP:puerto para conectar (vacío = después)"));
