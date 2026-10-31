@@ -262,3 +262,30 @@ public class WebProxyTests
         finally { Directory.Delete(dir, true); }
     }
 }
+
+public class WebProxyCopyTests
+{
+    [Fact]
+    public void WriteCopy_leaves_the_project_file_untouched()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sd-proxycopy-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var original = "{ \"/api\": { \"target\": \"http://localhost:5227\" } }";
+            var source = Path.Combine(dir, "proxy.conf.json");
+            File.WriteAllText(source, original);
+            var copy = StackDev.Core.Proc.WebProxy.WriteCopy(source, 5228, Path.Combine(dir, "out"));
+            Assert.Equal(original, File.ReadAllText(source));
+            Assert.Contains("localhost:5228", File.ReadAllText(copy));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Theory]
+    [InlineData("npm start", "npm start -- --x")]
+    [InlineData("npm start -- --port 1", "npm start -- --port 1 --x")]
+    [InlineData("pnpm start --port 1", "pnpm start --port 1 --x")]
+    public void AppendArg_handles_npm(string command, string expected) =>
+        Assert.Equal(expected, StackDev.Core.Services.ServiceManager.AppendArg(command, "--x"));
+}

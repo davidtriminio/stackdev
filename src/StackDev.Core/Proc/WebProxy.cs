@@ -32,10 +32,12 @@ public static class WebProxy
     public static string Rewrite(string text, int apiPort) =>
         ApiTarget.Replace(text, m => m.Groups[1].Value + apiPort);
 
-    /// <summary>Points the file's "/api" target to <paramref name="apiPort"/>, keeping the rest of the file untouched.</summary>
-    public static void Update(string file, int apiPort)
+    /// <summary>Writes a copy of the proxy file with the "/api" target on <paramref name="apiPort"/> into <paramref name="folder"/> and returns its path.</summary>
+    public static string WriteCopy(string source, int apiPort, string folder)
     {
-        var text = File.ReadAllText(file);
-        File.WriteAllText(file, Rewrite(text, apiPort), new System.Text.UTF8Encoding(false));
+        Directory.CreateDirectory(folder);
+        var copy = Path.Combine(folder, "web.proxy.conf.json");
+        File.WriteAllText(copy, Rewrite(File.ReadAllText(source), apiPort), new System.Text.UTF8Encoding(false));
+        return copy;
     }
 }

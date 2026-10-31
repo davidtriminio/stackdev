@@ -179,26 +179,36 @@ public sealed class ServiceManager
         return !wait || _s.All.Wait(new[] { "api" });
     }
 
-    /// <summary>The web dev server forwards "/api" to a port written in a proxy file: warns when it is not the API's port and offers to fix it.</summary>
-    private void SyncWebProxy()
+    /// <summary>
+    /// The web dev server forwards "/api" to a port written in a proxy file of the project. When that is not the API's port every
+    /// call fails, so the web is started with a copy of the file kept in stackdev's own folder (<c>--proxy-config</c>); the
+    /// project's file is never touched, so nothing shows up in its git.
+    /// </summary>
+    private string WithProxyOverride(string command)
     {
-        if (!_s.Ctx.Has(ProjectComponent.Api)) return;
+        if (!_s.Ctx.Has(ProjectComponent.Api) || command.Contains("--proxy-config", StringComparison.Ordinal)) return command;
         var apiPort = _s.Ctx.Port(ProjectComponent.Api);
         var stale = WebProxy.Find(_s.Ctx.Folder(ProjectComponent.Web), apiPort);
-        if (stale.Count == 0) return;
-
-        var files = string.Join(", ", stale.Select(x => _s.Rel(x.File)));
-        var message = $"La web envía sus llamadas a la API por «{files}» al puerto {stale[0].Port}, pero la API corre en el {apiPort}. Así fallan con ECONNREFUSED.";
-        if (!_s.Ui.Interactive) { _s.Ui.Write(message, Level.Warning); return; }
-        var pick = _s.Ui.Choose(message + "\n\n¿Qué hago?",
-            new[] { $"Cambiar ese archivo al puerto {apiPort}", "Dejarlo como está" }, 0);
-        if (pick != 0) return;
-        foreach (var x in stale)
+        if (stale.Count == 0) return command;
+        var source = stale.OrderBy(x => x.File.Length).First();
+        try
         {
-            try { WebProxy.Update(x.File, apiPort); _s.Ui.Write($"{_s.Rel(x.File)}: puerto {x.Port} → {apiPort}", Level.Ok); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { _s.Ui.Write($"No pude editar {_s.Rel(x.File)}: {ex.Message}", Level.Error); }
+            var copy = WebProxy.WriteCopy(source.File, apiPort, Path.Combine(_s.State.Dir, "proxy", _s.Key));
+            _s.Ui.Write($"La web llamaba a la API en el puerto {source.Port} y corre en el {apiPort}: la inicio con un proxy temporal (tu {_s.Rel(source.File)} no se toca).", Level.Muted);
+            return AppendArg(command, $"--proxy-config \"{copy}\"");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _s.Ui.Write($"La web apunta al puerto {source.Port} pero la API corre en el {apiPort}, y no pude preparar un proxy temporal: {ex.Message}", Level.Warning);
+            return command;
         }
     }
+
+    /// <summary>Adds an argument to a script command: <c>npm start</c> needs <c>--</c> before it, the others take it as is.</summary>
+    public static string AppendArg(string command, string arg) =>
+        command.StartsWith("npm ", StringComparison.OrdinalIgnoreCase) && !command.Contains(" -- ", StringComparison.Ordinal)
+            ? $"{command} -- {arg}"
+            : $"{command} {arg}";
 
     public bool StartWeb(bool wait = true)
     {
@@ -210,12 +220,11 @@ public sealed class ServiceManager
                 return true;
             case PortCheck.Cancel: return false;
         }
-        SyncWebProxy();
         if (!EnsureNodeModules()) return false;
         var cmd = _s.Command(ProjectComponent.Web, "iniciar");
         if (cmd is null) { _s.Ui.Write("Falta web.iniciar en la configuración.", Level.Error); return false; }
         _s.Ui.Write("Iniciando la web en segundo plano (su salida va al log)...", Level.Info);
-        if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), cmd, null)) return false;
+        if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), WithProxyOverride(cmd), null)) return false;
         return !wait || _s.All.Wait(new[] { "web" });
     }
 
