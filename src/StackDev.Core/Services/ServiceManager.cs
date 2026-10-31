@@ -106,7 +106,7 @@ public sealed class ServiceManager
         var cmd = _s.Command(ProjectComponent.Api, "iniciar");
         if (cmd is null) { _s.Ui.Write("Falta api.iniciar en la configuración.", Level.Error); return false; }
         _s.Ui.Write("Iniciando la API en segundo plano (su salida va al log)...", Level.Info);
-        if (!StartHidden("api", _s.Ctx.Folder(ProjectComponent.Api), cmd, _s.Ctx.Config.Api?.Env)) return false;
+        if (!StartHidden("api", _s.Ctx.Folder(ProjectComponent.Api), WithUrls(cmd, _s.Ctx.Url(ProjectComponent.Api)), _s.Ctx.Config.Api?.Env)) return false;
         return !wait || _s.All.Wait(new[] { "api" });
     }
 
@@ -126,6 +126,24 @@ public sealed class ServiceManager
         _s.Ui.Write("Iniciando la web en segundo plano (su salida va al log)...", Level.Info);
         if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), cmd, null)) return false;
         return !wait || _s.All.Wait(new[] { "web" });
+    }
+
+    private static readonly Regex DotnetRun = new(@"\bdotnet\s+run\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// <c>dotnet run</c> listens where launchSettings.json says, whatever the configured URL or ASPNETCORE_URLS is (the launch
+    /// profile wins over the environment). <c>--urls</c> after <c>--</c> is the one thing that beats it, so the port stackdev
+    /// checks, shows and stops is the port the API really uses.
+    /// </summary>
+    public static string WithUrls(string command, string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var u)) return command;
+        if (!DotnetRun.IsMatch(command) || command.Contains("--urls", StringComparison.OrdinalIgnoreCase)
+            || command.Contains("--no-launch-profile", StringComparison.OrdinalIgnoreCase)) return command;
+        var origin = $"{u.Scheme}://{u.Host}:{u.Port}";
+        return command.Contains(" -- ", StringComparison.Ordinal) || command.EndsWith(" --", StringComparison.Ordinal)
+            ? $"{command} --urls {origin}"
+            : $"{command} -- --urls {origin}";
     }
 
     private enum PortCheck { Free, AlreadyRunning, Cancel }

@@ -208,12 +208,6 @@ public sealed class PortsService
                     if (copy.Api.Env is not null)
                         foreach (var k in copy.Api.Env.Keys.ToList())
                             copy.Api.Env[k] = ChangePortInText(copy.Api.Env[k], c.Current, c.Fresh);
-                    // `dotnet run` takes its port from launchSettings.json; the environment variable overrides it without touching the file.
-                    if (copy.Api.Start == apiStart && apiStart.Contains("dotnet", StringComparison.OrdinalIgnoreCase))
-                    {
-                        copy.Api.Env ??= new();
-                        copy.Api.Env["ASPNETCORE_URLS"] = Regex.Replace(copy.Api.Url ?? "", @"/+$", "");
-                    }
                     break;
                 case ProjectComponent.Web when copy.Web is not null:
                     copy.Web.Url = Regex.Replace(copy.Web.Url ?? "", @"(://[^/:]+):\d+", $"$1:{c.Fresh}");
