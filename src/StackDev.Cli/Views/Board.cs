@@ -15,6 +15,7 @@ public static class Board
     private static string Color(ServiceCode c) => c switch
     {
         ServiceCode.Running => "green",
+        ServiceCode.WaitingInput => "yellow",
         ServiceCode.Starting => "yellow",
         ServiceCode.Error => "red",
         _ => "grey",

@@ -55,6 +55,9 @@ public sealed class StartAllOrchestrator
                 }
             }
             if (pending.Count == 0) break;
+            foreach (var c in pending.Keys.Where(k => k != "emulador"))
+                if (_s.Services.OfferPromptHelp(c == "api" ? ProjectComponent.Api : ProjectComponent.Web))
+                    limit = Environment.TickCount64 + seconds * 1000L;   // the user is answering in the terminal: more time
             if (Environment.TickCount64 > limit)
             {
                 _s.Ui.Write("");

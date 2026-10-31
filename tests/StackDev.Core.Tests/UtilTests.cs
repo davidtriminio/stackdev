@@ -217,3 +217,19 @@ public class DotnetRunUrlsTests
     public void WithUrls_appends_the_configured_address_only_to_dotnet_run(string command, string? url, string expected) =>
         Assert.Equal(expected, StackDev.Core.Services.ServiceManager.WithUrls(command, url));
 }
+
+public class PromptDetectionTests
+{
+    [Theory]
+    [InlineData("removed and reinstalled from scratch. Proceed? (Y/n)", true)]
+    [InlineData("? The modules directory at node_modules will be remo", true)]
+    [InlineData("Ok to proceed? (y)", true)]
+    [InlineData("Overwrite existing file [y/N]", true)]
+    [InlineData("Press any key to continue . . .", true)]
+    [InlineData("08:52:52 info: Now listening on: http://localhost:5227", false)]
+    [InlineData("Update available! 11.24.0 -> 12.16.1.", false)]
+    [InlineData("Local:   http://localhost:4200/", false)]
+    public void Recognises_lines_that_ask_for_an_answer(string line, bool expected) =>
+        Assert.Equal(expected, StackDev.Core.Services.ServiceManager.LooksLikePrompt(line));
+}
+
