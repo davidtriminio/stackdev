@@ -248,7 +248,7 @@ html,body{margin:0;height:100%;background:#08090A;overflow:hidden}
   var pend=null; new ResizeObserver(function(){ if(pend) clearTimeout(pend); pend=setTimeout(ajustar,30); }).observe(el);
   window.chrome.webview.addEventListener('message',function(e){
     var m=e.data;
-    if(m.t==='o') term.write(m.d);
+    if(m.t==='o'){ var n=m.d.length; term.write(m.d,function(){ post({t:'a',n:n}); }); }
     else if(m.t==='paste') term.paste(m.d);
     else if(m.t==='focus'){ ajustar(); term.focus(); }
   });
