@@ -13,6 +13,10 @@ It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + P
 **Local development**
 - Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it. .NET, Angular and Flutter are built in; **Node (NestJS, Express, Fastify, Next, Nuxt, SvelteKit, Vite, CRA, Vue CLI) and Python (Django, FastAPI, Flask)** come from [profiles](CONTRIBUTING.md#project-profiles), plain JSON files anyone can add.
 - One panel with live status and buttons for every service: *Start all*, *Check*, *Stop all*, logs, device conditions, a command console.
+- **Busy ports are caught before starting.** If the API or web port is held by another process, a container, another project or a Windows reservation, you are told who has it and choose: the next free port (saved in the config), a port you type, close the process, or use it as it is. `dotnet run` and the web dev server follow the port you picked, and a web proxy that points to another API port is corrected with a temporary copy, never by editing your files.
+- **Services that stop to ask something are noticed.** A service started in the background cannot answer a prompt such as pnpm's *"remove node_modules? (Y/n)"*; the card shows *waiting for your answer* with the question and offers to continue in a terminal.
+- **Mobile app and phones.** Running the app asks which API it talks to (this PC, your server or any address). Phones with wireless debugging (Android 11+) are found on the network and connected without typing an IP and port; pairing needs only the six-digit code.
+- **Moved or renamed a project folder?** *Relocate* takes its configuration and history to the new folder, and a project's configuration can be copied to another one.
 - A command-line version (`stackdev up`, `stackdev api start`, …) for scripts, with proper exit codes.
 
 **Deploy to your own server** (SSH, nothing to install on the server)
@@ -23,6 +27,14 @@ It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + P
 - **Edit the server's `.env`** with hidden secrets and automatic restore if the service stops starting.
 
 Everything is guided with forms in one window. Every remote command has a time limit and a Cancel button, so nothing waits forever.
+
+## Screenshots
+
+![The panel with every service running](docs/images/panel.png)
+
+| Busy port | Phones over Wi-Fi | Upload API |
+|---|---|---|
+| ![A busy port is caught before starting](docs/images/busy-port.png) | ![Phone found on the network](docs/images/phones.png) | ![Uploading an API to your own server](docs/images/deploy.png) |
 
 ## Safety
 
