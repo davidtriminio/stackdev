@@ -204,3 +204,16 @@ public class EnvPerFolderTests
         Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, ctx.StartAll);
     }
 }
+
+public class DotnetRunUrlsTests
+{
+    [Theory]
+    [InlineData("dotnet run --project src/Api", "http://localhost:5228", "dotnet run --project src/Api -- --urls http://localhost:5228")]
+    [InlineData("dotnet run --project src/Api -- --foo", "http://localhost:5228/", "dotnet run --project src/Api -- --foo --urls http://localhost:5228")]
+    [InlineData("dotnet run --urls http://x:1", "http://localhost:5228", "dotnet run --urls http://x:1")]
+    [InlineData("dotnet watch run", "http://localhost:5228", "dotnet watch run")]
+    [InlineData("npm start", "http://localhost:5228", "npm start")]
+    [InlineData("dotnet run", null, "dotnet run")]
+    public void WithUrls_appends_the_configured_address_only_to_dotnet_run(string command, string? url, string expected) =>
+        Assert.Equal(expected, StackDev.Core.Services.ServiceManager.WithUrls(command, url));
+}
