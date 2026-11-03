@@ -8,9 +8,9 @@ using StackDev.Core.Ui;
 
 namespace StackDev.Core.Services;
 
-public enum ServiceCode { Stopped, Starting, Running, Error, NoConfig }
+public enum ServiceCode { Stopped, Starting, Running, Error, NoConfig, WaitingInput }
 
-public sealed record ServiceState(ServiceCode Code, string Text, string? Url = null, int? Pid = null)
+public sealed record ServiceState(ServiceCode Code, string Text, string? Url = null, int? Pid = null, string? Prompt = null)
 {
     public bool Running => Code == ServiceCode.Running;
 }
@@ -51,11 +51,80 @@ public sealed class ServiceManager
         var url = _s.Ctx.Url(c);
         var live = Registry.Live(key);
         if (Ports.IsListening(_s.Ctx.Port(c))) return new(ServiceCode.Running, "CORRIENDO", url, live?.Id);
-        if (live is not null) return new(ServiceCode.Starting, "ARRANCANDO", url, live.Id);
+        if (live is not null)
+        {
+            if (PendingPrompt(key) is { } question) return new(ServiceCode.WaitingInput, "ESPERA TU RESPUESTA", url, live.Id, question);
+            return new(ServiceCode.Starting, "ARRANCANDO", url, live.Id);
+        }
         var code = ReadMark(key);
         if (code is not null && code != "0")
             return new(ServiceCode.Error, $"TERMINÓ (código {code}): revisa el log");
         return new(ServiceCode.Stopped, "DETENIDA");
+    }
+
+    // What a program prints when it stops to ask something: "(Y/n)", "[y/N]", "Proceed?", "Press any key", an inquirer-style "? question".
+    private static readonly Regex AsksSomething = new(
+        @"\((?:Y/n|y/N|y/n|Y/N)\)|\[(?:Y/n|y/N|y/n|Y/N|yes/no)\]|\bProceed\?|Press (?:any key|Enter)|Ok to proceed|^\s*\? \S.+",
+        RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
+
+    public static bool LooksLikePrompt(string line) => AsksSomething.IsMatch(line);
+
+    private const int QuietSeconds = 4;
+
+    /// <summary>
+    /// The question a hidden service is stuck on, if any: its output ends in something that looks like a prompt and has stayed
+    /// silent for a few seconds. A service started in the background has nobody to answer, so it would wait forever, unseen.
+    /// </summary>
+    public string? PendingPrompt(string key)
+    {
+        try
+        {
+            var log = LogPath(key);
+            if (!File.Exists(log) || (DateTime.UtcNow - File.GetLastWriteTimeUtc(log)).TotalSeconds < QuietSeconds) return null;
+            var tail = LastLines(key, 12);
+            for (var i = tail.Count - 1; i >= 0; i--)
+                if (LooksLikePrompt(tail[i])) return tail[i].Trim();
+        }
+        catch (IOException) { }
+        return null;
+    }
+
+    private readonly Dictionary<string, string> _asked = new();
+
+    /// <summary>
+    /// If the service is waiting for an answer, says so and offers to continue in a terminal where it can be answered.
+    /// Asked once per question. True when it was opened in a terminal.
+    /// </summary>
+    public bool OfferPromptHelp(ProjectComponent c)
+    {
+        var key = KeyOf(c);
+        if (State(c) is not { Code: ServiceCode.WaitingInput, Prompt: { } question }) return false;
+        if (_asked.TryGetValue(key, out var before) && before == question) return false;
+        _asked[key] = question;
+
+        var name = Session.Names[c];
+        _s.Ui.Write("");
+        _s.Ui.Write($"{name} está esperando una respuesta que nadie puede darle en segundo plano:", Level.Warning);
+        _s.Ui.Write("  " + question, Level.Warning);
+        if (!_s.Ui.Interactive) return false;
+        var pick = _s.Ui.Choose($"{name} pregunta:\n{question}\n\n¿Qué hago?",
+            new[] { "Abrir en una terminal para responder (recomendado)", "Seguir esperando", $"Detener {name}" }, 0);
+        if (pick == 2) { Stop(c, silent: true); return false; }
+        return pick == 0 && OpenInTerminal(c);
+    }
+
+    /// <summary>Stops the background process and starts the same command in a visible terminal, where its questions can be answered.</summary>
+    public bool OpenInTerminal(ProjectComponent c)
+    {
+        var cmd = _s.Command(c, "iniciar");
+        if (cmd is null) return false;
+        var key = KeyOf(c);
+        StopProcess(key);
+        Thread.Sleep(500);
+        if (c == ProjectComponent.Api) cmd = WithUrls(cmd, _s.Ctx.Url(c));
+        var ok = _s.Executor.InWindow(key, $"{Session.Names[c]} - {_s.Ctx.Name}", _s.Ctx.Folder(c), cmd, c == ProjectComponent.Api ? _s.Ctx.Config.Api?.Env : null);
+        _s.Ui.Write(ok ? $"{Session.Names[c]} sigue en una terminal: responde ahí." : "No se pudo abrir la terminal.", ok ? Level.Ok : Level.Error);
+        return ok;
     }
 
     private string? ReadMark(string key)
@@ -110,6 +179,37 @@ public sealed class ServiceManager
         return !wait || _s.All.Wait(new[] { "api" });
     }
 
+    /// <summary>
+    /// The web dev server forwards "/api" to a port written in a proxy file of the project. When that is not the API's port every
+    /// call fails, so the web is started with a copy of the file kept in stackdev's own folder (<c>--proxy-config</c>); the
+    /// project's file is never touched, so nothing shows up in its git.
+    /// </summary>
+    private string WithProxyOverride(string command)
+    {
+        if (!_s.Ctx.Has(ProjectComponent.Api) || command.Contains("--proxy-config", StringComparison.Ordinal)) return command;
+        var apiPort = _s.Ctx.Port(ProjectComponent.Api);
+        var stale = WebProxy.Find(_s.Ctx.Folder(ProjectComponent.Web), apiPort);
+        if (stale.Count == 0) return command;
+        var source = stale.OrderBy(x => x.File.Length).First();
+        try
+        {
+            var copy = WebProxy.WriteCopy(source.File, apiPort, Path.Combine(_s.State.Dir, "proxy", _s.Key));
+            _s.Ui.Write($"La web llamaba a la API en el puerto {source.Port} y corre en el {apiPort}: la inicio con un proxy temporal (tu {_s.Rel(source.File)} no se toca).", Level.Muted);
+            return AppendArg(command, $"--proxy-config \"{copy}\"");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _s.Ui.Write($"La web apunta al puerto {source.Port} pero la API corre en el {apiPort}, y no pude preparar un proxy temporal: {ex.Message}", Level.Warning);
+            return command;
+        }
+    }
+
+    /// <summary>Adds an argument to a script command: <c>npm start</c> needs <c>--</c> before it, the others take it as is.</summary>
+    public static string AppendArg(string command, string arg) =>
+        command.StartsWith("npm ", StringComparison.OrdinalIgnoreCase) && !command.Contains(" -- ", StringComparison.Ordinal)
+            ? $"{command} -- {arg}"
+            : $"{command} {arg}";
+
     public bool StartWeb(bool wait = true)
     {
         if (!_s.AssertComp(ProjectComponent.Web)) return false;
@@ -124,7 +224,7 @@ public sealed class ServiceManager
         var cmd = _s.Command(ProjectComponent.Web, "iniciar");
         if (cmd is null) { _s.Ui.Write("Falta web.iniciar en la configuración.", Level.Error); return false; }
         _s.Ui.Write("Iniciando la web en segundo plano (su salida va al log)...", Level.Info);
-        if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), cmd, null)) return false;
+        if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), WithProxyOverride(cmd), null)) return false;
         return !wait || _s.All.Wait(new[] { "web" });
     }
 

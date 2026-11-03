@@ -63,6 +63,7 @@ public sealed class ServiceCard : Border
         _dot.Fill = st.Code switch
         {
             ServiceCode.Running => Brush.Parse("#22C55E"),
+            ServiceCode.WaitingInput => Brush.Parse("#F59E0B"),
             ServiceCode.Starting => Brush.Parse("#F59E0B"),
             ServiceCode.Error => Brush.Parse("#EF4444"),
             _ => Brush.Parse("#8A8F98"),

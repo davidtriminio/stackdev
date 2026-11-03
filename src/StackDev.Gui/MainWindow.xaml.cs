@@ -622,6 +622,7 @@ public partial class MainWindow : Window
     private static string ServiceColor(ServiceCode c) => c switch
     {
         ServiceCode.Running => "OkBrush",
+        ServiceCode.WaitingInput => "WarnBrush",
         ServiceCode.Starting => "WarnBrush",
         ServiceCode.Error => "ErrBrush",
         _ => "MutedBrush",
@@ -654,11 +655,13 @@ public partial class MainWindow : Window
             var brief = e.Code switch
             {
                 ServiceCode.Running => "CORRIENDO",
+                ServiceCode.WaitingInput => "ESPERA TU RESPUESTA",
                 ServiceCode.Starting => "ARRANCANDO",
                 ServiceCode.Error => "TERMINÓ CON ERROR",
                 _ => "DETENIDA",
             };
-            Put(section, ServiceColor(e.Code), brief, e.Running ? (e.Url ?? "") : (log ?? e.Url ?? ""));
+            Put(section, ServiceColor(e.Code), brief, e.Running ? (e.Url ?? "") : (e.Prompt ?? log ?? e.Url ?? ""));
+            if (e.Code == ServiceCode.WaitingInput) OfferAnswer(section == "API" ? ProjectComponent.Api : ProjectComponent.Web, e.Prompt);
         }
 
         if (s.Ctx.Has(ProjectComponent.Mobile))
@@ -675,6 +678,28 @@ public partial class MainWindow : Window
             Put("FLUTTER", i.App ? "OkBrush" : "MutedBrush", i.App ? "CORRIENDO" : "DETENIDA",
                 i.App ? $"flutter run ({s.BuildMode}) en {s.Services.LiveApps().Count} sesión(es), cada una en su ventana" : $"Modo: {s.BuildMode}");
         }
+    }
+
+    private readonly HashSet<string> _answerAsked = new();
+    private bool _answerOpen;
+
+    /// <summary>A service stuck on a question (pnpm asking Y/n...): says so once and offers to answer it in a terminal.</summary>
+    private void OfferAnswer(ProjectComponent c, string? question)
+    {
+        if (_s is null || question is null || _answerOpen || !_answerAsked.Add(c + ":" + question)) return;
+        _answerOpen = true;
+        Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            try
+            {
+                var name = Session.Names[c];
+                var i = Dialogs.Choose(this, $"{name} está esperando una respuesta:\n\n{question}\n\nEn segundo plano nadie puede contestarle.",
+                    new[] { "Abrir en una terminal para responder", $"Detener {name}", "Ahora no" }, 0);
+                if (i == 0) await RunAsync($"Abrir {name} en una terminal", x => x.Services.OpenInTerminal(c));
+                else if (i == 1) await RunAsync($"Detener {name}", x => { x.Services.Stop(c, silent: true); return true; });
+            }
+            finally { _answerOpen = false; }
+        }));
     }
 
     private void Tick()
