@@ -36,6 +36,14 @@ Everything is guided with forms in one window. Every remote command has a time l
 |---|---|---|
 | ![A busy port is caught before starting](docs/images/busy-port.png) | ![Phone found on the network](docs/images/phones.png) | ![Uploading an API to your own server](docs/images/deploy.png) |
 
+## Download
+
+Get `stackdev-gui-<version>-win-x64.exe` from the [latest release](https://github.com/davidtriminio/stackdev/releases/latest) and run it. It already includes .NET, so there is nothing else to install (it weighs about 73 MB). It needs Windows 10 or 11 (64-bit); the integrated terminal uses Microsoft Edge WebView2, which comes with Windows 11 and with Edge on Windows 10.
+
+The file is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Choose *More info*, then *Run anyway*. The source is in this repository if you prefer to build it yourself.
+
+Open your project's folder and press *Start all*.
+
 ## Safety
 
 - The server's SSH fingerprint is pinned in a private `known_hosts`; connections go ahead only if it matches (`StrictHostKeyChecking=yes`).
@@ -68,11 +76,13 @@ dotnet run --project src/StackDev.App
 
 Open a project folder and it shows the API and web services with their state and start, stop, restart, open and log actions. The core and this window are built and tested on Windows, Ubuntu and macOS in CI, but the window has been tried by hand only on Windows so far. Not in it yet: Postgres/Docker, the emulator and the mobile app, terminals, credentials and deploying to a server. Outside Windows secrets are not encrypted yet (no system keychain), which is why the credentials and servers parts are left out.
 
-Single-file build of the window:
+Single-file build of the window, self-contained (the release file, about 73 MB; much larger than one that needs the .NET runtime):
 
 ```powershell
-dotnet publish src/StackDev.Gui -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=none -o publish\portable
+dotnet publish src/StackDev.Gui -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish\selfcontained
 ```
+
+Add `--self-contained false` (and drop the compression option) for a small file that needs the .NET 10 Desktop Runtime installed.
 
 Install the command line as a .NET tool:
 

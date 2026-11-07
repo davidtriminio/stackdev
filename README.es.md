@@ -15,6 +15,14 @@ Se usa como ventana (WPF, Windows) o como línea de comandos que se instala como
 |---|---|---|
 | ![Se detecta un puerto ocupado antes de iniciar](docs/images/busy-port.png) | ![Teléfono encontrado en la red](docs/images/phones.png) | ![Subiendo una API a tu propio servidor](docs/images/deploy.png) |
 
+## Descarga
+
+Baja `stackdev-gui-<versión>-win-x64.exe` del [último release](https://github.com/davidtriminio/stackdev/releases/latest) y ejecútalo. Ya incluye .NET, así que no hay que instalar nada más (pesa unos 73 MB). Necesita Windows 10 u 11 (64 bits); la terminal integrada usa Microsoft Edge WebView2, que viene con Windows 11 y con Edge en Windows 10.
+
+El archivo aún no está firmado, así que Windows SmartScreen puede mostrar «Windows protegió su equipo». Elige *Más información* y luego *Ejecutar de todas formas*. Si prefieres no confiar en un ejecutable, el código fuente está en este repositorio y puedes compilarlo tú.
+
+Abre la carpeta de tu proyecto y pulsa *Levantar todo*.
+
 ## Requisitos
 
 - Windows 10/11 · .NET SDK 10 (`dotnet --list-sdks` debe mostrar `10.x`)
@@ -85,9 +93,11 @@ La misma lógica con interfaz gráfica (WPF, tema oscuro): tarjetas por servicio
 
 ```powershell
 dotnet run --project src/StackDev.Gui                     # probar
-dotnet publish src/StackDev.Gui -c Release -r win-x64 --self-contained false -o publish\gui
-publish\gui\stackdev-gui.exe C:\ruta\al\proyecto        # la ruta es opcional
+dotnet publish src/StackDev.Gui -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish\selfcontained
+publish\selfcontained\stackdev-gui.exe C:\ruta\al\proyecto   # la ruta es opcional
 ```
+
+Es el mismo archivo del release: un solo `.exe` autocontenido, de unos 73 MB. Con `--self-contained false` (y sin la compresión) sale un archivo mucho más pequeño, pero necesita el runtime de escritorio de .NET 10 instalado.
 
 Sin ruta abre la carpeta actual si parece un proyecto, o el último usado, o muestra el selector. Comparte con la versión de consola el estado (`%APPDATA%\stackdev`) y `dev-menu.json`.
 
