@@ -37,7 +37,7 @@ internal sealed class TrayMenu : Window
                 continue;
             }
             var row = new Button { Content = text, Style = ServerDialogs.GetStyle("BtnMenuItem") };
-            row.Click += (_, _) => { Close(); run(); };
+            row.Click += (_, _) => { CloseOnce(); run(); };
             rows.Children.Add(row);
         }
         Content = new Border
@@ -46,8 +46,18 @@ internal sealed class TrayMenu : Window
             CornerRadius = new CornerRadius(10), Padding = new Thickness(6), Margin = new Thickness(10),
             Effect = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = 0.45 }, Child = rows,
         };
-        Deactivated += (_, _) => Close();
-        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
+        Deactivated += (_, _) => CloseOnce();
+        KeyDown += (_, e) => { if (e.Key == Key.Escape) CloseOnce(); };
+    }
+
+    private bool _closing;
+
+    /// <summary>Closing a menu deactivates it, which asks to close it again; WPF throws if Close is called while the window is already closing.</summary>
+    private void CloseOnce()
+    {
+        if (_closing) return;
+        _closing = true;
+        Close();
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

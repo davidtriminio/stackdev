@@ -154,7 +154,7 @@ public sealed class Session
             if (code is not null)
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(code, Util.Args.Quote(Store.FilePath)) { UseShellExecute = true, CreateNoWindow = true });
             else
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("notepad.exe", Util.Args.Quote(Store.FilePath)) { UseShellExecute = true });
+                { if (OperatingSystem.IsWindows()) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("notepad.exe", Util.Args.Quote(Store.FilePath)) { UseShellExecute = true }); else Proc.BackgroundLaunch.OpenWithSystem(Store.FilePath); }
             Ui.Write("Al guardar el archivo, la herramienta lo recarga sola.", Level.Muted);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)

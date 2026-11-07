@@ -8,9 +8,9 @@ using StackDev.Core.Ui;
 
 namespace StackDev.Core.Services;
 
-public enum ServiceCode { Stopped, Starting, Running, Error, NoConfig }
+public enum ServiceCode { Stopped, Starting, Running, Error, NoConfig, WaitingInput }
 
-public sealed record ServiceState(ServiceCode Code, string Text, string? Url = null, int? Pid = null)
+public sealed record ServiceState(ServiceCode Code, string Text, string? Url = null, int? Pid = null, string? Prompt = null)
 {
     public bool Running => Code == ServiceCode.Running;
 }
@@ -51,11 +51,80 @@ public sealed class ServiceManager
         var url = _s.Ctx.Url(c);
         var live = Registry.Live(key);
         if (Ports.IsListening(_s.Ctx.Port(c))) return new(ServiceCode.Running, "CORRIENDO", url, live?.Id);
-        if (live is not null) return new(ServiceCode.Starting, "ARRANCANDO", url, live.Id);
+        if (live is not null)
+        {
+            if (PendingPrompt(key) is { } question) return new(ServiceCode.WaitingInput, "ESPERA TU RESPUESTA", url, live.Id, question);
+            return new(ServiceCode.Starting, "ARRANCANDO", url, live.Id);
+        }
         var code = ReadMark(key);
         if (code is not null && code != "0")
             return new(ServiceCode.Error, $"TERMINÓ (código {code}): revisa el log");
         return new(ServiceCode.Stopped, "DETENIDA");
+    }
+
+    // What a program prints when it stops to ask something: "(Y/n)", "[y/N]", "Proceed?", "Press any key", an inquirer-style "? question".
+    private static readonly Regex AsksSomething = new(
+        @"\((?:Y/n|y/N|y/n|Y/N)\)|\[(?:Y/n|y/N|y/n|Y/N|yes/no)\]|\bProceed\?|Press (?:any key|Enter)|Ok to proceed|^\s*\? \S.+",
+        RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
+
+    public static bool LooksLikePrompt(string line) => AsksSomething.IsMatch(line);
+
+    private const int QuietSeconds = 4;
+
+    /// <summary>
+    /// The question a hidden service is stuck on, if any: its output ends in something that looks like a prompt and has stayed
+    /// silent for a few seconds. A service started in the background has nobody to answer, so it would wait forever, unseen.
+    /// </summary>
+    public string? PendingPrompt(string key)
+    {
+        try
+        {
+            var log = LogPath(key);
+            if (!File.Exists(log) || (DateTime.UtcNow - File.GetLastWriteTimeUtc(log)).TotalSeconds < QuietSeconds) return null;
+            var tail = LastLines(key, 12);
+            for (var i = tail.Count - 1; i >= 0; i--)
+                if (LooksLikePrompt(tail[i])) return tail[i].Trim();
+        }
+        catch (IOException) { }
+        return null;
+    }
+
+    private readonly Dictionary<string, string> _asked = new();
+
+    /// <summary>
+    /// If the service is waiting for an answer, says so and offers to continue in a terminal where it can be answered.
+    /// Asked once per question. True when it was opened in a terminal.
+    /// </summary>
+    public bool OfferPromptHelp(ProjectComponent c)
+    {
+        var key = KeyOf(c);
+        if (State(c) is not { Code: ServiceCode.WaitingInput, Prompt: { } question }) return false;
+        if (_asked.TryGetValue(key, out var before) && before == question) return false;
+        _asked[key] = question;
+
+        var name = Session.Names[c];
+        _s.Ui.Write("");
+        _s.Ui.Write($"{name} está esperando una respuesta que nadie puede darle en segundo plano:", Level.Warning);
+        _s.Ui.Write("  " + question, Level.Warning);
+        if (!_s.Ui.Interactive) return false;
+        var pick = _s.Ui.Choose($"{name} pregunta:\n{question}\n\n¿Qué hago?",
+            new[] { "Abrir en una terminal para responder (recomendado)", "Seguir esperando", $"Detener {name}" }, 0);
+        if (pick == 2) { Stop(c, silent: true); return false; }
+        return pick == 0 && OpenInTerminal(c);
+    }
+
+    /// <summary>Stops the background process and starts the same command in a visible terminal, where its questions can be answered.</summary>
+    public bool OpenInTerminal(ProjectComponent c)
+    {
+        var cmd = _s.Command(c, "iniciar");
+        if (cmd is null) return false;
+        var key = KeyOf(c);
+        StopProcess(key);
+        Thread.Sleep(500);
+        if (c == ProjectComponent.Api) cmd = WithUrls(cmd, _s.Ctx.Url(c));
+        var ok = _s.Executor.InWindow(key, $"{Session.Names[c]} - {_s.Ctx.Name}", _s.Ctx.Folder(c), cmd, c == ProjectComponent.Api ? _s.Ctx.Config.Api?.Env : null);
+        _s.Ui.Write(ok ? $"{Session.Names[c]} sigue en una terminal: responde ahí." : "No se pudo abrir la terminal.", ok ? Level.Ok : Level.Error);
+        return ok;
     }
 
     private string? ReadMark(string key)
@@ -91,10 +160,12 @@ public sealed class ServiceManager
     public bool StartApi(bool wait = true, bool withoutPostgres = false)
     {
         if (!_s.AssertComp(ProjectComponent.Api)) return false;
-        if (Ports.IsListening(_s.Ctx.Port(ProjectComponent.Api)))
+        switch (CheckPort(ProjectComponent.Api))
         {
-            _s.Ui.Write($"La API ya está corriendo en {_s.Ctx.Url(ProjectComponent.Api)}.", Level.Warning);
-            return true;
+            case PortCheck.AlreadyRunning:
+                _s.Ui.Write($"La API ya está corriendo en {_s.Ctx.Url(ProjectComponent.Api)}.", Level.Warning);
+                return true;
+            case PortCheck.Cancel: return false;
         }
         if (!withoutPostgres && _s.Ctx.Has(ProjectComponent.Postgres) && _s.Postgres.State().Code != PostgresCode.Running)
         {
@@ -104,24 +175,139 @@ public sealed class ServiceManager
         var cmd = _s.Command(ProjectComponent.Api, "iniciar");
         if (cmd is null) { _s.Ui.Write("Falta api.iniciar en la configuración.", Level.Error); return false; }
         _s.Ui.Write("Iniciando la API en segundo plano (su salida va al log)...", Level.Info);
-        if (!StartHidden("api", _s.Ctx.Folder(ProjectComponent.Api), cmd, _s.Ctx.Config.Api?.Env)) return false;
+        if (!StartHidden("api", _s.Ctx.Folder(ProjectComponent.Api), WithUrls(cmd, _s.Ctx.Url(ProjectComponent.Api)), _s.Ctx.Config.Api?.Env)) return false;
         return !wait || _s.All.Wait(new[] { "api" });
     }
+
+    /// <summary>
+    /// The web dev server forwards "/api" to a port written in a proxy file of the project. When that is not the API's port every
+    /// call fails, so the web is started with a copy of the file kept in stackdev's own folder (<c>--proxy-config</c>); the
+    /// project's file is never touched, so nothing shows up in its git.
+    /// </summary>
+    private string WithProxyOverride(string command)
+    {
+        if (!_s.Ctx.Has(ProjectComponent.Api) || command.Contains("--proxy-config", StringComparison.Ordinal)) return command;
+        var apiPort = _s.Ctx.Port(ProjectComponent.Api);
+        var stale = WebProxy.Find(_s.Ctx.Folder(ProjectComponent.Web), apiPort);
+        if (stale.Count == 0) return command;
+        var source = stale.OrderBy(x => x.File.Length).First();
+        try
+        {
+            var copy = WebProxy.WriteCopy(source.File, apiPort, Path.Combine(_s.State.Dir, "proxy", _s.Key));
+            _s.Ui.Write($"La web llamaba a la API en el puerto {source.Port} y corre en el {apiPort}: la inicio con un proxy temporal (tu {_s.Rel(source.File)} no se toca).", Level.Muted);
+            return AppendArg(command, $"--proxy-config \"{copy}\"");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _s.Ui.Write($"La web apunta al puerto {source.Port} pero la API corre en el {apiPort}, y no pude preparar un proxy temporal: {ex.Message}", Level.Warning);
+            return command;
+        }
+    }
+
+    /// <summary>Adds an argument to a script command: <c>npm start</c> needs <c>--</c> before it, the others take it as is.</summary>
+    public static string AppendArg(string command, string arg) =>
+        command.StartsWith("npm ", StringComparison.OrdinalIgnoreCase) && !command.Contains(" -- ", StringComparison.Ordinal)
+            ? $"{command} -- {arg}"
+            : $"{command} {arg}";
 
     public bool StartWeb(bool wait = true)
     {
         if (!_s.AssertComp(ProjectComponent.Web)) return false;
-        if (Ports.IsListening(_s.Ctx.Port(ProjectComponent.Web)))
+        switch (CheckPort(ProjectComponent.Web))
         {
-            _s.Ui.Write($"La web ya está corriendo en {_s.Ctx.Url(ProjectComponent.Web)}.", Level.Warning);
-            return true;
+            case PortCheck.AlreadyRunning:
+                _s.Ui.Write($"La web ya está corriendo en {_s.Ctx.Url(ProjectComponent.Web)}.", Level.Warning);
+                return true;
+            case PortCheck.Cancel: return false;
         }
         if (!EnsureNodeModules()) return false;
         var cmd = _s.Command(ProjectComponent.Web, "iniciar");
         if (cmd is null) { _s.Ui.Write("Falta web.iniciar en la configuración.", Level.Error); return false; }
         _s.Ui.Write("Iniciando la web en segundo plano (su salida va al log)...", Level.Info);
-        if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), cmd, null)) return false;
+        if (!StartHidden("web", _s.Ctx.Folder(ProjectComponent.Web), WithProxyOverride(cmd), null)) return false;
         return !wait || _s.All.Wait(new[] { "web" });
+    }
+
+    private static readonly Regex DotnetRun = new(@"\bdotnet\s+run\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// <c>dotnet run</c> listens where launchSettings.json says, whatever the configured URL or ASPNETCORE_URLS is (the launch
+    /// profile wins over the environment). <c>--urls</c> after <c>--</c> is the one thing that beats it, so the port stackdev
+    /// checks, shows and stops is the port the API really uses.
+    /// </summary>
+    public static string WithUrls(string command, string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var u)) return command;
+        if (!DotnetRun.IsMatch(command) || command.Contains("--urls", StringComparison.OrdinalIgnoreCase)
+            || command.Contains("--no-launch-profile", StringComparison.OrdinalIgnoreCase)) return command;
+        var origin = $"{u.Scheme}://{u.Host}:{u.Port}";
+        return command.Contains(" -- ", StringComparison.Ordinal) || command.EndsWith(" --", StringComparison.Ordinal)
+            ? $"{command} --urls {origin}"
+            : $"{command} -- --urls {origin}";
+    }
+
+    private enum PortCheck { Free, AlreadyRunning, Cancel }
+
+    /// <summary>
+    /// Before starting: is the component's port free? If somebody else holds it (or Windows / a container has reserved it) the user
+    /// chooses: another free port (saved in the configuration), a port typed by hand, close whoever holds it, or use it as it is.
+    /// Without a person to ask, a busy port counts as "already running", as it always did.
+    /// </summary>
+    private PortCheck CheckPort(ProjectComponent c)
+    {
+        var port = _s.Ctx.Port(c);
+        if (port <= 0) return PortCheck.Free;
+        var key = KeyOf(c);
+        var listening = Ports.IsListening(port);
+        if (listening && Registry.Live(key) is not null) return PortCheck.AlreadyRunning;
+        if (!_s.Ui.Interactive) return listening ? PortCheck.AlreadyRunning : PortCheck.Free;
+
+        var name = Session.Names[c];
+        for (var round = 0; round < 5; round++)
+        {
+            var map = _s.Free.Take(ignoreComponent: c);
+            var why = map.Conflict(port);
+            if (why is null) return PortCheck.Free;
+
+            var fresh = map.Suggest(port + 1);
+            var options = new List<string>();
+            var actions = new List<string>();
+            if (fresh is not null) { options.Add($"Usar el puerto {fresh} (libre)"); actions.Add("suggested"); }
+            options.Add("Escribir otro puerto…"); actions.Add("custom");
+            if (listening && Ports.Pids(port).Count > 0) { options.Add("Cerrar el proceso que lo usa"); actions.Add("kill"); }
+            if (listening) { options.Add($"Ya es {name}: usarla tal como está"); actions.Add("use"); }
+
+            var pick = _s.Ui.Choose($"El puerto {port} de {name} no está libre: {why}.\n¿Qué hago antes de iniciar?", options);
+            if (pick < 0 || pick >= actions.Count) { _s.Ui.Write("Cancelado.", Level.Muted); return PortCheck.Cancel; }
+            switch (actions[pick])
+            {
+                case "use": return PortCheck.AlreadyRunning;
+                case "kill":
+                    foreach (var id in Ports.Pids(port)) ProcessRunner.KillTree(id);
+                    Thread.Sleep(800);
+                    listening = Ports.IsListening(port);
+                    continue;
+                case "custom":
+                    var typed = _s.Ui.Ask($"Puerto para {name} (1024–65535)", fresh?.ToString());
+                    if (typed is null) { _s.Ui.Write("Cancelado.", Level.Muted); return PortCheck.Cancel; }
+                    if (!int.TryParse(typed.Trim(), out var chosen) || chosen is < 1024 or > 65535)
+                    {
+                        _s.Ui.Write("Ese no es un puerto válido.", Level.Error);
+                        continue;
+                    }
+                    if (map.Conflict(chosen) is { } other)
+                    {
+                        _s.Ui.Write($"El puerto {chosen} tampoco está libre: {other}.", Level.Warning);
+                        continue;
+                    }
+                    fresh = chosen;
+                    break;
+            }
+            _s.Free.Apply(new[] { new PortsService.PortChange(c, port, fresh!.Value, why) });
+            port = _s.Ctx.Port(c);
+            listening = Ports.IsListening(port);
+        }
+        return PortCheck.Cancel;
     }
 
     /// <summary>
@@ -141,14 +327,7 @@ public sealed class ServiceManager
         }
         catch (IOException ex) { _s.Ui.Write($"No pude preparar el log: {ex.Message}", Level.Error); return false; }
 
-        var psi = new ProcessStartInfo("cmd.exe")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = folder,
-            // /v:on so that !errorlevel! is evaluated at run time; chcp 65001 so the output stays in UTF-8
-            Arguments = $"/v:on /d /s /c \"chcp 65001>nul & ({command}) >> \"{log}\" 2>&1 & echo !errorlevel!> \"{mark}\"\"",
-        };
+        var psi = BackgroundLaunch.Info(command, folder, log, mark);
         psi.Environment["NO_COLOR"] = "1";
         foreach (var (k, v) in _s.EnvFor(folder) ?? new Dictionary<string, string>()) psi.Environment[k] = v;
         if (env is not null) foreach (var (k, v) in env) psi.Environment[k] = v;

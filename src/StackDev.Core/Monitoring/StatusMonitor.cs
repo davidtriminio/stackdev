@@ -33,14 +33,14 @@ public sealed record Snapshot(
         var app = c.Has(ProjectComponent.Mobile) && s.Flutter.AppRunning;
         var cond = c.Has(ProjectComponent.Mobile) ? s.Conditions.Text() : "";
         string? Log(ServiceState? e, string key) =>
-            e is { Code: ServiceCode.Starting or ServiceCode.Error } ? s.Services.LastLine(key) : null;
+            e is { Code: ServiceCode.Starting or ServiceCode.WaitingInput or ServiceCode.Error } ? s.Services.LastLine(key) : null;
 
         return new(pg.Result, api.Result, web.Result, emu.Result, app, cond, Log(api.Result, "api"), Log(web.Result, "web"), DateTime.Now, devs.Result);
     }
 
     public bool AnythingRunning =>
-        Postgres?.Running == true || Api?.Code is ServiceCode.Running or ServiceCode.Starting ||
-        Web?.Code is ServiceCode.Running or ServiceCode.Starting ||
+        Postgres?.Running == true || Api?.Code is ServiceCode.Running or ServiceCode.Starting or ServiceCode.WaitingInput ||
+        Web?.Code is ServiceCode.Running or ServiceCode.Starting or ServiceCode.WaitingInput ||
         Emulator is { Code: not EmuCode.None } || App;
 }
 

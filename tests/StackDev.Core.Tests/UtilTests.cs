@@ -204,3 +204,88 @@ public class EnvPerFolderTests
         Assert.Equal(new[] { "postgres", "api", "web", "emulador" }, ctx.StartAll);
     }
 }
+
+public class DotnetRunUrlsTests
+{
+    [Theory]
+    [InlineData("dotnet run --project src/Api", "http://localhost:5228", "dotnet run --project src/Api -- --urls http://localhost:5228")]
+    [InlineData("dotnet run --project src/Api -- --foo", "http://localhost:5228/", "dotnet run --project src/Api -- --foo --urls http://localhost:5228")]
+    [InlineData("dotnet run --urls http://x:1", "http://localhost:5228", "dotnet run --urls http://x:1")]
+    [InlineData("dotnet watch run", "http://localhost:5228", "dotnet watch run")]
+    [InlineData("npm start", "http://localhost:5228", "npm start")]
+    [InlineData("dotnet run", null, "dotnet run")]
+    public void WithUrls_appends_the_configured_address_only_to_dotnet_run(string command, string? url, string expected) =>
+        Assert.Equal(expected, StackDev.Core.Services.ServiceManager.WithUrls(command, url));
+}
+
+public class PromptDetectionTests
+{
+    [Theory]
+    [InlineData("removed and reinstalled from scratch. Proceed? (Y/n)", true)]
+    [InlineData("? The modules directory at node_modules will be remo", true)]
+    [InlineData("Ok to proceed? (y)", true)]
+    [InlineData("Overwrite existing file [y/N]", true)]
+    [InlineData("Press any key to continue . . .", true)]
+    [InlineData("08:52:52 info: Now listening on: http://localhost:5227", false)]
+    [InlineData("Update available! 11.24.0 -> 12.16.1.", false)]
+    [InlineData("Local:   http://localhost:4200/", false)]
+    public void Recognises_lines_that_ask_for_an_answer(string line, bool expected) =>
+        Assert.Equal(expected, StackDev.Core.Services.ServiceManager.LooksLikePrompt(line));
+}
+
+public class WebProxyTests
+{
+    private const string Json = "{\n  \"/api\": {\n    \"target\": \"http://localhost:5227\",\n    \"secure\": false\n  },\n  \"/other\": { \"target\": \"http://localhost:9000\" }\n}";
+
+    [Fact]
+    public void Rewrite_changes_only_the_api_target()
+    {
+        var text = StackDev.Core.Proc.WebProxy.Rewrite(Json, 5228);
+        Assert.Contains("\"target\": \"http://localhost:5228\"", text);
+        Assert.Contains("http://localhost:9000", text);
+        Assert.DoesNotContain("5227", text);
+    }
+
+    [Fact]
+    public void Find_reports_only_files_that_point_to_another_port()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sd-proxy-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "proxy.conf.json"), Json);
+            var stale = StackDev.Core.Proc.WebProxy.Find(dir, 5228);
+            Assert.Single(stale);
+            Assert.Equal(5227, stale[0].Port);
+            Assert.Empty(StackDev.Core.Proc.WebProxy.Find(dir, 5227));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+}
+
+public class WebProxyCopyTests
+{
+    [Fact]
+    public void WriteCopy_leaves_the_project_file_untouched()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "sd-proxycopy-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var original = "{ \"/api\": { \"target\": \"http://localhost:5227\" } }";
+            var source = Path.Combine(dir, "proxy.conf.json");
+            File.WriteAllText(source, original);
+            var copy = StackDev.Core.Proc.WebProxy.WriteCopy(source, 5228, Path.Combine(dir, "out"));
+            Assert.Equal(original, File.ReadAllText(source));
+            Assert.Contains("localhost:5228", File.ReadAllText(copy));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Theory]
+    [InlineData("npm start", "npm start -- --x")]
+    [InlineData("npm start -- --port 1", "npm start -- --port 1 --x")]
+    [InlineData("pnpm start --port 1", "pnpm start --port 1 --x")]
+    public void AppendArg_handles_npm(string command, string expected) =>
+        Assert.Equal(expected, StackDev.Core.Services.ServiceManager.AppendArg(command, "--x"));
+}

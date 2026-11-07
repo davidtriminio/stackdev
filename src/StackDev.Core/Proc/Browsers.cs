@@ -94,7 +94,7 @@ public static class Browsers
         else if (!string.IsNullOrWhiteSpace(preferred))
             warning = $"No encuentro el navegador «{Name(preferred)}». Uso el predeterminado.";
 
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        BackgroundLaunch.OpenWithSystem(url);
         return warning;
     }
 }

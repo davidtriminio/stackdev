@@ -25,8 +25,17 @@ public sealed class TerminalView : Grid, IDisposable
 
     private readonly WebView2 _web;
     private readonly object _lock = new();
-    private readonly StringBuilder _pending = new();
+    // Output waiting to go to the page, as the chunks the reading thread produced (dequeuing is O(1) however much there is).
+    private readonly Queue<string> _chunks = new();
+    private int _queued;      // characters in _chunks
+    private int _inFlight;    // characters sent to the page that it has not drawn yet
     private int _scheduled;
+    private volatile bool _shown = true;   // a hidden page runs slowly: it is not worth making the program wait for it
+
+    private const int BatchChars = 64 * 1024;
+    private const int MaxInFlight = 512 * 1024;     // more than this and the page gets time to catch up before it is sent more
+    private const int MaxQueued = 4 * 1024 * 1024;  // more than this and the program is made to wait (the pipe fills up and slows it down)
+    private const int SliceMs = 8;                  // the longest the interface thread is kept busy sending in one go
     private bool _started;
     private bool _closed;
     private SessionPty? _pty;
@@ -52,6 +61,7 @@ public sealed class TerminalView : Grid, IDisposable
         Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x11, 0x15));
         _web = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(0x08, 0x09, 0x0A) };
         Children.Add(_web);
+        IsVisibleChanged += (_, _) => _shown = IsVisible;
         Loaded += (_, _) =>
         {
             if (_started) return;
@@ -133,6 +143,7 @@ public sealed class TerminalView : Grid, IDisposable
             switch (type.GetString())
             {
                 case "ready": Start(r.GetProperty("c").GetInt32(), r.GetProperty("r").GetInt32()); break;
+                case "a": OnPageDrew(r.GetProperty("n").GetInt32()); break;
                 case "i": _pty?.Write(r.GetProperty("d").GetString() ?? ""); break;
                 case "r": _pty?.Resize(r.GetProperty("c").GetInt32(), r.GetProperty("r").GetInt32()); break;
                 case "title": TitleChanged?.Invoke(this, r.GetProperty("d").GetString() ?? ""); break;
@@ -180,32 +191,65 @@ public sealed class TerminalView : Grid, IDisposable
 
     // ------------------------------------------------------------ Output to the page
 
-    /// <summary>Called from the reading thread: gathers what arrives and sends it to the page in batches, without flooding the interface.</summary>
+    /// <summary>
+    /// Called from the reading thread: queues what arrives. The interface thread sends it to the page in short slices, and
+    /// only while the page keeps up; if the program writes faster than that for long, the reading thread waits here instead of
+    /// piling up memory, which makes the program itself slow down.
+    /// </summary>
     private void OnOutputArrived(string text)
     {
-        lock (_lock) _pending.Append(text);
-        if (Interlocked.Exchange(ref _scheduled, 1) == 0)
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Empty));
+        lock (_lock) { _chunks.Enqueue(text); _queued += text.Length; }
+        Schedule();
+        if (Volatile.Read(ref _queued) <= MaxQueued) return;
+        if (_shown)
+        {
+            while (Volatile.Read(ref _queued) > MaxQueued && !_closed && _shown) Thread.Sleep(10);
+            return;
+        }
+        // Hidden terminal with a mountain of output: keep the latest part instead of stalling the program behind it.
+        lock (_lock)
+            while (_queued > MaxQueued / 2 && _chunks.Count > 1) _queued -= _chunks.Dequeue().Length;
+    }
+
+    private void Schedule()
+    {
+        if (_closed || Interlocked.Exchange(ref _scheduled, 1) != 0) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Empty));
+    }
+
+    private void OnPageDrew(int chars)
+    {
+        Interlocked.Add(ref _inFlight, -chars);
+        Schedule();
     }
 
     private void Empty()
     {
-        string text;
-        lock (_lock)
-        {
-            var n = Math.Min(_pending.Length, 65536);
-            if (n > 0 && n < _pending.Length && char.IsHighSurrogate(_pending[n - 1])) n--;   // do not split a surrogate pair
-            text = _pending.ToString(0, n);
-            _pending.Remove(0, n);
-        }
         Interlocked.Exchange(ref _scheduled, 0);
-
-        if (text.Length > 0 && !_closed) Send(new { t = "o", d = text });
-
-        bool remainsMore;
-        lock (_lock) remainsMore = _pending.Length > 0;
-        if (remainsMore && !_closed && Interlocked.Exchange(ref _scheduled, 1) == 0)
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(Empty));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!_closed && Volatile.Read(ref _inFlight) < MaxInFlight && clock.ElapsedMilliseconds < SliceMs)
+        {
+            string batch;
+            lock (_lock)
+            {
+                if (_chunks.Count == 0) return;
+                var sb = new StringBuilder();
+                while (_chunks.Count > 0 && sb.Length < BatchChars)
+                {
+                    var chunk = _chunks.Dequeue();
+                    sb.Append(chunk);
+                    _queued -= chunk.Length;
+                }
+                batch = sb.ToString();
+            }
+            Interlocked.Add(ref _inFlight, batch.Length);
+            Send(new { t = "o", d = batch });
+        }
+        // Stopped because the slice ran out: carry on right after letting the interface breathe. If it was the page that
+        // is behind, its acknowledgement schedules the next slice.
+        bool more;
+        lock (_lock) more = _chunks.Count > 0;
+        if (more && !_closed && Volatile.Read(ref _inFlight) < MaxInFlight) Schedule();
     }
 
     // ------------------------------------------------------------ Uso

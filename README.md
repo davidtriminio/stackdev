@@ -6,13 +6,17 @@ One tool to run and ship a local full-stack project: start the database, the API
 
 It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + Postgres in Docker** stack, and is growing into a toolbox for projects in any language.
 
-> **Status:** used every day on Windows. The core is cross-platform in design but the window is WPF, so macOS and Linux are not supported yet. See the [roadmap](#roadmap).
+> **Status:** used every day on Windows. A first cross-platform window ([`stackdev-app`](#cross-platform-window-preview), Avalonia) runs on Windows, Linux and macOS with the local services only; the full window is still WPF (Windows). See the [roadmap](#roadmap).
 
 ## What it does
 
 **Local development**
 - Detects what a project is made of (API, web, mobile, database) and writes a small `dev-menu.json` for it. .NET, Angular and Flutter are built in; **Node (NestJS, Express, Fastify, Next, Nuxt, SvelteKit, Vite, CRA, Vue CLI) and Python (Django, FastAPI, Flask)** come from [profiles](CONTRIBUTING.md#project-profiles), plain JSON files anyone can add.
 - One panel with live status and buttons for every service: *Start all*, *Check*, *Stop all*, logs, device conditions, a command console.
+- **Busy ports are caught before starting.** If the API or web port is held by another process, a container, another project or a Windows reservation, you are told who has it and choose: the next free port (saved in the config), a port you type, close the process, or use it as it is. `dotnet run` and the web dev server follow the port you picked, and a web proxy that points to another API port is corrected with a temporary copy, never by editing your files.
+- **Services that stop to ask something are noticed.** A service started in the background cannot answer a prompt such as pnpm's *"remove node_modules? (Y/n)"*; the card shows *waiting for your answer* with the question and offers to continue in a terminal.
+- **Mobile app and phones.** Running the app asks which API it talks to (this PC, your server or any address). Phones with wireless debugging (Android 11+) are found on the network and connected without typing an IP and port; pairing needs only the six-digit code.
+- **Moved or renamed a project folder?** *Relocate* takes its configuration and history to the new folder, and a project's configuration can be copied to another one.
 - A command-line version (`stackdev up`, `stackdev api start`, …) for scripts, with proper exit codes.
 
 **Deploy to your own server** (SSH, nothing to install on the server)
@@ -23,6 +27,14 @@ It started as a PowerShell menu for a **.NET API + Angular web + Flutter app + P
 - **Edit the server's `.env`** with hidden secrets and automatic restore if the service stops starting.
 
 Everything is guided with forms in one window. Every remote command has a time limit and a Cancel button, so nothing waits forever.
+
+## Screenshots
+
+![The panel with every service running](docs/images/panel.png)
+
+| Busy port | Phones over Wi-Fi | Upload API |
+|---|---|---|
+| ![A busy port is caught before starting](docs/images/busy-port.png) | ![Phone found on the network](docs/images/phones.png) | ![Uploading an API to your own server](docs/images/deploy.png) |
 
 ## Safety
 
@@ -45,6 +57,16 @@ dotnet test                                   # core tests
 dotnet run --project src/StackDev.Gui         # the window
 dotnet run --project src/StackDev.Cli -- status   # the command line
 ```
+
+### Cross-platform window (preview)
+
+Needs only the .NET SDK 10, on Windows, Linux or macOS:
+
+```bash
+dotnet run --project src/StackDev.App
+```
+
+Open a project folder and it shows the API and web services with their state and start, stop, restart, open and log actions. The core and this window are built and tested on Windows, Ubuntu and macOS in CI, but the window has been tried by hand only on Windows so far. Not in it yet: Postgres/Docker, the emulator and the mobile app, terminals, credentials and deploying to a server. Outside Windows secrets are not encrypted yet (no system keychain), which is why the credentials and servers parts are left out.
 
 Single-file build of the window:
 
@@ -82,7 +104,7 @@ A project describes itself in one optional-everything file at its root: `postgre
 
 Planned, in this order:
 
-1. **Cross-platform**: put the Windows-only pieces (encryption, key permissions, window control) behind interfaces and add a second UI on Avalonia, reusing the core as it is. The command line first.
+1. **Cross-platform**: *started.* The Avalonia window and the core already build and test on Linux and macOS. Next: Postgres/Docker and terminals in that window, a system keychain instead of DPAPI so credentials and servers can move over, then deploying from it.
 2. **Language support as data**: *started.* Profiles describe how to detect, start, test and build a project type, so adding a language needs no C#; Node and Python ship today and `examples/profiles/go.json` shows how to add Go. Next: more built-in profiles (Go, Java, PHP, Rust) and publishing, which is still .NET-only.
 3. **More targets**: web (Vercel or your server), Android APK, database backup and restore.
 

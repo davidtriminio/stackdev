@@ -5,7 +5,15 @@
 Una sola herramienta para levantar un proyecto full-stack en local (base de datos, API, web y emulador) y publicar su API en tu propio servidor por SSH, sin abrir una terminal. Nació para **API .NET + web Angular + app Flutter + Postgres en Docker** y crece hacia otros lenguajes.
 Se usa como ventana (WPF, Windows) o como línea de comandos que se instala como *herramienta global de .NET*.
 
-> **Estado:** en uso diario en Windows. La ruta hacia macOS y Linux está en el [plan](README.md#roadmap) (en inglés).
+> **Estado:** en uso diario en Windows. Hay una primera ventana multiplataforma (`dotnet run --project src/StackDev.App`, Avalonia) que corre en Windows, Linux y macOS y por ahora solo maneja la API y la web locales. La ruta completa está en el [plan](README.md#roadmap) (en inglés).
+
+## Capturas
+
+![El panel con todos los servicios corriendo](docs/images/panel.png)
+
+| Puerto ocupado | Teléfonos por Wi-Fi | Subir la API |
+|---|---|---|
+| ![Se detecta un puerto ocupado antes de iniciar](docs/images/busy-port.png) | ![Teléfono encontrado en la red](docs/images/phones.png) | ![Subiendo una API a tu propio servidor](docs/images/deploy.png) |
 
 ## Requisitos
 
@@ -24,7 +32,7 @@ dotnet run --project src/StackDev.Cli -- config C:\ruta\al\proyecto
 ## Instalar como herramienta (`stackdev`)
 
 ```powershell
-dotnet pack src/StackDev.Cli -c Release                        # genera .\nupkg\stackdev.0.1.0.nupkg
+dotnet pack src/StackDev.Cli -c Release                        # genera .\nupkg\stackdev.<versión>.nupkg
 dotnet tool install  -g stackdev --add-source .\nupkg          # primera vez
 dotnet tool update   -g stackdev --add-source .\nupkg          # después de cambios
 dotnet tool uninstall -g stackdev                              # quitarla
@@ -82,6 +90,14 @@ publish\gui\stackdev-gui.exe C:\ruta\al\proyecto        # la ruta es opcional
 ```
 
 Sin ruta abre la carpeta actual si parece un proyecto, o el último usado, o muestra el selector. Comparte con la versión de consola el estado (`%APPDATA%\stackdev`) y `dev-menu.json`.
+
+## Puertos, teléfonos y proyectos movidos
+
+- **Puerto ocupado.** Antes de iniciar la API o la web se revisa su puerto. Si lo tiene otro proceso, un contenedor, otro proyecto o una reserva de Windows, te dice quién y eliges: el siguiente puerto libre (se guarda en la configuración), uno que escribas, cerrar el proceso o usarlo tal cual. `dotnet run` y el servidor de la web siguen el puerto elegido. Si el proxy de la web apunta a otro puerto de la API, se arranca con una copia temporal guardada en `%APPDATA%\stackdev\proxy\`; tus archivos no se tocan.
+- **Servicios que hacen una pregunta.** La API y la web corren ocultas y no pueden contestar, por ejemplo, el *«¿borrar node_modules? (Y/n)»* de pnpm. La tarjeta pasa a *ESPERA TU RESPUESTA*, muestra la pregunta y ofrece seguir en una terminal.
+- **App móvil.** Al ejecutarla pregunta con qué API habla: la de este PC, la de tu servidor (`deployment.domain`) o una dirección escrita. Si ya pones `API_BASE_URL` en `mobile.argsRun` no pregunta.
+- **Teléfonos por Wi-Fi (Android 11+).** «Conectar teléfono por red» tiene la opción *Buscar en la red*, que los encuentra por mDNS sin escribir IP ni puerto. Para emparejar, deja abierta en el teléfono la ventana *Vincular con código* y escribe solo los seis dígitos. No funciona en redes que aíslan a los dispositivos (Wi-Fi de invitados) ni con algunas VPN.
+- **¿Cambiaste de nombre o moviste la carpeta?** En la lista de proyectos, *Reubicar…* lleva la configuración y el historial a la carpeta nueva, y *Copiar config…* copia la configuración de un proyecto a otro (también al abrir uno que aún no tiene).
 
 ## Estado personal
 

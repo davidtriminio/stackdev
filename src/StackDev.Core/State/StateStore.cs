@@ -102,6 +102,21 @@ public sealed class StateStore
     public void RemoveProject(string path) =>
         SaveProjects(ReadProjects().Where(p => !string.Equals(p, path, StringComparison.OrdinalIgnoreCase)));
 
+    /// <summary>The project moved: its place in the list, the favourite and the last project now point to the new path.</summary>
+    public void RelocateProject(string oldPath, string newPath)
+    {
+        bool Same(string? x) => x is not null && string.Equals(Paths.Normalize(x), Paths.Normalize(oldPath), Paths.Comparison);
+        var list = new List<string>();
+        foreach (var p in ReadProjects())
+        {
+            var item = Same(p) ? newPath : p;
+            if (!list.Any(x => string.Equals(x, item, StringComparison.OrdinalIgnoreCase))) list.Add(item);
+        }
+        SaveProjects(list);
+        if (Same(Favorite)) Favorite = newPath;
+        if (Same(LastProject)) LastProject = newPath;
+    }
+
     private void SaveProjects(IEnumerable<string> list)
     {
         Directory.CreateDirectory(Dir);
